@@ -1,0 +1,43 @@
+from datetime import datetime
+from typing import Dict, Any, List
+
+from shodan_report.models import AssetSnapshot, Service
+
+def parse_service(entry: Dict[str, Any]) -> Service:
+    return Service(
+        port=entry.get("port"),
+        transport=entry.get("transport"),
+        product=entry.get("product"),
+        version=entry.get("version"),
+        ssl_info=entry.get("ssl"),
+        ssh_info=entry.get("ssh"),
+        raw=entry
+    )
+
+def parse_shodan_host(data: Dict[str, Any]) -> AssetSnapshot:
+    services: List[Service] =[]
+
+    for entry in data.get("data", []):
+        if "port" not in entry:
+            continue
+
+        services.append(parse_service(entry))
+
+    snapshot = AssetSnapshot(
+        ip=data.get("ip_str"),
+        hostnames=data.get("hostnames", []),
+        domains=data.get("domain",[]),
+
+        org=data.get("org"),
+        isp=data.get("isp"),
+        os=data.get("os"),
+
+        city=(data.get("location") or {}).get("city"),
+        country=(data.get("location") or {}).get("country_name"),
+        
+        services=services,
+        open_ports=data.get("ports", []),
+
+        last_update=datetime.utcnow()
+    )
+    return snapshot
