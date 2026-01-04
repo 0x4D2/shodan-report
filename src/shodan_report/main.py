@@ -1,12 +1,16 @@
+from importlib.resources import files
 import os
 import json
+import glob
 from pathlib import Path
 
 from dotenv import load_dotenv
+from datetime import datetime
 
 from shodan_report.shodan_client import ShodanClient
 from shodan_report.utils import parse_shodan_host
 from shodan_report.evaluation import evaluate_snapshot
+from shodan_report.snapshot_manager import save_snapshot, load_snapshot, compare_snapshots
 
 
 def main():
@@ -19,42 +23,29 @@ def main():
     
     #ip = "217.154.224.104" # my VPS ip
     ip = "111.170.152.60" # test ip
+    month ="2024-06"
+    prev_month ="2025-12"
 
     client = ShodanClient(api_key)
     raw_data = client.get_host(ip)
-
-    output_dir = Path("output")
-    output_dir.mkdir(exist_ok=True)
-
-    raw_path = output_dir / "raw_shodan_output.json"
-    with raw_path.open("w", encoding="utf-8") as f:
-        json.dump(raw_data, f, indent=2)
-
     snapshot = parse_shodan_host(raw_data)
 
-    snapshot_path = output_dir / "asset_snapshot.json"
-    with snapshot_path.open("w",encoding="utf8") as f:
-        json.dump(snapshot.__dict__, f, indent=2, default=str)
+    save_snapshot(snapshot,"kunde1", month)
+
+    prev_snapshot = load_snapshot(prev_month)
+
+    if prev_snapshot:
+        changes = compare_snapshots(prev_snapshot, snapshot)
+        print("Änderungen seit Vormonat:")
+        print(changes)
+    else:
+        print("Kein Snapshot vom Vormonat gefunden. Änderungen können nicht berechnet werden.")
 
     evaluation = evaluate_snapshot(snapshot)
-
-    with (output_dir / "evaluation.json").open("w", encoding="utf-8") as f:
-        json.dump(
-            {
-                "ip": evaluation.ip,
-                "risk": evaluation.risk.value,
-                "critical_points": evaluation.critical_points,
-            },
-            f,
-            indent=2,
-        )
-
-    print("Snapshot & Bewertung erfolgreich erzeugt.")
-    print(f"IP: {snapshot.ip}")
-    print(f"Dienste: {len(snapshot.services)}")
-    print(f"Risiko: {evaluation.risk.value}")
-    for point in evaluation.critical_points:
-        print("-", point)
+    print("Bewertung:")
+    print(f"IP: {evaluation.ip}")
+    print(f"Risikostufe: {evaluation.risk.value}")
+    print(f"Kritische Punkte: {evaluation.critical_points}")
 
 if __name__ == "__main__":
     main()
