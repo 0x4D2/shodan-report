@@ -1,0 +1,21 @@
+[project]
+name = "shodan-report"
+version = "0.1.0"
+description = "Automatisierte externe Sicherheitsreports auf Basis von Shodan"
+readme = "README.md"
+requires-python = ">=3.11"
+
+dependencies = [
+    "python-dotenv",
+    "shodan"
+]
+
+[project.optional-dependencies]
+dev = [
+    "black",
+    "mypy"
+]
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
