@@ -1,0 +1,7 @@
+{
+  "ip": "111.170.152.60",
+  "risk": "medium",
+  "critical_points": [
+    "Mehrere offene Dienste: 8"
+  ]
+}

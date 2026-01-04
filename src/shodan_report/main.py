@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 
 from shodan_report.shodan_client import ShodanClient
 from shodan_report.utils import parse_shodan_host
+from shodan_report.evaluation import evaluate_snapshot
 
 
 def main():
@@ -16,7 +17,8 @@ def main():
     if not api_key:
         raise RuntimeError("SHODAN_API_KEY fehlt")
     
-    ip = "217.154.224.104" # my VPS ip
+    #ip = "217.154.224.104" # my VPS ip
+    ip = "111.170.152.60" # test ip
 
     client = ShodanClient(api_key)
     raw_data = client.get_host(ip)
@@ -34,10 +36,25 @@ def main():
     with snapshot_path.open("w",encoding="utf8") as f:
         json.dump(snapshot.__dict__, f, indent=2, default=str)
 
-    print("Snapshot erfolgreich erzeugt.")
+    evaluation = evaluate_snapshot(snapshot)
+
+    with (output_dir / "evaluation.json").open("w", encoding="utf-8") as f:
+        json.dump(
+            {
+                "ip": evaluation.ip,
+                "risk": evaluation.risk.value,
+                "critical_points": evaluation.critical_points,
+            },
+            f,
+            indent=2,
+        )
+
+    print("Snapshot & Bewertung erfolgreich erzeugt.")
     print(f"IP: {snapshot.ip}")
-    print(f"Offene Ports: {len(snapshot.open_ports)}")
     print(f"Dienste: {len(snapshot.services)}")
+    print(f"Risiko: {evaluation.risk.value}")
+    for point in evaluation.critical_points:
+        print("-", point)
 
 if __name__ == "__main__":
     main()
