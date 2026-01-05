@@ -26,6 +26,10 @@ Nicht „einmal scannen“, sondern **Sicherheitsentwicklung sichtbar machen**.
 ✔ Daten von Shodan abrufen  
 ✔ Rohdaten normalisieren (`AssetSnapshot`)  
 ✔ Regelbasierte Sicherheitsbewertung (`low / medium / high`)
+✔ Vergleich: aktueller Monat vs. Vormonat
+✔ Risiko-Priorisierung über Zeit
+✔ Kunden- / IP-Verwaltung
+✔ Management-Text + Historie (Trend, Veränderung)
 
 Die Bewertung basiert aktuell auf:
 - Anzahl offener Dienste
@@ -40,9 +44,6 @@ Eine echte CVE- und Exploit-Bewertung folgt später.
 
 ## Noch nicht umgesetzt (bewusst)
 
-- Vergleich: aktueller Monat vs. Vormonat
-- Risiko-Priorisierung über Zeit
-- Kunden- / IP-Verwaltung
 - Report-Generierung (PDF)
 - Automatisierung (z. B. n8n)
 
