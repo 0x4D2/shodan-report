@@ -4,11 +4,22 @@ from typing import Dict, Any, List
 from shodan_report.models import AssetSnapshot, Service
 
 def parse_service(entry: Dict[str, Any]) -> Service:
+
+    product = entry.get("product")
+    version = entry.get("version")
+
+    # Shodan Banner auswerten
+    banner = entry.get("banner") or entry.get("data")  # fallback, falls 'banner' nicht vorhanden
+    if not product and banner:
+        product = banner.split()[0] 
+    if not version and banner:
+        version = banner.split()[1] if len(banner.split()) > 1 else None
+
     return Service(
         port=entry.get("port"),
         transport=entry.get("transport"),
-        product=entry.get("product"),
-        version=entry.get("version"),
+        product=product,
+        version=version,
         ssl_info=entry.get("ssl"),
         ssh_info=entry.get("ssh"),
         raw=entry

@@ -1,5 +1,6 @@
 from importlib.resources import files
 import os
+import json
 
 from dotenv import load_dotenv
 
@@ -12,6 +13,7 @@ from shodan_report.snapshot_manager import save_snapshot, load_snapshot, compare
 from shodan_report.risk_prioritization import prioritize_risk
 from shodan_report.management_text import generate_management_text
 from shodan_report.trend import analyze_trend
+from shodan_report.technical_appendix import generate_technical_appendix
 
 def main():
     # Config laden
@@ -21,10 +23,10 @@ def main():
     if not api_key:
         raise RuntimeError("SHODAN_API_KEY fehlt")
     
-    #ip = "217.154.224.104" # my VPS ip
-    ip ="111.170.152.60"  # Beispiel IP
-    #customer_name ="MG Solutions"
-    customer_name ="CHINANET HUBEI PROVINCE NETWORK"
+    ip = "217.154.224.104" # my VPS ip
+    #ip ="111.170.152.60"  # Beispiel IP
+    customer_name ="MG Solutions"
+    #customer_name ="CHINANET HUBEI PROVINCE NETWORK"
 
     month ="2025-01"
     prev_month ="2024-12"
@@ -53,7 +55,10 @@ def main():
     business_risk = prioritize_risk(evaluation)
 
     management_text = generate_management_text(business_risk, evaluation) 
-    management_text += f"\n\nHistorie / Trend:\n{trend_text}" 
+    if trend_text:
+        management_text += f"\n\nHistorie/Trend:\n{trend_text}"
+
+    technical_appendix = generate_technical_appendix(snapshot, prev_snapshot)
 
     print("Bewertung:")
     print(f"IP: {evaluation.ip}")
@@ -64,6 +69,8 @@ def main():
         print("-", point)
     print("\nManagement-Zusammenfassung:")
     print(management_text)
+    print("\n=== Technischer Anhang (JSON) ===")
+    print(json.dumps(technical_appendix, indent=2))
 
 if __name__ == "__main__":
     main()

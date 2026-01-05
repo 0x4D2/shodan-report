@@ -5,6 +5,13 @@ from shodan_report.models import AssetSnapshot
 SNAPSHOT_DIR = Path("snapshots")
 SNAPSHOT_DIR.mkdir(exist_ok=True)
 
+def serialize_service(service) -> dict:
+   # Hilfsfunktion zum Serialisieren eines Service-Objekts
+    return {
+        "port": service.port,
+        "product": service.product or getattr(service, "banner", "unbekannt"),
+        "version": service.version or getattr(service, "banner", "unbekannt"),
+    }
 def save_snapshot(snapshot: AssetSnapshot, customer_name: str, month: str) -> Path:
 
     customer_dir = SNAPSHOT_DIR / customer_name
@@ -13,9 +20,11 @@ def save_snapshot(snapshot: AssetSnapshot, customer_name: str, month: str) -> Pa
     filename = f"{month}_{snapshot.ip}.json"
     path = customer_dir / filename
 
-    with path.open("w", encoding="utf-8") as f:
-        json.dump(snapshot.__dict__, f, indent=2, default=str)
+    serializable_snapshot = snapshot.__dict__.copy()
+    serializable_snapshot["services"] = [serialize_service(s) for s in snapshot.services]
 
+    with path.open("w", encoding="utf-8") as f:
+        json.dump(serializable_snapshot, f, indent=2, default=str)
     return path
 
 def load_snapshot(customer_name: str, month: str) -> AssetSnapshot | None:
