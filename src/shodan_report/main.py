@@ -21,18 +21,19 @@ def main():
     if not api_key:
         raise RuntimeError("SHODAN_API_KEY fehlt")
     
-    #ip = "217.154.224.104" # my VPS ip
-    ip = "111.170.152.60" # test ip
-    month ="2024-06"
-    prev_month ="2025-12"
+    ip = "217.154.224.104" # my VPS ip
+    customer_name ="MG Solutions"
+
+    month ="2025-01"
+    prev_month ="2024-12"
 
     client = ShodanClient(api_key)
     raw_data = client.get_host(ip)
     snapshot = parse_shodan_host(raw_data)
 
-    save_snapshot(snapshot,"kunde1", month)
+    save_snapshot(snapshot,customer_name, month)
 
-    prev_snapshot = load_snapshot(prev_month)
+    prev_snapshot = load_snapshot(customer_name, prev_month)
 
     if prev_snapshot:
         changes = compare_snapshots(prev_snapshot, snapshot)

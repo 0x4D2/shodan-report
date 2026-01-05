@@ -7,20 +7,33 @@ SNAPSHOT_DIR.mkdir(exist_ok=True)
 
 def save_snapshot(snapshot: AssetSnapshot, customer_name: str, month: str) -> Path:
 
-    path = SNAPSHOT_DIR / f"{month}_snapshot_{customer_name}.json"
+    customer_dir = SNAPSHOT_DIR / customer_name
+    customer_dir.mkdir(exist_ok=True)
+
+    filename = f"{month}_{snapshot.ip}.json"
+    path = customer_dir / filename
+
     with path.open("w", encoding="utf-8") as f:
         json.dump(snapshot.__dict__, f, indent=2, default=str)
+
     return path
 
-def load_snapshot(month: str) -> AssetSnapshot | None:
-    path = SNAPSHOT_DIR / f"{month}_snapshot.json"
-    if not path.exists():
+def load_snapshot(customer_name: str, month: str) -> AssetSnapshot | None:
+
+    customer_dir = SNAPSHOT_DIR / customer_name
+    if not customer_dir.exists():
         return None
+    
+    paths = list(customer_dir.glob(f"{month}_*.json"))
+    if not paths:
+        return None
+    
+    path = paths[0]
     with path.open("r", encoding="utf-8") as f:
         data = json.load(f)
 
     from shodan_report.utils import parse_shodan_host
-    return parse_shodan_host(data)    
+    return parse_shodan_host(data)
 
 def compare_snapshots(prev: AssetSnapshot, current: AssetSnapshot) -> dict:
     changes = {
