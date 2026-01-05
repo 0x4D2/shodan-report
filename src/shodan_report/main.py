@@ -11,6 +11,7 @@ from shodan_report.evaluation import evaluate_snapshot
 from shodan_report.snapshot_manager import save_snapshot, load_snapshot, compare_snapshots
 from shodan_report.risk_prioritization import prioritize_risk
 from shodan_report.management_text import generate_management_text
+from shodan_report.trend import analyze_trend
 
 def main():
     # Config laden
@@ -20,10 +21,10 @@ def main():
     if not api_key:
         raise RuntimeError("SHODAN_API_KEY fehlt")
     
-    ip = "217.154.224.104" # my VPS ip
-    #ip ="111.170.152.60"  # Beispiel IP
-    customer_name ="MG Solutions"
-    #customer_name ="CHINANET HUBEI PROVINCE NETWORK"
+    #ip = "217.154.224.104" # my VPS ip
+    ip ="111.170.152.60"  # Beispiel IP
+    #customer_name ="MG Solutions"
+    customer_name ="CHINANET HUBEI PROVINCE NETWORK"
 
     month ="2025-01"
     prev_month ="2024-12"
@@ -40,13 +41,19 @@ def main():
         changes = compare_snapshots(prev_snapshot, snapshot)
         print("Änderungen seit Vormonat:")
         print(changes)
+
+        trend_text = analyze_trend(prev_snapshot, snapshot)
+        print("\nTrend im Vergleich zum Vormonat:")
+        print(trend_text)
     else:
         print("Kein Snapshot vom Vormonat gefunden. Änderungen können nicht berechnet werden.")
+        trend_text = "Keine historischen Daten für Trendanalyse vorhanden."
 
     evaluation = evaluate_snapshot(snapshot)
     business_risk = prioritize_risk(evaluation)
 
-    management_text = generate_management_text(business_risk, evaluation)  
+    management_text = generate_management_text(business_risk, evaluation) 
+    management_text += f"\n\nHistorie / Trend:\n{trend_text}" 
 
     print("Bewertung:")
     print(f"IP: {evaluation.ip}")
