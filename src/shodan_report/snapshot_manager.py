@@ -24,6 +24,7 @@ def load_snapshot(customer_name: str, month: str) -> AssetSnapshot | None:
     if not customer_dir.exists():
         return None
     
+    # * erlaubt spätere mehrere IPs 
     paths = list(customer_dir.glob(f"{month}_*.json"))
     if not paths:
         return None
@@ -32,6 +33,7 @@ def load_snapshot(customer_name: str, month: str) -> AssetSnapshot | None:
     with path.open("r", encoding="utf-8") as f:
         data = json.load(f)
 
+    # Lazy import
     from shodan_report.utils import parse_shodan_host
     return parse_shodan_host(data)
 

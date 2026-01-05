@@ -4,11 +4,13 @@ import os
 from dotenv import load_dotenv
 
 from shodan_report import evaluation
+from shodan_report import management_text
 from shodan_report.shodan_client import ShodanClient
 from shodan_report.utils import parse_shodan_host
 from shodan_report.evaluation import evaluate_snapshot
 from shodan_report.snapshot_manager import save_snapshot, load_snapshot, compare_snapshots
 from shodan_report.risk_prioritization import prioritize_risk
+from shodan_report.management_text import generate_management_text
 
 def main():
     # Config laden
@@ -21,7 +23,7 @@ def main():
     ip = "217.154.224.104" # my VPS ip
     #ip ="111.170.152.60"  # Beispiel IP
     customer_name ="MG Solutions"
-   # customer_name ="CHINANET HUBEI PROVINCE NETWORK"
+    #customer_name ="CHINANET HUBEI PROVINCE NETWORK"
 
     month ="2025-01"
     prev_month ="2024-12"
@@ -44,6 +46,8 @@ def main():
     evaluation = evaluate_snapshot(snapshot)
     business_risk = prioritize_risk(evaluation)
 
+    management_text = generate_management_text(business_risk, evaluation)  
+
     print("Bewertung:")
     print(f"IP: {evaluation.ip}")
     print(f"Technisches Risiko: {evaluation.risk.value}")
@@ -51,6 +55,8 @@ def main():
     print("Kritische Punkte:")
     for point in evaluation.critical_points:
         print("-", point)
+    print("\nManagement-Zusammenfassung:")
+    print(management_text)
 
 if __name__ == "__main__":
     main()
