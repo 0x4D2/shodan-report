@@ -2,8 +2,9 @@ from pathlib import Path
 import json
 from shodan_report.models import AssetSnapshot
 
+BASE_DATA_DIR = Path("data")
 SNAPSHOT_DIR = Path("snapshots")
-SNAPSHOT_DIR.mkdir(exist_ok=True)
+SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
 
 def serialize_service(service) -> dict:
    # Hilfsfunktion zum Serialisieren eines Service-Objekts
@@ -14,7 +15,7 @@ def serialize_service(service) -> dict:
     }
 def save_snapshot(snapshot: AssetSnapshot, customer_name: str, month: str) -> Path:
 
-    customer_dir = SNAPSHOT_DIR / customer_name
+    customer_dir = SNAPSHOT_DIR / customer_name.replace(" ", "_")
     customer_dir.mkdir(exist_ok=True)
 
     filename = f"{month}_{snapshot.ip}.json"
@@ -29,7 +30,7 @@ def save_snapshot(snapshot: AssetSnapshot, customer_name: str, month: str) -> Pa
 
 def load_snapshot(customer_name: str, month: str) -> AssetSnapshot | None:
 
-    customer_dir = SNAPSHOT_DIR / customer_name
+    customer_dir = SNAPSHOT_DIR / customer_name.replace(" ", "_")
     if not customer_dir.exists():
         return None
     

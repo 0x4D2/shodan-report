@@ -1,19 +1,17 @@
 from importlib.resources import files
 import os
 import json
-
 from dotenv import load_dotenv
 
-from shodan_report import evaluation
-from shodan_report import management_text
 from shodan_report.shodan_client import ShodanClient
 from shodan_report.utils import parse_shodan_host
-from shodan_report.evaluation import evaluate_snapshot
 from shodan_report.snapshot_manager import save_snapshot, load_snapshot, compare_snapshots
+from shodan_report.evaluation import evaluate_snapshot
 from shodan_report.risk_prioritization import prioritize_risk
 from shodan_report.management_text import generate_management_text
 from shodan_report.trend import analyze_trend
-from shodan_report.technical_appendix import generate_technical_appendix
+
+from .pdf_generator import generate_pdf
 
 def main():
     # Config laden
@@ -39,27 +37,46 @@ def main():
 
     prev_snapshot = load_snapshot(customer_name, prev_month)
 
+    # Historie / Trend 
     if prev_snapshot:
         changes = compare_snapshots(prev_snapshot, snapshot)
-        print("Änderungen seit Vormonat:")
-        print(changes)
-
         trend_text = analyze_trend(prev_snapshot, snapshot)
-        print("\nTrend im Vergleich zum Vormonat:")
-        print(trend_text)
     else:
-        print("Kein Snapshot vom Vormonat gefunden. Änderungen können nicht berechnet werden.")
+        changes = None
         trend_text = "Keine historischen Daten für Trendanalyse vorhanden."
 
+    # Bewertung / Priorisierung
     evaluation = evaluate_snapshot(snapshot)
     business_risk = prioritize_risk(evaluation)
-
+    
+    # Management Text
     management_text = generate_management_text(business_risk, evaluation) 
-    if trend_text:
-        management_text += f"\n\nHistorie/Trend:\n{trend_text}"
+  
+   # Technischer Anhang vorbereiten (JSON)
+    technical_json = {
+        "ip": snapshot.ip,
+        "ports": [
+            {
+                "port": s.port,
+                "product": s.product or "Unbekannt",
+                "version": s.version or "",
+                "service": getattr(s, "service", "")
+            } for s in snapshot.services
+        ],
+        "vulnerabilities": getattr(snapshot, "vulnerabilities", [])
+    }
 
-    technical_appendix = generate_technical_appendix(snapshot, prev_snapshot)
+    # PDF erstellen (neue Struktur)
+    pdf_path = generate_pdf(
+        customer_name=customer_name,
+        month=month,
+        ip=snapshot.ip,
+        management_text=management_text,
+        trend_text=trend_text,
+        technical_json=technical_json
+    )
 
+    # Debug 
     print("Bewertung:")
     print(f"IP: {evaluation.ip}")
     print(f"Technisches Risiko: {evaluation.risk.value}")
@@ -69,8 +86,9 @@ def main():
         print("-", point)
     print("\nManagement-Zusammenfassung:")
     print(management_text)
+    print(f"\nPDF erstellt unter: {pdf_path}")
     print("\n=== Technischer Anhang (JSON) ===")
-    print(json.dumps(technical_appendix, indent=2))
+    print(json.dumps(technical_json, indent=2))
 
 if __name__ == "__main__":
     main()
