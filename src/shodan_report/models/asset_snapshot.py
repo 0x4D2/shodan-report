@@ -1,20 +1,7 @@
 from dataclasses import dataclass, field
-from typing import List, Optional 
+from typing import List, Optional
 from datetime import datetime
-
-@dataclass
-class Service:
-    port: int
-    transport: str # tcp/upd
-    product: Optional[str] = None
-    version: Optional[str] = None
-
-    ssl_info: Optional[dict] = None
-    ssh_info: Optional[dict] = None
-
-    # Rohaten 
-    raw: Optional[dict] = None
-
+from .service import Service
 
 @dataclass
 class AssetSnapshot:

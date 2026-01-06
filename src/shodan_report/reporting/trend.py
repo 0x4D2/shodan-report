@@ -1,5 +1,5 @@
 from shodan_report.models import AssetSnapshot
-from shodan_report.snapshot_manager import compare_snapshots
+from shodan_report.persistence.snapshot_manager import compare_snapshots
 
 def analyze_trend(prev_snapshot: AssetSnapshot, current_snapshot: AssetSnapshot) -> str:
     """

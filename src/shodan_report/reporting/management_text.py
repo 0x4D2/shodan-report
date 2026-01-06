@@ -1,5 +1,5 @@
-from shodan_report.risk_prioritization import BusinessRisk
-from shodan_report.evaluation import Evaluation
+from shodan_report.evaluation.risk_prioritization import BusinessRisk
+from shodan_report.evaluation.evaluation import Evaluation
 
 
 def generate_management_text(

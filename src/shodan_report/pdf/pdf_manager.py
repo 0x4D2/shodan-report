@@ -15,7 +15,7 @@ def prepare_pdf_elements(customer_name, month, ip, management_text, trend_text, 
     elements.append(Paragraph(f"<b>IP-Adresse:</b> {ip}", styles['Heading3']))
     elements.append(Spacer(1, 12))
 
-    # Management-Zusammenfassung
+    # Management
     elements.append(Paragraph("<b>Management-Zusammenfassung</b>", styles['Heading2']))
     elements.append(Spacer(1, 6))
     for line in (management_text or "").splitlines():

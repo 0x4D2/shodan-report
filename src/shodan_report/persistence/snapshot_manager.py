@@ -44,7 +44,7 @@ def load_snapshot(customer_name: str, month: str) -> AssetSnapshot | None:
         data = json.load(f)
 
     # Lazy import
-    from shodan_report.utils import parse_shodan_host
+    from shodan_report.parsing.utils import parse_shodan_host
     return parse_shodan_host(data)
 
 def compare_snapshots(prev: AssetSnapshot, current: AssetSnapshot) -> dict:

@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Dict, Any, List
 
-from shodan_report.models import AssetSnapshot, Service
+from shodan_report.models import Service, AssetSnapshot
 
 def parse_service(entry: Dict[str, Any]) -> Service:
 

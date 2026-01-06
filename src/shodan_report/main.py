@@ -3,15 +3,16 @@ import os
 import json
 from dotenv import load_dotenv
 
-from shodan_report.shodan_client import ShodanClient
-from shodan_report.utils import parse_shodan_host
-from shodan_report.snapshot_manager import save_snapshot, load_snapshot, compare_snapshots
-from shodan_report.evaluation import evaluate_snapshot
-from shodan_report.risk_prioritization import prioritize_risk
-from shodan_report.management_text import generate_management_text
-from shodan_report.trend import analyze_trend
+from shodan_report.clients.shodan_client import ShodanClient
+from shodan_report.parsing.utils import parse_shodan_host
+from shodan_report.persistence.snapshot_manager import save_snapshot, load_snapshot, compare_snapshots
+from shodan_report.evaluation.evaluation import evaluate_snapshot
+from shodan_report.evaluation.risk_prioritization import prioritize_risk
+from shodan_report.reporting.management_text import generate_management_text
+from shodan_report.reporting.trend import analyze_trend
+from shodan_report.reporting.technical_data import build_technical_data
 
-from .pdf_generator import generate_pdf
+from .pdf.pdf_generator import generate_pdf
 
 def main():
     # Config laden
@@ -21,10 +22,10 @@ def main():
     if not api_key:
         raise RuntimeError("SHODAN_API_KEY fehlt")
     
-    ip = "217.154.224.104" # my VPS ip
-    #ip ="111.170.152.60"  # Beispiel IP
-    customer_name ="MG Solutions"
-    #customer_name ="CHINANET HUBEI PROVINCE NETWORK"
+    #ip = "217.154.224.104" # my VPS ip
+    ip ="111.170.152.60"  # Beispiel IP
+    #customer_name ="MG Solutions"
+    customer_name ="CHINANET HUBEI PROVINCE NETWORK"
 
     month ="2025-01"
     prev_month ="2024-12"
@@ -53,18 +54,7 @@ def main():
     management_text = generate_management_text(business_risk, evaluation) 
   
    # Technischer Anhang vorbereiten (JSON)
-    technical_json = {
-        "ip": snapshot.ip,
-        "ports": [
-            {
-                "port": s.port,
-                "product": s.product or "Unbekannt",
-                "version": s.version or "",
-                "service": getattr(s, "service", "")
-            } for s in snapshot.services
-        ],
-        "vulnerabilities": getattr(snapshot, "vulnerabilities", [])
-    }
+    technical_json = build_technical_data(snapshot, prev_snapshot)
 
     # PDF erstellen (neue Struktur)
     pdf_path = generate_pdf(

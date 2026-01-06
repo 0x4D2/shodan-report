@@ -1,5 +1,5 @@
 from enum import Enum
-from shodan_report.evaluation import Evaluation, RiskLevel
+from shodan_report.evaluation.evaluation import Evaluation, RiskLevel
 
 class BusinessRisk(Enum):
     CRITICAL = "critical"
