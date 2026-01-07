@@ -1,0 +1,7 @@
+reportlab>=3.6
+pytest>=7.0
+
+# Optional / for integrations and tests
+boto3>=1.26  # S3 integration
+moto>=4.0    # mocking AWS for tests
+python-dateutil>=2.8

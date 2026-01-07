@@ -1,3 +1,58 @@
+# Shodan Report — Monatsberichte aus externer Sicht
+
+Kurz: dieses Projekt erstellt monatliche Sicherheitsreports auf Basis von Shodan‑Snapshots. Ziel ist ein leichtgewichtiger, automatisierter Report‑Generator, der für Kund:innen die öffentliche Angriffsfläche dokumentiert, bewertet und als PDF archiviert und ausliefert.
+
+## Kernfunktionen (MVP)
+- IP‑basierte Snapshot‑Erfassung (via Shodan)
+- Normalisierung der Rohdaten
+- Bewertung & Priorisierung von Risiken
+- Erkennen von Änderungen (Monat zu Monat)
+- Erzeugung Management‑Text in verständlicher deutscher Sprache
+- Technischer Anhang (offene Ports, Dienste, Versionen)
+- PDF‑Erzeugung und Archivierung (Dateisystem, meta JSON)
+- Unit‑ und Integrationstests (pytest)
+
+## Architekturüberblick
+- `shodan_report/evaluation` — Logik zur Bewertung (`evaluate_snapshot`, `prioritize_risk`).
+- `shodan_report/reporting` — Management‑Text, technische Datenaufbereitung, Trendanalyse.
+- `shodan_report/pdf` — PDF‑Elements + Renderer.
+- `shodan_report/persistence` — Snapshot‑Speicherung, Vergleichsfunktionen.
+- `shodan_report/archive` — Archivierung (MVP: Dateisystem + meta JSON; später SQLite/S3).
+
+## Archivierungsstrategie (MVP)
+- Dateien: `archive/{customer_slug}/{YYYY-MM}/{YYYY-MM}_{ip}_v{N}.pdf`
+- Metadaten: begleitende JSON `{...}.meta.json` mit Feldern: `customer_slug`, `customer_name`, `ip`, `month`, `pdf_path`, `sha256`, `size_bytes`, `version`, `generator`, `created_at`, `extra`.
+- Schreibregeln: atomarer Write (temp → mv), niemals überschreiben (Versionierung), einfache File‑Locking beim Versionieren.
+- Backup: regelmässiges `rsync` zu externem Speicher (S3/Spaces) empfohlen.
+
+## Wie man lokal entwickelt / Tests
+Voraussetzung: Python 3.11+, `pip install -r requirements.txt` (falls vorhanden).
+
+Tests laufen mit pytest:
+
+```bash
+python -m pip install -r requirements.txt
+pytest -q
+```
+
+Wichtige Tests: Unit‑Tests für `evaluate_snapshot`, `compare_snapshots`, `analyze_trend`, `generate_pdf`; Integrationstest für den Full‑Flow (mocked renderer).
+
+## Nächste Schritte / Roadmap
+- Archivierung: robustes `archiver`‑Modul (Datei‑MVP → optional SQLite/S3 Backend)
+- PDF‑Qualität: PDF/A, eingebettete Fonts, Template‑Verbesserungen für Vertrieb
+- Automatisierung: n8n‑Workflows zur Planung/Scheduling
+- Versand: sichere Lieferung (signed URLs / E‑Mail mit Attachment)
+- Erweiterung Datenpunkte: CVE‑Enrichment, SSL‑Checks, Exposure‑Scoring
+- Rechtliches: Disclaimer, DSGVO‑Prozesse, Zustimmung durch Kunden
+
+## Lizenz
+Dieses Repository steht unter der MIT‑Lizenz (siehe `LICENSE`).
+
+## Kontakt / Betrieb
+Dieses Projekt wurde ursprünglich für den Betrieb auf einem VPS entworfen. Empfohlen: separate Backups, Monitoring und eine einfache Admin‑Konfiguration pro Kunde (IPs, E‑Mail, Retention).
+
+---
+Wenn du möchtest, implementiere ich jetzt das `archiver`‑Modul (Dateibasiert) und integriere es in den PDF‑Flow.
 # Shodan Report Tool
 
 Automatisiertes Tool zur externen Sicherheitsbewertung von öffentlich erreichbaren
