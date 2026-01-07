@@ -17,7 +17,7 @@ def build_technical_data(snapshot: AssetSnapshot, prev_snapshot: Optional[AssetS
         port_info = {
             "port": service.port,
             "service": {
-                "product": service.product or getattr(service, "banner", "Unbekannt"),
+                "product": service.product or getattr(service, "banner", "unbekannt"),
                 "version": service.version or ""
             }
         }

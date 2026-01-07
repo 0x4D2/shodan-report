@@ -2,9 +2,6 @@ from shodan_report.models import AssetSnapshot
 from shodan_report.persistence.snapshot_manager import compare_snapshots
 
 def analyze_trend(prev_snapshot: AssetSnapshot, current_snapshot: AssetSnapshot) -> str:
-    """
-    Analysiert die Veränderungen zwischen zwei AssetSnapshots und gibt eine Trendbeschreibung zurück.
-    """
 
     changes = compare_snapshots(prev_snapshot, current_snapshot)
     trend_lines = []
