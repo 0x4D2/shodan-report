@@ -1,8 +1,8 @@
 import os
-import os
 import json
 from dotenv import load_dotenv
 
+from shodan_report.archiver.core import archive_snapshot
 from shodan_report.clients.shodan_client import ShodanClient
 from shodan_report.parsing.utils import parse_shodan_host
 from shodan_report.persistence.snapshot_manager import save_snapshot, load_snapshot, compare_snapshots
@@ -12,7 +12,7 @@ from shodan_report.reporting.management_text import generate_management_text
 from shodan_report.reporting.trend import analyze_trend
 from shodan_report.reporting.technical_data import build_technical_data
 
-from .pdf.pdf_generator import generate_pdf
+from  shodan_report.pdf.pdf_generator import generate_pdf
 
 
 def main():
@@ -53,8 +53,12 @@ def main():
     
     # Management Text
     management_text = generate_management_text(business_risk, evaluation) 
+
+    # HTML-Tags bereinigen 
+    import re
+    management_text = re.sub(r'<[^>]+>', '', management_text)
   
-   # Technischer Anhang vorbereiten (JSON)
+    # Technischer Anhang vorbereiten (JSON)
     technical_json = build_technical_data(snapshot, prev_snapshot)
 
     # PDF erstellen (neue Struktur)
@@ -67,6 +71,10 @@ def main():
         technical_json=technical_json
     )
 
+    # Archivieren des Snapshots
+    archived_path = archive_snapshot(snapshot, customer_name, month)
+    print(f"Snapshot archiviert: {archived_path}")
+
     # Debug 
     print("Bewertung:")
     print(f"IP: {evaluation.ip}")
@@ -78,8 +86,7 @@ def main():
     print("\nManagement-Zusammenfassung:")
     print(management_text)
     print(f"\nPDF erstellt unter: {pdf_path}")
-    print("\n=== Technischer Anhang (JSON) ===")
-    print(json.dumps(technical_json, indent=2))
+    print(f"Snapshot archiviert unter: {archived_path}")
 
 if __name__ == "__main__":
     main()

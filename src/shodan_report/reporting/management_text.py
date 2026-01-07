@@ -10,7 +10,6 @@ def generate_management_text(
     Erzeugt eine Management-Zusammenfassung für einen Kunden auf Basis des Business-Risikos
     und der Evaluation der AssetSnapshot-Daten.
     """
-
     # Optional: kritische Punkte dynamisch einfügen
     critical_points_text = ""
     if evaluation.critical_points:
