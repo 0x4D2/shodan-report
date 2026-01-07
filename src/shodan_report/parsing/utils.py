@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, List
 
 from shodan_report.models import Service, AssetSnapshot
@@ -8,12 +8,32 @@ def parse_service(entry: Dict[str, Any]) -> Service:
     product = entry.get("product")
     version = entry.get("version")
 
-    # Shodan Banner auswerten
+    # Shodan Banner auswerten: sichere Verarbeitung und Unterstützung für '/', '_' und Leerzeichen
     banner = entry.get("banner") or entry.get("data")  # fallback, falls 'banner' nicht vorhanden
-    if not product and banner:
-        product = banner.split()[0] 
-    if not version and banner:
-        version = banner.split()[1] if len(banner.split()) > 1 else None
+    if banner:
+        b = str(banner).strip()
+        parsed_product = None
+        parsed_version = None
+
+        if "/" in b:
+            parts = b.split("/", 1)
+            parsed_product = parts[0] or None
+            parsed_version = parts[1] or None
+        elif "_" in b:
+            parts = b.split("_", 1)
+            parsed_product = parts[0] or None
+            parsed_version = parts[1] or None
+        elif " " in b:
+            parts = b.split()
+            parsed_product = parts[0] or None
+            parsed_version = parts[1] if len(parts) > 1 else None
+        else:
+            parsed_product = b or None
+
+        if not product:
+            product = parsed_product
+        if not version:
+            version = parsed_version
 
     return Service(
         port=entry.get("port"),
@@ -49,6 +69,6 @@ def parse_shodan_host(data: Dict[str, Any]) -> AssetSnapshot:
         services=services,
         open_ports=data.get("ports", []),
 
-        last_update=datetime.utcnow()
+        last_update=datetime.now(timezone.utc)
     )
     return snapshot

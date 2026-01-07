@@ -1,4 +1,4 @@
-from importlib.resources import files
+import os
 import os
 import json
 from dotenv import load_dotenv
@@ -13,6 +13,7 @@ from shodan_report.reporting.trend import analyze_trend
 from shodan_report.reporting.technical_data import build_technical_data
 
 from .pdf.pdf_generator import generate_pdf
+
 
 def main():
     # Config laden
