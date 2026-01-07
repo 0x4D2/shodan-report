@@ -1,0 +1,7 @@
+{
+  "recommendations": [
+    "ms-python.python",
+    "hbenl.vscode-test-explorer",
+    "LittleFoxTeam.vscode-python-test-adapter"
+  ]
+}

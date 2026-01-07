@@ -1,0 +1,8 @@
+{
+  "python.defaultInterpreterPath": ".venv/Scripts/python.exe",
+  "python.testing.pytestEnabled": true,
+  "python.testing.pytestPath": ".venv/Scripts/pytest.exe",
+  "python.testing.pytestArgs": ["src/shodan_report/tests"],
+  "python.testing.unittestEnabled": false,
+  "python.testing.autoTestDiscoverOnSaveEnabled": true
+}
