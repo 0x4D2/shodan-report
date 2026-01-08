@@ -1,13 +1,3 @@
-Alles klar. Hier ist eine **saubere, professionell formulierte `README.md`**, **inhaltlich identisch**, aber:
-
-* Rechtschreibung korrigiert
-* Grammatik geglättet
-* Konsistente Begriffe
-* Technischer, nüchterner Ton
-* Copy-&-Paste-fähig
-
-Danach erkläre ich **kurz**, *warum* ich welche Arten von Korrekturen gemacht habe (damit du daraus lernst).
-Keine Fragen am Ende.
 
 ---
 
