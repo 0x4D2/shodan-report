@@ -4,7 +4,6 @@ from shodan_report.utils.slug import create_slug
 
 
 def test_create_slug_basic():
-    """Testet grundlegende Slug-Erstellung."""
     assert create_slug("MG Solutions GmbH") == "mg_solutions_gmbh"
     assert create_slug("CHINANET HUBEI PROVINCE NETWORK") == "chinanet_hubei_province_network"
     assert create_slug("Test & More Test!") == "test_more_test"
@@ -12,7 +11,6 @@ def test_create_slug_basic():
 
 
 def test_create_slug_special_characters():
-    """Testet Sonderzeichen in Slugs."""
     assert create_slug("Company & Co. KG") == "company_co_kg"
     assert create_slug("Test@Email.com") == "testemailcom"
     assert create_slug("Über-Änderung Österreich") == "uber_anderung_osterreich"  # Umlaute
@@ -20,7 +18,6 @@ def test_create_slug_special_characters():
 
 
 def test_create_slug_empty_input():
-    """Testet leere Eingaben."""
     assert create_slug("") == "unknown"
     assert create_slug(None) == "unknown"  # None wird zu ""
 
@@ -28,19 +25,16 @@ def test_create_slug_empty_input():
 def test_create_slug_max_length():
     text = "very_long_company_name_with_many_parts"
     result = create_slug(text, max_length=20)
-    # Erwarte etwas MÖGLICHES (<20 Zeichen)
     assert len(result) <= 20
     assert result == "very_long_company"  # Das ist korrekt!
 
 def test_create_slug_whitespace():
-    """Testet Whitespace-Behandlung."""
     assert create_slug("  Spaces  Around  ") == "spaces_around"
     assert create_slug("Multiple   Spaces") == "multiple_spaces"
     assert create_slug("Tab\tSeparated") == "tab_separated"
 
 
 def test_create_slug_consistent():
-    """Testet Konsistenz (gleiche Eingabe → gleicher Slug)."""
     slug1 = create_slug("Test Company")
     slug2 = create_slug("Test Company")
     slug3 = create_slug("test company")

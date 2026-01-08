@@ -10,3 +10,9 @@ reports/
 .DS_Store
 archive/
 .pytest_cache/
+config/customers/*.yaml
+config/customers/*.yml
+!config/customers/example.yaml
+archive/*
+jobs.txt
+jobs/*.txt

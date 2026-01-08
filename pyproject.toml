@@ -4,6 +4,9 @@ version = "0.1.0"
 description = "Automatisierte externe Sicherheitsreports auf Basis von Shodan"
 readme = "README.md"
 requires-python = ">=3.11"
+authors = [
+    {name = "Ox4D"", email = "email@email.de"}
+]
 
 dependencies = [
     "python-dotenv",
@@ -12,10 +15,24 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    "pytest",
     "black",
-    "mypy"
+    "mypy",
+    "ruff"
 ]
 
+[project.scripts]
+shodan-report = "shodan_report.cli:main"
+
+# Für Windows GUI apps (optional)
+[project.gui-scripts]
+shodan-report-gui = "shodan_report.cli:main"  # Falls du mal GUI willst
+
 [build-system]
-requires = ["setuptools"]
+requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
+
+# Optional: Für bessere Entwicklung
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["shodan_report*"]
