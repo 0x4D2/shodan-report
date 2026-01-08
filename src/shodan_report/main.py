@@ -60,7 +60,7 @@ def main():
   
     # Technischer Anhang vorbereiten (JSON)
     technical_json = build_technical_data(snapshot, prev_snapshot)
-
+    
     # PDF erstellen (neue Struktur)
     pdf_path = generate_pdf(
         customer_name=customer_name,
