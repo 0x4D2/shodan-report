@@ -39,15 +39,22 @@ def prepare_pdf_elements(customer_name, month, ip, management_text, trend_text, 
     elements.append(Paragraph("<b>Technischer Anhang</b>", styles['Heading2']))
     elements.append(Spacer(1, 6))
     
-    ports = technical_json.get("ports", [])
-    if ports:
-        elements.append(Paragraph(f"<b>Gefundene offene Ports ({len(ports)}):</b>", styles['Heading3']))
-        for p in ports:
-            product = p.get("product", "Unbekannt")
-            version = f" ({p['version']})" if p.get("version") else ""
-            elements.append(Paragraph(f"• Port {p.get('port')}: {product}{version}", styles['Normal']))
-    else:
-        elements.append(Paragraph("Keine offenen Ports gefunden.", styles['Normal']))
+    # HIER DER FIX:
+    open_ports = technical_json.get("open_ports", [])
+    
+    for port_info in open_ports:
+        port = port_info.get('port', '?')
+        service = port_info.get('service', {})
+        product = service.get('product', 'Unbekannt')
+        
+        # Nur Version anzeigen, wenn sie kurz ist (< 20 Zeichen)
+        version = service.get('version', '')
+        if version and len(version.strip()) < 20:
+            version_str = f" ({version.strip()})"
+        else:
+            version_str = ""
+        
+        elements.append(Paragraph(f"• Port {port}: {product}{version_str}", styles['Normal']))
 
     # Footer
     elements.append(Spacer(1, 24))

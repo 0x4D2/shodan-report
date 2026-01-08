@@ -4,14 +4,22 @@ from typing import Dict, Any, List
 from shodan_report.models import Service, AssetSnapshot
 
 def parse_service(entry: Dict[str, Any]) -> Service:
-
+    import re
+    
     product = entry.get("product")
     version = entry.get("version")
 
-    # Shodan Banner auswerten: sichere Verarbeitung und Unterstützung für '/', '_' und Leerzeichen
-    banner = entry.get("banner") or entry.get("data")  # fallback, falls 'banner' nicht vorhanden
+    # Shodan Banner auswerten
+    banner = entry.get("banner") or entry.get("data")
+    
     if banner:
         b = str(banner).strip()
+        
+        # HTML und CSS entfernen VOR der Verarbeitung
+        b = re.sub(r'<[^>]+>', '', b)  # HTML-Tags entfernen
+        b = re.sub(r'\{[^}]+\}', '', b)  # CSS entfernen
+        b = re.sub(r'\s+', ' ', b)  # Mehrfache Whitespaces reduzieren
+        
         parsed_product = None
         parsed_version = None
 
