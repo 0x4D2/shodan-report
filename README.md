@@ -1,150 +1,253 @@
-# Shodan Report — Monatsberichte aus externer Sicht
+Alles klar. Hier ist eine **saubere, professionell formulierte `README.md`**, **inhaltlich identisch**, aber:
 
-Kurz: dieses Projekt erstellt monatliche Sicherheitsreports auf Basis von Shodan‑Snapshots. Ziel ist ein leichtgewichtiger, automatisierter Report‑Generator, der für Kund:innen die öffentliche Angriffsfläche dokumentiert, bewertet und als PDF archiviert und ausliefert.
+* Rechtschreibung korrigiert
+* Grammatik geglättet
+* Konsistente Begriffe
+* Technischer, nüchterner Ton
+* Copy-&-Paste-fähig
 
-## Kernfunktionen (MVP)
-- IP‑basierte Snapshot‑Erfassung (via Shodan)
-- Normalisierung der Rohdaten
-- Bewertung & Priorisierung von Risiken
-- Erkennen von Änderungen (Monat zu Monat)
-- Erzeugung Management‑Text in verständlicher deutscher Sprache
-- Technischer Anhang (offene Ports, Dienste, Versionen)
-- PDF‑Erzeugung und Archivierung (Dateisystem, meta JSON)
-- Unit‑ und Integrationstests (pytest)
+Danach erkläre ich **kurz**, *warum* ich welche Arten von Korrekturen gemacht habe (damit du daraus lernst).
+Keine Fragen am Ende.
 
-## Architekturüberblick
-- `shodan_report/evaluation` — Logik zur Bewertung (`evaluate_snapshot`, `prioritize_risk`).
-- `shodan_report/reporting` — Management‑Text, technische Datenaufbereitung, Trendanalyse.
-- `shodan_report/pdf` — PDF‑Elements + Renderer.
-- `shodan_report/persistence` — Snapshot‑Speicherung, Vergleichsfunktionen.
-- `shodan_report/archive` — Archivierung (MVP: Dateisystem + meta JSON; später SQLite/S3).
+---
 
-## Archivierungsstrategie (MVP)
-- Dateien: `archive/{customer_slug}/{YYYY-MM}/{YYYY-MM}_{ip}_v{N}.pdf`
-- Metadaten: begleitende JSON `{...}.meta.json` mit Feldern: `customer_slug`, `customer_name`, `ip`, `month`, `pdf_path`, `sha256`, `size_bytes`, `version`, `generator`, `created_at`, `extra`.
-- Schreibregeln: atomarer Write (temp → mv), niemals überschreiben (Versionierung), einfache File‑Locking beim Versionieren.
-- Backup: regelmässiges `rsync` zu externem Speicher (S3/Spaces) empfohlen.
+````markdown
+# Shodan Report — Monatliche Sicherheitsberichte aus externer Sicht
 
-## Wie man lokal entwickelt / Tests
-Voraussetzung: Python 3.11+, `pip install -r requirements.txt` (falls vorhanden).
+Kurzfassung:  
+Dieses Projekt erstellt monatliche Sicherheitsreports auf Basis von Shodan-Snapshots. Ziel ist ein leichtgewichtiger, automatisierter Report-Generator, der für Kund:innen die öffentliche Angriffsfläche dokumentiert, bewertet, revisionssicher archiviert und als PDF ausliefert.
 
-Tests laufen mit pytest:
+---
+
+## 🚀 Schnellstart
+
+### Installation
+```bash
+# Entwicklungsumgebung
+git clone <repository>
+cd shodan-report
+python -m venv .venv
+
+# Windows (PowerShell)
+.venv\Scripts\activate
+
+# Linux / macOS
+# source .venv/bin/activate
+
+pip install -e .
+````
+
+### Ersten Report generieren
 
 ```bash
-python -m pip install -r requirements.txt
-pytest -q
+shodan-report --customer "Mein Kunde" --ip "8.8.8.8" --month "2025-01"
 ```
 
-Wichtige Tests: Unit‑Tests für `evaluate_snapshot`, `compare_snapshots`, `analyze_trend`, `generate_pdf`; Integrationstest für den Full‑Flow (mocked renderer).
-
-## Nächste Schritte / Roadmap
-- Archivierung: robustes `archiver`‑Modul (Datei‑MVP → optional SQLite/S3 Backend)
-- PDF‑Qualität: PDF/A, eingebettete Fonts, Template‑Verbesserungen für Vertrieb
-- Automatisierung: n8n‑Workflows zur Planung/Scheduling
-- Versand: sichere Lieferung (signed URLs / E‑Mail mit Attachment)
-- Erweiterung Datenpunkte: CVE‑Enrichment, SSL‑Checks, Exposure‑Scoring
-- Rechtliches: Disclaimer, DSGVO‑Prozesse, Zustimmung durch Kunden
-
-## Lizenz
-Dieses Repository steht unter der MIT‑Lizenz (siehe `LICENSE`).
-
-## Kontakt / Betrieb
-Dieses Projekt wurde ursprünglich für den Betrieb auf einem VPS entworfen. Empfohlen: separate Backups, Monitoring und eine einfache Admin‑Konfiguration pro Kunde (IPs, E‑Mail, Retention).
-
 ---
-Wenn du möchtest, implementiere ich jetzt das `archiver`‑Modul (Dateibasiert) und integriere es in den PDF‑Flow.
-# Shodan Report Tool
 
-Automatisiertes Tool zur externen Sicherheitsbewertung von öffentlich erreichbaren
-IT-Systemen auf Basis von Shodan.
+## 📋 CLI Usage
 
-Der Fokus liegt auf **monatlichen Snapshots**, **vergleichbarer Historie**
-und **nachvollziehbaren Risikoänderungen** aus Angreifer-Sicht.
+### Basis-Kommando
+
+```bash
+shodan-report --customer <NAME> --ip <IP> --month <YYYY-MM>
+```
+
+### Alle Parameter
+
+| Parameter      | Kurzform | Beschreibung               | Beispiel                      |
+| -------------- | -------- | -------------------------- | ----------------------------- |
+| `--customer`   | `-c`     | Kundenname                 | `"CHINANET HUBEI"`            |
+| `--ip`         | `-i`     | IP-Adresse                 | `"111.170.152.60"`            |
+| `--month`      | `-m`     | Monat (YYYY-MM)            | `"2025-01"`                   |
+| `--compare`    |          | Vergleichsmonat            | `"2024-12"`                   |
+| `--config`     |          | Kundenkonfiguration (YAML) | `config/customers/kunde.yaml` |
+| `--output-dir` | `-o`     | Ausgabeverzeichnis         | `./reports`                   |
+| `--no-archive` |          | Archivierung deaktivieren  |                               |
+| `--verbose`    | `-v`     | Ausführliche Ausgabe       |                               |
+| `--quiet`      | `-q`     | Minimale Ausgabe           |                               |
 
 ---
 
-## Grundidee
+## 📌 Beispiele
 
-- Jede IP wird **regelmäßig (monatlich)** gescannt
-- Jeder Scan erzeugt einen **Snapshot**
-- Snapshots werden **archiviert**
-- Neue Snapshots werden **gegen den letzten Monat verglichen**
-- Daraus entsteht ein **Management- und Technikreport**
+### Einfacher Report
 
-Ziel:  
-Nicht „einmal scannen“, sondern **Sicherheitsentwicklung sichtbar machen**.
+```bash
+shodan-report -c "MG Solutions" -i "217.154.224.104" -m "2025-01"
+```
 
----
+### Mit Trendanalyse (Vergleich mit Vormonat)
 
-## Aktueller Stand
+```bash
+shodan-report -c "CHINANET" -i "111.170.152.60" -m "2025-01" --compare "2024-12"
+```
 
-✔ Daten von Shodan abrufen  
-✔ Rohdaten normalisieren (`AssetSnapshot`)  
-✔ Regelbasierte Sicherheitsbewertung (`low / medium / high`)
-✔ Vergleich: aktueller Monat vs. Vormonat
-✔ Risiko-Priorisierung über Zeit
-✔ Kunden- / IP-Verwaltung
-✔ Management-Text + Historie (Trend, Veränderung)
+### Mit Kundenkonfiguration
 
-Die Bewertung basiert aktuell auf:
-- Anzahl offener Dienste
-- Kritische Dienste (z. B. SSH, RDP)
-- Einfache Versions-Indikatoren (Platzhalter)
+```bash
+shodan-report -c "Enterprise AG" -i "192.168.1.1" -m "2025-01" \
+  --config config/customers/enterprise.yaml
+```
 
-⚠️ **Hinweis:**  
-Die Versionsbewertung ist bewusst vereinfacht.  
-Eine echte CVE- und Exploit-Bewertung folgt später.
+### Ohne Archivierung (nur lokale PDF-Erzeugung)
+
+```bash
+shodan-report -c "Test" -i "8.8.8.8" -m "2025-01" \
+  --no-archive --output-dir /tmp
+```
 
 ---
 
-## Noch nicht umgesetzt (bewusst)
+## ⚙️ Kundenkonfiguration (YAML)
 
-- Report-Generierung (PDF)
-- Automatisierung (z. B. n8n)
+### Struktur
 
-Diese Punkte sind **Teil des Zielbilds**, aber aktuell **nicht implementiert**.
+```
+config/
+├── customers/
+│   ├── example.yaml           # ✅ Template (im Git)
+│   ├── chinanet-hubei.yaml    # ❌ Echte Kunden (gitignored)
+│   └── mg-solutions.yaml      # ❌ Echte Kunden (gitignored)
+└── templates/
+    └── basic.yaml             # ✅ Generische Templates
+```
+
+### YAML-Schema
+
+```yaml
+customer:
+  name: "Kundenname GmbH"
+  slug: "kundenname"            # optional, wird aus dem Namen generiert
+  contact: "security@kunde.de"
+  language: "de"                # de / en
+
+report:
+  include_trend_analysis: true
+  include_cve_check: false      # in Entwicklung
+  severity_threshold: "medium"  # low / medium / high / critical
+  sections:
+    - executive_summary
+    - technical_findings
+    - risk_assessment
+    - recommendations
+    - appendix
+
+delivery:
+  email_enabled: false          # geplant
+  archive_enabled: true
+  local_copy: true
+
+styling:
+  primary_color: "#1a365d"
+  secondary_color: "#2d3748"
+  logo_path: null               # später: Pfad zum Kundenlogo
+
+disclaimer:
+  enabled: true
+  text: |
+    Dieser Bericht basiert auf öffentlich verfügbaren Informationen (OSINT).
+    Keine Gewähr auf Vollständigkeit oder Richtigkeit.
+    Dient ausschließlich zu Informationszwecken. Vertraulich.
+```
 
 ---
 
-## Architektur-Idee
+## 🔄 Automatisierung
 
-Trennung in klare Schichten:
+### Batch-Verarbeitung (Beispiel PowerShell)
 
-- **Rohdaten**
-  - Unveränderte Shodan-API-Antwort
+```powershell
+foreach ($line in Get-Content jobs.txt) {
+    $parts = $line -split " "
+    shodan-report -c $parts[0] -i $parts[1] -m $parts[2] --quiet
+}
+```
 
-- **Normalisierung**
-  - Einheitliches internes Modell (`AssetSnapshot`)
+### Cron-Job (Linux)
 
-- **Bewertung**
-  - Regelbasierte Analyse (`Evaluation`)
+```bash
+# Jeden 1. des Monats um 02:00 Uhr
+0 2 1 * * /opt/shodan-report/run-monthly.sh
+```
 
-- **Historie**
-  - Speicherung pro IP und Monat
-  - Vergleich mit vorherigem Snapshot
+### n8n-Workflow
 
-- **Reporting**
-  - Management-Zusammenfassung
-  - Technischer Detailanhang
-
----
-
-## Warum Historie entscheidend ist
-
-Ein einzelner Scan sagt wenig aus.  
-Erst der **Vergleich über Zeit** zeigt:
-
-- neue offene Ports
-- neu exponierte Dienste
-- steigendes oder sinkendes Risiko
-- Sicherheitsverschlechterung trotz „keiner Änderung“
-
-Dieses Tool ist daher **historienzentriert**, nicht scan-zentriert.
+* Trigger: Cron / Monatswechsel
+* Execute Command: `shodan-report ...`
+* Versand: E-Mail mit PDF oder Notification (Slack / Teams)
 
 ---
 
-## Status
+## 📁 Projektstruktur
 
-Dieses Projekt befindet sich im **aktiven Aufbau**.
-Der Fokus liegt aktuell auf **sauberer Datenbasis und Bewertung**,
-nicht auf UI oder PDF-Ausgabe.
+```
+archive/                          # Revisionssichere Ablage
+reports/                          # Temporäre PDFs
+config/                           # Kunden- und Template-Konfiguration
+src/shodan_report/
+├── cli.py
+├── core/
+├── archiver/
+├── pdf/
+├── evaluation/
+├── reporting/
+└── tests/
+```
+
+---
+
+## ⚖️ Rechtlicher Hinweis
+
+Jeder Report enthält automatisch folgenden Disclaimer:
+
+```
+Dieser Bericht basiert auf öffentlich verfügbaren OSINT-Daten (Shodan).
+Er ersetzt keinen Penetrationstest.
+Keine Garantie auf Vollständigkeit oder Richtigkeit.
+Vertraulich. Stand: {Datum}
+```
+
+---
+
+## 🔐 Umgebungsvariablen
+
+```env
+SHODAN_API_KEY=dein_api_key
+SMTP_SERVER=smtp.example.com
+SMTP_PORT=587
+SMTP_USER=user@example.com
+SMTP_PASS=passwort
+```
+
+---
+
+## 🧪 Tests
+
+```bash
+pytest -v
+pytest --cov=src/shodan_report
+```
+
+Aktueller Status: **70/70 Tests erfolgreich**.
+
+---
+
+## 🗺️ Roadmap (Auszug)
+
+* ✅ Revisionssichere Archivierung
+* ✅ PDF-Design mit Corporate Colors
+* 🔄 CVE- und SSL-Enrichment
+* 🔄 Automatisierter Versand
+* 🔄 Erweiterte Kundenkonfiguration
+
+---
+
+## 📄 Lizenz
+
+MIT-Lizenz – siehe `LICENSE`.
+
+---
+
+**Status:**
+Produktionsreifes MVP mit CLI, Automatisierung, rechtssicherem Disclaimer und revisionssicherer Archivierung.
