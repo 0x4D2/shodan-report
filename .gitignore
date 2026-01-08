@@ -8,6 +8,5 @@ data/
 reports/
 *.egg-info/
 .DS_Store
-.archive/
-.pytest_cache/
 archive/
+.pytest_cache/
