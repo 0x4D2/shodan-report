@@ -1,7 +1,4 @@
 
----
-
-````markdown
 # Shodan Report — Monatliche Sicherheitsberichte aus externer Sicht
 
 Kurzfassung:  
@@ -9,7 +6,7 @@ Dieses Projekt erstellt monatliche Sicherheitsreports auf Basis von Shodan-Snaps
 
 ---
 
-## 🚀 Schnellstart
+## Schnellstart
 
 ### Installation
 ```bash
@@ -35,7 +32,7 @@ shodan-report --customer "Mein Kunde" --ip "8.8.8.8" --month "2025-01"
 
 ---
 
-## 📋 CLI Usage
+## CLI Usage
 
 ### Basis-Kommando
 
@@ -59,7 +56,7 @@ shodan-report --customer <NAME> --ip <IP> --month <YYYY-MM>
 
 ---
 
-## 📌 Beispiele
+## Beispiele
 
 ### Einfacher Report
 
@@ -143,7 +140,7 @@ disclaimer:
 
 ---
 
-## 🔄 Automatisierung
+## Automatisierung
 
 ### Batch-Verarbeitung (Beispiel PowerShell)
 
@@ -169,7 +166,7 @@ foreach ($line in Get-Content jobs.txt) {
 
 ---
 
-## 📁 Projektstruktur
+## Projektstruktur
 
 ```
 archive/                          # Revisionssichere Ablage
@@ -187,7 +184,7 @@ src/shodan_report/
 
 ---
 
-## ⚖️ Rechtlicher Hinweis
+## Rechtlicher Hinweis
 
 Jeder Report enthält automatisch folgenden Disclaimer:
 
@@ -200,7 +197,7 @@ Vertraulich. Stand: {Datum}
 
 ---
 
-## 🔐 Umgebungsvariablen
+## Umgebungsvariablen
 
 ```env
 SHODAN_API_KEY=dein_api_key
@@ -212,7 +209,7 @@ SMTP_PASS=passwort
 
 ---
 
-## 🧪 Tests
+## Tests
 
 ```bash
 pytest -v
@@ -223,7 +220,7 @@ Aktueller Status: **70/70 Tests erfolgreich**.
 
 ---
 
-## 🗺️ Roadmap (Auszug)
+## Roadmap (Auszug)
 
 * ✅ Revisionssichere Archivierung
 * ✅ PDF-Design mit Corporate Colors
