@@ -1,0 +1,22 @@
+customer:
+  name: "BEISPIEL KUNDE GMBH"
+  contact: "security@beispiel.de"
+  language: "de"
+
+report:
+  include_trend_analysis: false  # Trend abschalten
+  severity_threshold: "high"     # Nur high/critical anzeigen
+  custom_sections:              # Eigene Sektionen
+    - executive_summary
+    - risk_matrix
+
+styling:
+  primary_color: "#1a365d"
+  secondary_color: "#2d3748"
+
+disclaimer:
+  enabled: true
+  custom_text: |                # Firmenspezifischer Disclaimer
+    Nur für interne Verwendung.
+    Vertraulichkeitsstufe: Intern.
+  

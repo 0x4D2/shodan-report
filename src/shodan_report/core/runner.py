@@ -1,4 +1,3 @@
-"""Report Pipeline Runner."""
 import os
 from pathlib import Path
 from typing import Dict, Any, Optional
@@ -19,7 +18,6 @@ from shodan_report.pdf.pdf_generator import generate_pdf
 from shodan_report.archiver.report_archiver import ReportArchiver
 
 def load_customer_config(config_path: Optional[Path]) -> dict:
-    """Lade Kundenkonfiguration aus YAML."""
     if config_path is None:
         return {}
     
@@ -63,6 +61,12 @@ def generate_report_pipeline(
     Returns:
         Dictionary mit Ergebnis und Metadaten
     """
+    config = load_customer_config(config_path)
+    report_config = config.get("report", {})
+    include_trend = config.get("report", {}).get("include_trend_analysis", True)
+    if not include_trend:
+        trend_text = "Trendanalyse deaktiviert (Kundenkonfiguration)."
+
     load_dotenv()
     
     api_key = os.getenv("SHODAN_API_KEY")
@@ -116,7 +120,8 @@ def generate_report_pipeline(
             management_text=management_text,
             trend_text=trend_text,
             technical_json=technical_json,
-            output_dir=output_dir
+            output_dir=output_dir,
+            config=config
         )
         
         result = {

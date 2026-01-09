@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Optional
 from .pdf_manager import prepare_pdf_elements
 from .pdf_renderer import render_pdf
 
@@ -11,11 +12,13 @@ def generate_pdf(
         management_text: str,
         trend_text: str, 
         technical_json: dict,
-        output_dir: Path = OUTPUT_DIR
+        output_dir: Path = OUTPUT_DIR,
+        config: Optional[dict] = None
     ) -> Path:
+
+    config = config or {}
     
     output_dir.mkdir(parents=True, exist_ok=True)
-    
     customer_dir = output_dir / customer_name.replace(" ", "_")
     customer_dir.mkdir(parents=True, exist_ok=True)
     
@@ -23,7 +26,7 @@ def generate_pdf(
     filename = f"{month}_{safe_ip}.pdf"
     pdf_path = customer_dir / filename
     
-    elements = prepare_pdf_elements(customer_name, month, ip, management_text, trend_text, technical_json)
+    elements = prepare_pdf_elements(customer_name, month, ip, management_text, trend_text, technical_json, config)
     render_pdf(pdf_path, elements)
     
     return pdf_path

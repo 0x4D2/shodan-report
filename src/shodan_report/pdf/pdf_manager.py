@@ -1,99 +1,113 @@
 from reportlab.platypus import Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.colors import HexColor
 from datetime import datetime
+from typing import List, Dict, Any, Optional
 
-from reportlab.lib.colors import Color, black, navy, darkgray, HexColor
-from reportlab.lib.units import inch, cm
+def _create_styles(primary_hex: str, secondary_hex: str) -> Dict[str, ParagraphStyle]:
 
-def prepare_pdf_elements(customer_name, month, ip, management_text, trend_text, technical_json):
     styles = getSampleStyleSheet()
     
-    # CUSTOM STYLES DEFINIEREN
-    # Firmenfarbe: Blau (#1a365d)
-    primary_color = HexColor('#1a365d')
-    secondary_color = HexColor('#2d3748')
-    
-    # Titel-Style
-    title_style = ParagraphStyle(
-        'CustomTitle',
-        parent=styles['Title'],
-        fontSize=16,
-        textColor=primary_color,
-        spaceAfter=12,
-        alignment=1  # CENTER
-    )
-    
-    # Heading 2
-    heading2_style = ParagraphStyle(
-        'CustomHeading2',
-        parent=styles['Heading2'],
-        fontSize=12,
-        textColor=secondary_color,
-        spaceBefore=12,
-        spaceAfter=6,
-        leftIndent=0,
-        borderPadding=(0, 0, 0, 6),
-        borderColor=primary_color,
-        borderWidth=(0, 0, 1, 0)  # Unterstrich
-    )
-    
-    # Normal mit besserem Zeilenabstand
-    normal_style = ParagraphStyle(
-        'CustomNormal',
-        parent=styles['Normal'],
-        fontSize=10,
-        leading=14,  # Zeilenabstand
-        spaceAfter=3
-    )
-    
-    # Bullet Points
-    bullet_style = ParagraphStyle(
-        'CustomBullet',
-        parent=styles['Normal'],
-        fontSize=10,
-        leftIndent=20,
-        firstLineIndent=-10,
-        spaceAfter=2,
-        bulletIndent=10
-    )
-    
-    elements = []
-    
-    # HEADER mit Logo Platzhalter
-    elements.append(Paragraph(f"<font color='#1a365d'>Sicherheitsreport</font>", title_style))
+    return {
+        'title': ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Title'],
+            fontSize=16,
+            textColor=HexColor(primary_hex),
+            spaceAfter=12,
+            alignment=1
+        ),
+        'heading2': ParagraphStyle(
+            'CustomHeading2',
+            parent=styles['Heading2'],
+            fontSize=12,
+            textColor=HexColor(secondary_hex),
+            spaceBefore=12,
+            spaceAfter=6,
+            leftIndent=0,
+            borderPadding=(0, 0, 0, 6),
+            borderColor=HexColor(primary_hex),
+            borderWidth=(0, 0, 1, 0)
+        ),
+        'normal': ParagraphStyle(
+            'CustomNormal',
+            parent=styles['Normal'],
+            fontSize=10,
+            leading=14,
+            spaceAfter=3
+        ),
+        'bullet': ParagraphStyle(
+            'CustomBullet',
+            parent=styles['Normal'],
+            fontSize=10,
+            leftIndent=20,
+            firstLineIndent=-10,
+            spaceAfter=2,
+            bulletIndent=10
+        ),
+        'disclaimer': ParagraphStyle(
+            'Disclaimer',
+            parent=styles['Normal'],
+            fontSize=7,
+            textColor='gray',
+            alignment=1,
+            leading=10,
+            spaceBefore=12,
+            spaceAfter=6
+        ),
+        'footer': ParagraphStyle(
+            'Footer',
+            parent=styles['Normal'],
+            fontSize=8,
+            textColor='darkgray',
+            alignment=1,
+            leading=10
+        )
+    }
+
+
+def _create_header(elements: List, styles: Dict, customer_name: str, month: str, ip: str, primary_hex: str) -> None:
+    # Header    
+    elements.append(Paragraph(f"<font color='{primary_hex}'>Sicherheitsreport</font>", styles['title']))
     elements.append(Spacer(1, 6))
-    elements.append(Paragraph(f"<b>Kunde:</b> {customer_name}", normal_style))
-    elements.append(Paragraph(f"<b>Monat:</b> {month}", normal_style))
-    elements.append(Paragraph(f"<b>IP-Adresse:</b> {ip}", normal_style))
+    elements.append(Paragraph(f"<b>Kunde:</b> {customer_name}", styles['normal']))
+    elements.append(Paragraph(f"<b>Monat:</b> {month}", styles['normal']))
+    elements.append(Paragraph(f"<b>IP-Adresse:</b> {ip}", styles['normal']))
     
     # Trennlinie
     elements.append(Spacer(1, 12))
-    elements.append(Paragraph("<hr width='100%' color='lightgray'/>", normal_style))
+    elements.append(Paragraph("<hr width='100%' color='lightgray'/>", styles['normal']))
     elements.append(Spacer(1, 12))
-    
-    # Management-Zusammenfassung
-    elements.append(Paragraph("<b>Management-Zusammenfassung</b>", heading2_style))
+
+
+def _create_management_section(elements: List, styles: Dict, management_text: str) -> None:
+    # Füge Management-Zusammenfassung hinzu.
+    elements.append(Paragraph("<b>Management-Zusammenfassung</b>", styles['heading2']))
     elements.append(Spacer(1, 6))
     
     for line in (management_text or "").splitlines():
         if line.strip():
-            elements.append(Paragraph(line.strip(), normal_style))
-    
-    # Historie / Trend
+            elements.append(Paragraph(line.strip(), styles['normal']))
+
+
+def _create_trend_section(elements: List, styles: Dict, trend_text: str) -> None:
+    # Trend-Analyse
     elements.append(Spacer(1, 12))
-    elements.append(Paragraph("<b>Historie / Trend</b>", heading2_style))
+    elements.append(Paragraph("<b>Historie / Trend</b>", styles['heading2']))
     elements.append(Spacer(1, 6))
     
     if trend_text:
         for line in trend_text.splitlines():
             if line.strip():
-                elements.append(Paragraph(f"• {line.strip()}", bullet_style))
+                elements.append(Paragraph(f"• {line.strip()}", styles['bullet']))
     else:
-        elements.append(Paragraph("Keine historischen Daten für Trendanalyse vorhanden.", normal_style))
-    
+        elements.append(Paragraph("Keine historischen Daten für Trendanalyse vorhanden.", styles['normal']))
+
+
+def _create_technical_section(elements: List, styles: Dict, technical_json: Dict) -> None:
     # Technischer Anhang
     elements.append(Spacer(1, 12))
-    elements.append(Paragraph("<b>Technischer Anhang</b>", heading2_style))
+    elements.append(Paragraph("<b>Technischer Anhang</b>", styles['heading2']))
     elements.append(Spacer(1, 6))
     
     open_ports = technical_json.get("open_ports", [])
@@ -104,27 +118,14 @@ def prepare_pdf_elements(customer_name, month, ip, management_text, trend_text, 
         product = service.get('product', 'Unbekannt')
         
         version = service.get('version', '')
-        if version and len(version.strip()) < 20:
-            version_str = f" ({version.strip()})"
-        else:
-            version_str = ""
+        version_str = f" ({version.strip()})" if version and len(version.strip()) < 20 else ""
         
-        elements.append(Paragraph(f"• Port {port}: {product}{version_str}", bullet_style))
-    
-    # FOOTER mit Disclaimer
+        elements.append(Paragraph(f"• Port {port}: {product}{version_str}", styles['bullet']))
+
+
+def _create_footer(elements: List, styles: Dict) -> None:
+    # Disclaimer und Footer
     elements.append(Spacer(1, 24))
-    
-    # Disclaimer
-    disclaimer_style = ParagraphStyle(
-        'Disclaimer',
-        parent=styles['Normal'],
-        fontSize=7,
-        textColor='gray',
-        alignment=1,  # CENTER
-        leading=10,
-        spaceBefore=12,
-        spaceAfter=6
-    )
     
     disclaimer_text = f"""
     <font size='8'><b>HINWEIS ZUR VERWENDUNG:</b></font><br/>
@@ -135,19 +136,55 @@ def prepare_pdf_elements(customer_name, month, ip, management_text, trend_text, 
     <i>Vertraulich. Stand: {datetime.now().strftime('%d.%m.%Y %H:%M')}</i>
     """
     
-    elements.append(Paragraph(disclaimer_text, disclaimer_style))
+    elements.append(Paragraph(disclaimer_text, styles['disclaimer']))
     elements.append(Spacer(1, 6))
+    elements.append(Paragraph(
+        f"Erstellt mit Shodan Report Generator • {datetime.now().strftime('%d.%m.%Y')}", 
+        styles['footer']
+    ))
+
+
+def prepare_pdf_elements(
+    customer_name: str, 
+    month: str, 
+    ip: str, 
+    management_text: str,
+    trend_text: str, 
+    technical_json: Dict[str, Any],
+    config: Optional[Dict] = None
+) -> List:
+    """
+    Erstelle alle PDF-Elemente für den Sicherheitsreport.
     
-    # Trennlinie oben im Footer
-    footer_style = ParagraphStyle(
-        'Footer',
-        parent=styles['Normal'],
-        fontSize=8,
-        textColor='darkgray',
-        alignment=1,  # CENTER
-        leading=10
-    )
+    Args:
+        customer_name: Name des Kunden
+        month: Monat (YYYY-MM)
+        ip: IP-Adresse
+        management_text: Management-Zusammenfassung
+        trend_text: Trend-Analyse
+        technical_json: Technische Daten
+        config: Kundenkonfiguration (optional)
     
-    elements.append(Paragraph(f"Erstellt mit Shodan Report Generator • {datetime.now().strftime('%d.%m.%Y')}", footer_style))
+    Returns:
+        Liste von PDF-Elementen
+    """
+    config = config or {}
+    styling = config.get("styling", {})
+    
+    # Farben aus Config oder Default
+    primary_hex = styling.get("primary_color", "#1a365d")
+    secondary_hex = styling.get("secondary_color", "#2d3748")
+    
+    # Styles erstellen
+    styles = _create_styles(primary_hex, secondary_hex)
+    
+    # PDF-Elemente aufbauen
+    elements = []
+    
+    _create_header(elements, styles, customer_name, month, ip, primary_hex)
+    _create_management_section(elements, styles, management_text)
+    _create_trend_section(elements, styles, trend_text)
+    _create_technical_section(elements, styles, technical_json)
+    _create_footer(elements, styles)
     
     return elements

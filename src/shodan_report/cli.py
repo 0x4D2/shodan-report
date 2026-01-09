@@ -9,18 +9,18 @@ from typing import Optional
 from shodan_report.core.runner import generate_report_pipeline
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(args: Optional[list[str]] = None) -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
         description="Shodan Report Generator - Revisionssichere Sicherheitsberichte",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Beispiele:
-  %(prog)s --customer "CHINANET HUBEI" --ip 0.0.0.0 --month 2025-01
-  %(prog)s --customer "MG Solutions" --ip 217.154.224.104 --month 2025-01 --compare 2024-12
-  %(prog)s --customer "Example Corp" --ip 192.168.1.1 --month 2025-01 --config config/customers/example.yaml
-        """
-    )
+    %(prog)s --customer "CHINANET HUBEI" --ip 0.0.0.0 --month 2025-01
+    %(prog)s --customer "MG Solutions" --ip 217.154.224.104 --month 2025-01 --compare 2024-12
+    %(prog)s --customer "Example Corp" --ip 192.168.1.1 --month 2025-01 --config config/customers/example.yaml
+            """
+        )
     
     # Required arguments
     parser.add_argument(
@@ -78,7 +78,7 @@ Beispiele:
         help="Minimale Ausgabe"
     )
     
-    return parser.parse_args()
+    return parser.parse_args(args)
 
 
 def validate_args(args: argparse.Namespace) -> bool:

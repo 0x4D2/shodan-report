@@ -86,7 +86,7 @@ shodan-report -c "Test" -i "8.8.8.8" -m "2025-01" \
 
 ---
 
-## ⚙️ Kundenkonfiguration (YAML)
+## Kundenkonfiguration (YAML)
 
 ### Struktur
 
