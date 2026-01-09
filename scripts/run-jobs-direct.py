@@ -40,6 +40,7 @@ for i, line in enumerate(jobs, 1):
         ip=ip,
         month=month,
         archive=False,
+        compare_month=None,
         verbose=False
     )
     
