@@ -1,0 +1,10 @@
+risk_weights:
+  open_ports:
+    thresholds: [10, 20, 30]
+    scores: [0, 1, 2, 3]
+  high_risk_services:
+    rdp_unencrypted: 5
+    vnc_unencrypted: 5
+    telnet: 4
+    database_unencrypted: 3
+    ftp_unencrypted: 2

@@ -9,14 +9,14 @@ from dotenv import load_dotenv
 from shodan_report.clients.shodan_client import ShodanClient
 from shodan_report.parsing.utils import parse_shodan_host
 from shodan_report.persistence.snapshot_manager import save_snapshot, load_snapshot
-from shodan_report.evaluation.evaluation import evaluate_snapshot
+from shodan_report.evaluation.evaluation_engine import evaluate_snapshot
 from shodan_report.evaluation.risk_prioritization import prioritize_risk
 from shodan_report.reporting.management_text import generate_management_text
 from shodan_report.reporting.trend import analyze_trend
 from shodan_report.reporting.technical_data import build_technical_data
 from shodan_report.pdf.pdf_generator import generate_pdf
 from shodan_report.archiver.report_archiver import ReportArchiver
-from shodan_report.evaluation.evaluation import Evaluation, RiskLevel
+from shodan_report.evaluation import Evaluation, RiskLevel
 
 def load_customer_config(config_path: Optional[Path]) -> dict:
     if config_path is None:

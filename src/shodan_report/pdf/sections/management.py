@@ -1,7 +1,7 @@
 from reportlab.platypus import Paragraph, Spacer
 from typing import List, Dict, Any
 
-from shodan_report.evaluation.evaluation import Evaluation, RiskLevel
+from shodan_report.evaluation import RiskLevel, Evaluation
 
 def create_management_section(
     elements: List,
