@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 import re
 import yaml
 
@@ -16,6 +16,7 @@ from shodan_report.reporting.trend import analyze_trend
 from shodan_report.reporting.technical_data import build_technical_data
 from shodan_report.pdf.pdf_generator import generate_pdf
 from shodan_report.archiver.report_archiver import ReportArchiver
+from shodan_report.evaluation.evaluation import Evaluation, RiskLevel
 
 def load_customer_config(config_path: Optional[Path]) -> dict:
     if config_path is None:
@@ -100,7 +101,11 @@ def generate_report_pipeline(
         
         # 5. Bewertung und Risiko
         evaluation = evaluate_snapshot(snapshot)
+        evaluation_dict = evaluation_to_dict(evaluation)
+
         business_risk = prioritize_risk(evaluation)
+
+        business_risk_str = business_risk.value.upper() if hasattr(business_risk, 'value') else str(business_risk).upper()
         
         # 6. Management Text (HTML Tags entfernen)
         management_text = generate_management_text(business_risk, evaluation)
@@ -120,10 +125,12 @@ def generate_report_pipeline(
             management_text=management_text,
             trend_text=trend_text,
             technical_json=technical_json,
+            evaluation=evaluation_dict,        
+            business_risk=business_risk_str, 
             output_dir=output_dir,
             config=config
         )
-        
+
         result = {
             "success": True,
             "pdf_path": pdf_path,
@@ -160,3 +167,76 @@ def generate_report_pipeline(
             "ip": ip,
             "month": month
         }
+    
+def evaluation_to_dict(evaluation_obj: Evaluation) -> Dict[str, Any]:
+        """
+        Konvertiere Evaluation-Objekt zu einem aussagekräftigen Dictionary.
+        
+        Die PDF-Sektionen brauchen:
+        - exposure_level (1-5) für Management-Sektion
+        - critical_points_count für Risikobewertung
+        - risk_score (numerisch) für Visualisierungen
+        """
+        
+        # 1. Exposure-Level aus critical_points berechnen
+        exposure_level = _calculate_exposure_level(evaluation_obj.critical_points)
+        
+        # 2. Risk-Score aus RiskLevel Enum
+        risk_score_mapping = {
+            RiskLevel.LOW: 2,
+            RiskLevel.MEDIUM: 5, 
+            RiskLevel.HIGH: 8
+        }
+        risk_score = risk_score_mapping.get(evaluation_obj.risk, 3)
+        
+        # 3. Kritische Dienste identifizieren
+        critical_services = []
+        ssh_ports = []
+        rdp_ports = []
+        
+        for point in evaluation_obj.critical_points:
+            if "SSH" in point.upper() or "ssh" in point:
+                ssh_ports.append(point)
+                critical_services.append("SSH")
+            elif "RDP" in point.upper() or "rdp" in point:
+                rdp_ports.append(point)
+                critical_services.append("RDP")
+        
+        return {
+            "ip": evaluation_obj.ip,
+            "risk": evaluation_obj.risk.value,  # "low", "medium", "high"
+            "risk_score": risk_score,  # numerisch: 2, 5, 8
+            "critical_points": evaluation_obj.critical_points,
+            "critical_points_count": len(evaluation_obj.critical_points),
+            "exposure_level": exposure_level,  # 1-5
+            "critical_services": list(set(critical_services)),  # Einzigartige Dienste
+            "has_ssh": len(ssh_ports) > 0,
+            "has_rdp": len(rdp_ports) > 0,
+            "ssh_ports": ssh_ports,
+            "rdp_ports": rdp_ports
+        }
+
+
+def _calculate_exposure_level(critical_points: List[str]) -> int:
+    """
+    Berechne Exposure-Level (1-5) basierend auf kritischen Punkten.
+    
+    Logik:
+    - 0 Punkte: Level 1 (sehr niedrig)
+    - 1-2 Punkte: Level 2 (niedrig) 
+    - 3-4 Punkte: Level 3 (mittel)
+    - 5-6 Punkte: Level 4 (hoch)
+    - 7+ Punkte: Level 5 (sehr hoch)
+    """
+    count = len(critical_points)
+    
+    if count == 0:
+        return 1
+    elif count <= 2:
+        return 2
+    elif count <= 4:
+        return 3
+    elif count <= 6:
+        return 4
+    else:
+        return 5

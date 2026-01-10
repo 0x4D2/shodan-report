@@ -12,6 +12,8 @@ def generate_pdf(
         management_text: str,
         trend_text: str, 
         technical_json: dict,
+        evaluation: dict,          
+        business_risk: str,
         output_dir: Path = OUTPUT_DIR,
         config: Optional[dict] = None
     ) -> Path:
@@ -26,7 +28,7 @@ def generate_pdf(
     filename = f"{month}_{safe_ip}.pdf"
     pdf_path = customer_dir / filename
     
-    elements = prepare_pdf_elements(customer_name, month, ip, management_text, trend_text, technical_json, config)
+    elements = prepare_pdf_elements(customer_name, month, ip, management_text, trend_text, technical_json, evaluation, business_risk, config)
     render_pdf(pdf_path, elements)
     
     return pdf_path

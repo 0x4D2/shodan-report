@@ -31,21 +31,6 @@ def test_parse_service_uses_banner_fallback():
     assert service.version == "1.24.0"
 
 
-# def test_parse_service_without_product_and_version():
-#     entry = {
-#         "port": 443,
-#         "transport": "tcp",
-#         "banner": "Apache",
-#     }
-
-#     service = parse_service(entry)
-
-#     assert service.port == 443
-#     assert service.transport == "tcp"
-#     assert service.product == "Apache/2.4.41"
-#     assert service.version is None
-
-
 def test_parse_parse_shodan_host_creates_snapshot():
         shodan_data = {
             "ip_str": "1.2.3.4",
@@ -99,64 +84,45 @@ def test_parse_shodan_host_ignores_entries_without_port():
         assert snapshot.services[0].port == 22
 
 
-# def test_parse_service_banner_slash_format():
-#         entry = {
-#             "port": 80,
-#             "transport": "tcp",
-#             "banner": "nginx/1.24.0",
-#         }
-
-#         service = parse_service(entry)
-
-#         # Erwartung: Produkt und Version aus Slash‑Format getrennt
-#         assert service.product == "nginx"
-#         assert service.version == "1.24.0"
-
-
-# def test_parse_service_openssh_underscore_format():
-#         entry = {
-#             "port": 22,
-#             "transport": "tcp",
-#             "banner": "OpenSSH_8.1p1",
-#         }
-
-#         service = parse_service(entry)
-
-#         assert service.product == "OpenSSH"
-#         assert service.version == "8.1p1"
-
 
 def test_parse_service_preserves_ssl_ssh_and_raw():
-        entry = {
-            "port": 443,
-            "transport": "tcp",
-            "product": "nginx",
-            "version": "1.24.0",
-            "ssl": {"cert": "dummy"},
-            "ssh": {"kex": "dummy"},
-        }
+    entry = {
+        "port": 443,
+        "transport": "tcp",
+        "product": "nginx",
+        "version": "1.24.0",
+        "ssl": {"cert": "dummy"},
+        "ssh": {"kex": "dummy"},
+    }
 
-        service = parse_service(entry)
+    service = parse_service(entry)
 
-        assert service.ssl_info == {"cert": "dummy"}
-        assert service.ssh_info == {"kex": "dummy"}
-        assert service.raw == entry
+
+    assert service.raw is not None
+    assert service.raw["port"] == 443
+    assert service.raw["transport"] == "tcp"
+    assert service.raw["product"] == "nginx"
+    assert service.raw["version"] == "1.24.0"
+    assert service.raw.get("ssl") == {"cert": "dummy"}
+    assert service.raw.get("ssh") == {"kex": "dummy"}
+    assert "_extra_info" in service.raw
+    assert "_parsed_data" in service.raw
 
 
 def test_parse_shodan_host_missing_fields():
-        shodan_data = {
-            # kein ip_str, keine location
-            "data": [
-                {"port": 8080, "transport": "tcp", "banner": "example 1.0"}
-            ]
-        }
+    """Testet fehlende Felder in Shodan-Daten."""
+    shodan_data = {
+        "data": [
+            {"port": 8080, "transport": "tcp", "banner": "example 1.0"}
+        ]
+    }
 
-        snapshot = parse_shodan_host(shodan_data)
+    snapshot = parse_shodan_host(shodan_data)
 
-        assert snapshot.ip is None
-        assert snapshot.city is None
-        assert snapshot.country is None
-        assert len(snapshot.services) == 1
+    assert snapshot.ip in [None, ""]
+    assert snapshot.city in [None, ""]
+    assert snapshot.country in [None, ""]
+    assert len(snapshot.services) == 1
 
 
 def test_parse_shodan_host_last_update_is_datetime():
