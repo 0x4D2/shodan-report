@@ -1,7 +1,7 @@
 from reportlab.platypus import Paragraph, Spacer
 from typing import List, Dict, Any
 
-from shodan_report.evaluation import RiskLevel, Evaluation
+from shodan_report.evaluation import RiskLevel, Evaluation, business_risk
 
 def create_management_section(
     elements: List,
@@ -114,17 +114,13 @@ def _generate_insights(
     if open_ports:
         insights.append(f"{len(open_ports)} öffentliche Dienste erreichbar")
     
+    # 2. Exposure Level
     exposure_level = _calculate_exposure_level(evaluation.risk, evaluation.critical_points)
-    level_texts = {
-        1: "sehr niedrig",
-        2: "niedrig",
-        3: "mittel",
-        4: "hoch", 
-        5: "sehr hoch"
-    }
+    level_texts = {1: "sehr niedrig", 2: "niedrig", 3: "mittel", 4: "hoch", 5: "sehr hoch"}
     level_text = level_texts.get(exposure_level, "niedrig")
     insights.append(f"Exposure-Level: {exposure_level}/5 ({level_text})")
     
+    # 3. Kritische Punkte
     critical_count = len(evaluation.critical_points) if evaluation.critical_points else 0
     if critical_count > 0:
         insights.append(f"{critical_count} kritische Risikopunkte identifiziert")
@@ -145,13 +141,25 @@ def _generate_insights(
     risk_level = evaluation.risk.value if hasattr(evaluation.risk, 'value') else str(evaluation.risk)
     insights.append(f"Risikobewertung: {risk_level.upper()}")
     
-    # 5. Business Risk
-    if business_risk.upper() in ["HIGH", "CRITICAL"]:
+    # 5. Business Risk - Handle both string and dict with helper function
+    business_risk_level = _extract_business_risk_level(business_risk)
+    
+    if business_risk_level.upper() in ["HIGH", "CRITICAL"]:
         insights.append("Erhöhter Handlungsbedarf")
     else:
         insights.append("Aktuell kontrollierte Risikosituation")
     
     return insights
+
+
+def _extract_business_risk_level(business_risk_input) -> str:
+    """Extrahiert das Business Risk Level aus verschiedenen Input-Formaten."""
+    if isinstance(business_risk_input, dict):
+        return str(business_risk_input.get('level', 'UNKNOWN'))
+    elif isinstance(business_risk_input, str):
+        return business_risk_input
+    else:
+        return str(business_risk_input)
 
 
 def _generate_recommendations(

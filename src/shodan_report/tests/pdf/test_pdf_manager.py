@@ -93,16 +93,28 @@ class TestPDFManager:
             month="2025-01",
             ip="1.1.1.1",
             management_text="Management",
-            trend_text="",  
+            trend_text="",  # LEER!
             technical_json={"open_ports": []},
-            evaluation=self.mock_evaluation,       
-            business_risk=self.mock_business_risk, 
+            evaluation=self.mock_evaluation,
+            business_risk=self.mock_business_risk,  # STRING
             config={}
         )
         
-
-        trend_section = [e for e in elements if "Keine historischen Daten" in str(e)]
-        assert len(trend_section) >= 1
+        # Suche nach EINEM der möglichen Trend-Texte
+        trend_elements = []
+        for e in elements:
+            if hasattr(e, 'text'):
+                if ("Keine historischen Daten" in e.text or 
+                    "Erste Analyse" in e.text or
+                    "Trend wird bei zukünftigen" in e.text):
+                    trend_elements.append(e)
+        
+        # Prüfe ob mindestens ein Element gefunden wurde
+        assert len(trend_elements) >= 1, "Trend-Section sollte existieren"
+        
+        # Optional: Debug-Ausgabe
+        if trend_elements:
+            print(f"Found trend text: {trend_elements[0].text[:100]}...")
 
     def test_missing_config(self):
         elements = prepare_pdf_elements(

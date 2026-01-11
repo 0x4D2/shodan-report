@@ -5,20 +5,7 @@ from .styles import _create_styles
 from .sections.header import _create_header
 from .sections.management import create_management_section
 from .sections.technical import create_technical_section  
-
-
-def _create_trend_section(elements: List, styles: Dict, trend_text: str) -> None:
-    """Trend-Analyse (später auch auslagern)."""
-    elements.append(Spacer(1, 12))
-    elements.append(Paragraph("<b>Historie / Trend</b>", styles['heading2']))
-    elements.append(Spacer(1, 6))
-    
-    if trend_text:
-        for line in trend_text.splitlines():
-            if line.strip():
-                elements.append(Paragraph(f"• {line.strip()}", styles['bullet']))
-    else:
-        elements.append(Paragraph("Keine historischen Daten für Trendanalyse vorhanden.", styles['normal']))
+from .sections.trend import create_trend_section
 
 
 def _create_footer(elements: List, styles: Dict) -> None:
@@ -85,7 +72,13 @@ def prepare_pdf_elements(
     )
     
     # 3. TREND-ANALYSE
-    _create_trend_section(elements, styles, trend_text)
+    create_trend_section(
+        elements=elements,
+        styles=styles,
+        trend_text=trend_text,
+        legacy_mode=False  # Einfach den Trend-Text durchreichen
+        # compare_month könnten wir später hinzufügen
+    )
     
     # 4. TECHNISCHER ANHANG
     create_technical_section(
