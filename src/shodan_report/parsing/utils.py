@@ -106,7 +106,7 @@ def _extract_service_specific_data(entry: Dict[str, Any]) -> str:
     return ""
 
 
-def parse_service(entry: Dict[str, Any]) -> Service:
+def parse_service(entry: Dict[str, Any], host_vulns: List = None) -> Service:
  
     product, version = _extract_product_version(entry)
     
@@ -114,6 +114,7 @@ def parse_service(entry: Dict[str, Any]) -> Service:
     
     raw_data = entry.get("data", "")
     display_data = raw_data
+    service_cves = []
     
     if display_data:
         # Für Anzeige bereinigen (nicht für raw!)
@@ -122,11 +123,32 @@ def parse_service(entry: Dict[str, Any]) -> Service:
         display_data = re.sub(r'\{[^}]+\}', '', display_data)
         display_data = re.sub(r'\s+', ' ', display_data)
         display_data = display_data[:200] 
+
+    if "vulns" in entry:
+        if isinstance(entry["vulns"], list):
+            for vuln in entry["vulns"]:
+                if isinstance(vuln, dict):
+                    service_cves.append(vuln)
+                elif isinstance(vuln, str):
+                    service_cves.append({"id": vuln})
+
+    if host_vulns and isinstance(host_vulns, list):
+        port = entry.get("port")
+        product, version = _extract_product_version(entry)
+        
+        for vuln in host_vulns:
+            if isinstance(vuln, dict):
+                # Einfache Zuordnung: Wenn Vuln für diesen Port/Product relevant ist
+                # (Hier könntest du smartere Logik einbauen)
+                service_cves.append(vuln)
+            elif isinstance(vuln, str):
+                service_cves.append({"id": vuln})
     
     enhanced_raw = dict(entry)  # Kopie der Originaldaten
 
     enhanced_raw["_parsed_data"] = display_data
     enhanced_raw["_extra_info"] = extra_data
+    enhanced_raw["_cves"] = service_cves
 
     # 4. Service-Objekt erstellen
     return Service(
@@ -143,12 +165,13 @@ def parse_service(entry: Dict[str, Any]) -> Service:
 def parse_shodan_host(data: Dict[str, Any]) -> AssetSnapshot:
 
     services: List[Service] = []
+    host_vulns = data.get("vulns", []) 
     
     for entry in data.get("data", []):
         if "port" not in entry:
             continue
         
-        services.append(parse_service(entry))
+        services.append(parse_service(entry, host_vulns=host_vulns))
     
     location = data.get("location", {})
     
@@ -184,7 +207,7 @@ def parse_shodan_host(data: Dict[str, Any]) -> AssetSnapshot:
         asn=data.get("asn"),
         latitude=location.get("latitude"),
         longitude=location.get("longitude"),
-        vulns=data.get("vulns", [])
+        vulns=host_vulns
     )
 
 

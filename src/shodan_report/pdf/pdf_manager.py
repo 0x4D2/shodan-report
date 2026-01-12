@@ -1,36 +1,17 @@
 # src/shodan_report/pdf/pdf_manager.py
 from reportlab.platypus import Spacer, Paragraph
 from typing import List, Dict, Any, Optional
+
 from .styles import _create_styles
 from .sections.header import _create_header
 from .sections.management import create_management_section
 from .sections.technical import create_technical_section  
 from .sections.trend import create_trend_section
-
-
-def _create_footer(elements: List, styles: Dict) -> None:
-    """Footer (später auch auslagern)."""
-    from datetime import datetime
-    from reportlab.platypus import Paragraph
-    
-    elements.append(Spacer(1, 24))
-    
-    disclaimer_text = f"""
-    <font size='8'><b>HINWEIS ZUR VERWENDUNG:</b></font><br/>
-    Dieser Bericht basiert auf öffentlich verfügbaren Informationen (OSINT) von Shodan.
-    Er stellt keine vollständige Sicherheitsanalyse dar und ersetzt keinen Penetrationstest.
-    Keine Garantie auf Vollständigkeit oder Richtigkeit. Dient ausschließlich zu Informationszwecken.
-    <br/><br/>
-    <i>Vertraulich. Stand: {datetime.now().strftime('%d.%m.%Y %H:%M')}</i>
-    """
-    
-    elements.append(Paragraph(disclaimer_text, styles['disclaimer']))
-    elements.append(Spacer(1, 6))
-    elements.append(Paragraph(
-        f"Erstellt mit Shodan Report Generator • {datetime.now().strftime('%d.%m.%Y')}", 
-        styles['footer']
-    ))
-
+from .sections.footer import create_footer_section
+from .sections.recommendations import create_recommendations_section
+from .sections.methodology import create_methodology_section
+from .sections.conclusion import create_conclusion_section
+from .sections.cve_overview import create_cve_overview_section
 
 def prepare_pdf_elements(
     customer_name: str, 
@@ -44,6 +25,14 @@ def prepare_pdf_elements(
     config: Optional[Dict] = None
 ) -> List:
    
+
+
+    print(f"DEBUG: technical_json Keys: {list(technical_json.keys())}")
+    print(f"DEBUG: Hat technical_json 'cves'? {'cves' in technical_json}")
+    if 'cves' in technical_json:
+        print(f"DEBUG: Anzahl CVEs: {len(technical_json['cves'])}")
+        print(f"DEBUG: Erstes CVE Beispiel: {technical_json['cves'][0] if technical_json['cves'] else 'Keine'}")
+        
     config = config or {}
     styling = config.get("styling", {})
     
@@ -57,10 +46,10 @@ def prepare_pdf_elements(
     # PDF-Elemente aufbauen
     elements = []
 
-    # 1. HEADER
+    # 1. HEADER (Titel & Metadaten)
     _create_header(elements, styles, customer_name, month, ip, config=config)
 
-    # 2. MANAGEMENT-ZUSAMMENFASSUNG
+    # 2. MANAGEMENT-ZUSAMMENFASSUNG (High-Level Übersicht)
     create_management_section(
         elements, 
         styles, 
@@ -71,24 +60,54 @@ def prepare_pdf_elements(
         config
     )
     
-    # 3. TREND-ANALYSE
+    # 3. TREND-ANALYSE (Entwicklung über Zeit)
     create_trend_section(
         elements=elements,
         styles=styles,
         trend_text=trend_text,
-        legacy_mode=False  # Einfach den Trend-Text durchreichen
-        # compare_month könnten wir später hinzufügen
+        legacy_mode=False
     )
-    
-    # 4. TECHNISCHER ANHANG
+
+    # 4. TECHNISCHER ANHANG (Details der gefundenen Dienste)
     create_technical_section(
         elements,
         styles,
         technical_json,
         config
     )
+
+    # 5. CVE-ÜBERSICHT (Spezifische Schwachstellen)
+    create_cve_overview_section(
+        elements=elements,
+        styles=styles,
+        technical_json=technical_json,
+        evaluation=evaluation
+    )
+
+    # 6. EMPFEHLUNGEN (Konkrete Maßnahmen)
+    create_recommendations_section(
+        elements=elements,
+        styles=styles,
+        business_risk=business_risk,
+        technical_json=technical_json,
+        evaluation=evaluation
+    )
+
+    # 7. METHODIK (Wie wurde analysiert)
+    create_methodology_section(
+        elements=elements,
+        styles=styles
+    )
+
+    # 8. FAZIT (Abschließende Bewertung)
+    create_conclusion_section(
+        elements=elements,
+        styles=styles,
+        customer_name=customer_name,
+        business_risk=business_risk
+    )
     
-    # 5. FOOTER
-    _create_footer(elements, styles)
+    # 9. FOOTER (Disclaimer & Metadaten)
+    create_footer_section(elements, styles)
     
     return elements

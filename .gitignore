@@ -16,3 +16,4 @@ config/customers/*.yml
 archive/*
 jobs.txt
 jobs/*.txt
+assets/*.png

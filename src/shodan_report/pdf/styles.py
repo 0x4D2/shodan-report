@@ -5,16 +5,20 @@ from typing import Dict
 def _create_styles(primary_hex: str, secondary_hex: str) -> Dict[str, ParagraphStyle]:
 
     styles = getSampleStyleSheet()
+    primary_color = HexColor(primary_hex)
+    secondary_color = HexColor(secondary_hex)
     
     return {
         'title': ParagraphStyle(
             'CustomTitle',
             parent=styles['Title'],
             fontSize=16,
-            textColor=HexColor(primary_hex),
+            textColor=primary_color,
             spaceAfter=12,
             alignment=1
         ),
+        'primary_color': primary_hex, 
+        'secondary_color': secondary_hex,
         'heading1': ParagraphStyle(
             'CustomHeading1',
             parent=styles['Heading1'],

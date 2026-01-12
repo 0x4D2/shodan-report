@@ -8,6 +8,7 @@ from shodan_report.core.runner import generate_report_pipeline
 
 print("=== Batch Processing ===")
 
+# 1. Jobs laden
 jobs_file = Path("jobs.txt")
 if not jobs_file.exists():
     print("jobs.txt missing")
@@ -25,6 +26,13 @@ success = 0
 
 print(f"Processing {total} jobs...")
 
+# 2. CONFIG MAPPING (Customer → Config-Datei)
+config_mapping = {
+    "MG_Solutions": "config/customers/mg-solutions.yaml",
+    "CHINANET": "config/customers/chinanet-hubei.yaml", 
+    "Next_Vision_GmbH": "config/customers/next-vision-gmbh.yaml",
+}
+
 for i, line in enumerate(jobs, 1):
     parts = line.split()
     if len(parts) != 3:
@@ -34,12 +42,22 @@ for i, line in enumerate(jobs, 1):
     customer, ip, month = parts
     print(f"[{i}/{total}] {customer} - {ip} - {month}")
     
-    # DIREKT die Pipeline aufrufen (kein subprocess!)
+    config_path = None
+    if customer in config_mapping:
+        config_path = Path(config_mapping[customer])
+        if not config_path.exists():
+            print(f"⚠️  Config nicht gefunden: {config_path}")
+            config_path = None
+    else:
+        print(f"⚠️  Kein Config-Mapping für: {customer}")
+    
+    # 4. MIT CONFIG AUFRUFEN
     result = generate_report_pipeline(
         customer_name=customer,
         ip=ip,
         month=month,
-        archive=False,
+        config_path=config_path,  
+        archive=True,
         compare_month=None,
         verbose=False
     )
