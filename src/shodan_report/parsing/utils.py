@@ -139,12 +139,11 @@ def parse_service(entry: Dict[str, Any], host_vulns: List = None) -> Service:
         for vuln in host_vulns:
             if isinstance(vuln, dict):
                 # Einfache Zuordnung: Wenn Vuln für diesen Port/Product relevant ist
-                # (Hier könntest du smartere Logik einbauen)
                 service_cves.append(vuln)
             elif isinstance(vuln, str):
                 service_cves.append({"id": vuln})
     
-    enhanced_raw = dict(entry)  # Kopie der Originaldaten
+    enhanced_raw = dict(entry)  
 
     enhanced_raw["_parsed_data"] = display_data
     enhanced_raw["_extra_info"] = extra_data
