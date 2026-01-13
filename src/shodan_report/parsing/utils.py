@@ -151,13 +151,20 @@ def parse_service(entry: Dict[str, Any], host_vulns: List = None) -> Service:
 
     # 4. Service-Objekt erstellen
     return Service(
-         port=entry.get("port"),
+        port=entry.get("port"),
         transport=entry.get("transport", "tcp"),
         product=product,
         version=version,
         ssl_info=entry.get("ssl"),
         ssh_info=entry.get("ssh"),
-        raw=enhanced_raw  
+        raw=enhanced_raw,
+        
+        # EXPLIZITE Flags übernehmen
+        is_encrypted=bool(entry.get("ssl")),
+        requires_auth=bool(entry.get("ssh")),
+        vpn_protected=entry.get("vpn_protected", False),
+        tunneled=entry.get("tunneled", False),
+        cert_required=entry.get("cert_required", False)
     )
 
 

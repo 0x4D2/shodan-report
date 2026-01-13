@@ -12,5 +12,13 @@ class Service:
     ssl_info: Optional[dict] = None
     ssh_info: Optional[dict] = None
 
-    # Rohaten 
+    # EXPLIZITE Flags 
+    is_encrypted: bool = False
+    requires_auth: bool = False
+
+    # KEINE Annahmen!
+    vpn_protected: bool = False       # nur true, wenn Quelle es sagt
+    tunneled: bool = False            # nur true, wenn Quelle es sagt
+    cert_required: bool = False       # nur true, wenn Quelle es sagt
+
     raw: Optional[dict] = None

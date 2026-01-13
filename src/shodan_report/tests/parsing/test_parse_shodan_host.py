@@ -130,3 +130,25 @@ def test_parse_shodan_host_last_update_is_datetime():
         snapshot = parse_shodan_host(shodan_data)
         assert isinstance(snapshot.last_update, datetime)
 
+
+def test_parse_service_sets_flags_correctly():
+    entry = {
+        "port": 443,
+        "transport": "tcp",
+        "product": "nginx",
+        "version": "1.24.0",
+        "ssl": {"cert": "dummy"},
+        "ssh": {"kex": "dummy"},
+        "vpn_protected": True,
+        "tunneled": True,
+        "cert_required": True
+    }
+
+    service = parse_service(entry)
+
+    assert service.is_encrypted is True
+    assert service.requires_auth is True
+    assert service.vpn_protected is True
+    assert service.tunneled is True
+    assert service.cert_required is True
+

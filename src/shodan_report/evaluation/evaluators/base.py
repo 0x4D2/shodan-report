@@ -45,14 +45,45 @@ class ServiceEvaluator(ABC):
             if indicator in version_lower:
                 return risk_val - 1  # Weniger schwer gewichten
         return 0
-    
+
+    # ==================== GEÄNDERT / HINZUGEFÜGT ====================
     def _is_secure(self, service: 'Service') -> bool:
-        """Prüft ob Service sicher ist (TLS/SSL)"""
+        """
+        Prüft, ob ein Service als sicher gilt.
+        Berücksichtigt:
+        - SSL/TLS
+        - sichere Produkt-Indikatoren
+        - RDP/VNC/Telnet Besonderheiten (VPN/Tunnel)
+        - Versions-Risiken (via _check_version_risk)
+        """
+        
+        # Verschlüsselung prüfen
         if service.ssl_info:
             return True
-            
+
         product = (service.product or "").lower()
+        
+        # sichere Produkte
         for indicator in self.config.weights.secure_indicators:
             if indicator in product:
                 return True
+
+        # RDP / VNC / Telnet: muss VPN/Tunnel oder Zertifikate nutzen
+        if service.port in [3389, 5900, 23] or any(x in product for x in ["rdp", "vnc", "telnet"]):
+            if getattr(service, "vpn_protected", False):
+                return True
+            if getattr(service, "tunneled", False):
+                return True
+            if getattr(service, "cert_required", False):
+                return True
+            # sonst kritisch
+            return False
+
+        # Versions-Risiko prüfen
+        version_risk = self._check_version_risk(service.version)
+        if version_risk > 0:
+            return False
+
+        # 5️⃣ Standardmäßig unsicher
         return False
+    # ==================== ENDE DER ÄNDERUNG ====================
