@@ -10,10 +10,8 @@ class EvaluationEngine:
         self.config = config or EvaluationConfig()
         self.registry = ServiceEvaluatorRegistry(self.config)
     
+    # evaluation_engine.py - evaluate() Methode korrigieren:
     def evaluate(self, snapshot: AssetSnapshot) -> EvaluationResult:
-        """
-        Führt die Evaluation durch (neue Version).
-        """
         critical_points = []
         recommendations = []
         total_risk_score = 0
@@ -22,13 +20,14 @@ class EvaluationEngine:
         for service in snapshot.services:
             risk_result = self.registry.evaluate_service(service)
             
-            if risk_result.message:
-                if risk_result.is_critical:
-                    critical_points.append(risk_result.message)
-                elif not risk_result.should_exclude_from_critical:
-                    # Empfehlung
-                    recommendations.append(risk_result.message)
+            # ✅ KORREKT: critical_points von ServiceRisk übernehmen
+            if hasattr(risk_result, 'critical_points') and risk_result.critical_points:
+                critical_points.extend(risk_result.critical_points)
+            elif risk_result.message and risk_result.is_critical:
+                # Fallback für alte Evaluatoren
+                critical_points.append(risk_result.message)
             
+            # Recommendations sammeln
             if risk_result.recommendations:
                 recommendations.extend(risk_result.recommendations)
             
@@ -46,7 +45,7 @@ class EvaluationEngine:
         return EvaluationResult(
             ip=snapshot.ip,
             risk=risk_level,
-            critical_points=critical_points,
+            critical_points=critical_points,  # ← Jetzt mit allen 3 Punkten!
             recommendations=recommendations,
             exposure_score=exposure_score
         )
@@ -72,7 +71,9 @@ class EvaluationEngine:
         for point in critical_points:
             point_lower = point.lower()
             if any(keyword in point_lower for keyword in 
-                  ["rdp", "vnc", "telnet ohne", "unverschlüsselt"]):
+                  ["rdp", "vnc", "telnet ohne", "unverschlüsselt",
+                    "cve", "schwachstelle", "eol", "end-of-life", 
+                    "kritische version", "kritisch"]):
                 return RiskLevel.CRITICAL
         
         # Exposure-basierte Bewertung

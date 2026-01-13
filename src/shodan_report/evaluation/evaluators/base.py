@@ -14,10 +14,13 @@ class ServiceRisk:
     is_critical: bool = False
     recommendations: list = None
     should_exclude_from_critical: bool = False
+    critical_points: list = None
     
     def __post_init__(self):
         if self.recommendations is None:
             self.recommendations = []
+        if self.critical_points is None: 
+            self.critical_points = []
 
 class ServiceEvaluator(ABC):
     """Basis-Klasse für alle Service-Evaluatoren"""

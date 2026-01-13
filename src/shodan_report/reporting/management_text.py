@@ -1,19 +1,33 @@
+from shodan_report.evaluation.models import EvaluationResult
 from shodan_report.evaluation.risk_prioritization import BusinessRisk
-from shodan_report.evaluation.evaluation import Evaluation
 
 
 def generate_management_text(
     business_risk: BusinessRisk,
-    evaluation: Evaluation,
+    evaluation: EvaluationResult,
 ) -> str:
-    # Optional: kritische Punkte dynamisch einfügen
+    # Sicherstellen, dass critical_points existiert und iterierbar ist
+    critical_points = getattr(evaluation, 'critical_points', [])
+    if critical_points is None:
+        critical_points = []
+    
     critical_points_text = ""
-    if evaluation.critical_points:
+    if critical_points:
+        # Limit auf erste 10 Punkte, um Text nicht zu lang zu machen
+        limited_points = critical_points[:10]
         critical_points_text = "\n\nIdentifizierte kritische Punkte:\n" + "\n".join(
-            f"- {pt}" for pt in evaluation.critical_points
+            f"- {pt}" for pt in limited_points
         )
+        if len(critical_points) > 10:
+            critical_points_text += f"\n- ... und {len(critical_points) - 10} weitere"
 
+
+    print(f"DEBUG - EvaluationResult Type: {type(evaluation)}")
+    print(f"DEBUG - Has critical_points: {hasattr(evaluation, 'critical_points')}")
+    print(f"DEBUG - critical_points: {evaluation.critical_points if hasattr(evaluation, 'critical_points') else 'N/A'}")
+    print(f"DEBUG - critical_points count: {len(evaluation.critical_points) if hasattr(evaluation, 'critical_points') else 0}")
     # Texte nach Risiko
+    
     if business_risk == BusinessRisk.MONITOR:
         return (
             f"Gesamteinschätzung:\n"

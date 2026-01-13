@@ -18,9 +18,15 @@ class DatabaseEvaluator(ServiceEvaluator):
         
         version_risk = self._check_version_risk(service.version or "")
         
+        # DETAILLIERTE MESSAGE
+        product_info = service.product or "Datenbank"
+        version_info = f" {service.version}" if service.version else ""
+        message = f"{product_info}{version_info} öffentlich erreichbar auf Port {service.port}"
+        
         return ServiceRisk(
             risk_score=self.config.weights.high_risk_services.get("database_unencrypted", 3) + version_risk,
-            message=f"Datenbank öffentlich erreichbar ohne Verschlüsselung auf Port {service.port}",
+            message=message,
             is_critical=True,
+            critical_points=[message],  # ⬅️ WICHTIG: critical_points setzen!
             recommendations=["Datenbank hinter Firewall/VPN schützen", "IP-Whitelisting verwenden"]
         )

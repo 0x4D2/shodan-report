@@ -9,14 +9,14 @@ from dotenv import load_dotenv
 from shodan_report.clients.shodan_client import ShodanClient
 from shodan_report.parsing.utils import parse_shodan_host
 from shodan_report.persistence.snapshot_manager import save_snapshot, load_snapshot
-from shodan_report.evaluation.evaluation_engine import evaluate_snapshot
+from shodan_report.evaluation import EvaluationEngine, RiskLevel  # ⬅️ GEÄNDERT: EvaluationEngine
 from shodan_report.evaluation.risk_prioritization import prioritize_risk
 from shodan_report.reporting.management_text import generate_management_text
 from shodan_report.reporting.trend import analyze_trend
 from shodan_report.reporting.technical_data import build_technical_data
 from shodan_report.pdf.pdf_generator import generate_pdf
 from shodan_report.archiver.report_archiver import ReportArchiver
-from shodan_report.evaluation import Evaluation, RiskLevel
+
 
 def load_customer_config(config_path: Optional[Path]) -> dict:
     if config_path is None:
@@ -36,6 +36,7 @@ def load_customer_config(config_path: Optional[Path]) -> dict:
         print(f" Unerwarteter Fehler: {e}")
         return {}
 
+
 def generate_report_pipeline(
     customer_name: str,
     ip: str,
@@ -47,7 +48,7 @@ def generate_report_pipeline(
     verbose: bool = False
 ) -> Dict[str, Any]:
     """
-    Generiere einen vollständigen Shodan Report.
+    Generiere einen vollständigen Shodan Report mit NEUER Evaluation Engine.
     
     Args:
         customer_name: Name des Kunden
@@ -99,24 +100,42 @@ def generate_report_pipeline(
         # 4. Trend analysieren
         trend_text = analyze_trend(prev_snapshot, snapshot) if prev_snapshot else "Keine historischen Daten für Trendanalyse vorhanden."
         
-        # 5. Bewertung und Risiko
-        evaluation = evaluate_snapshot(snapshot)
-        evaluation_dict = evaluation_to_dict(evaluation)
-
-        business_risk = prioritize_risk(evaluation)
-
-        business_risk_str = business_risk.value.upper() if hasattr(business_risk, 'value') else str(business_risk).upper()
+        # 5. Evaluation mit NEUER ENGINE ⬅️ WICHTIG: EvaluationEngine statt evaluate_snapshot
+        engine = EvaluationEngine()
+        evaluation_result = engine.evaluate(snapshot)  # ← EvaluationResult Objekt
         
-        # 6. Management Text (HTML Tags entfernen)
-        management_text = generate_management_text(business_risk, evaluation)
+        # 6. Business Risk berechnen
+        business_risk = prioritize_risk(evaluation_result)
+        business_risk_str = str(business_risk).upper()
+        
+        # 7. Management Text (HTML Tags entfernen)
+        management_text = generate_management_text(business_risk, evaluation_result)  # ← evaluation_result
         management_text = re.sub(r'<[^>]+>', '', management_text)
         
-        # 7. Technischer Anhang
+        # 8. Technischer Anhang
         technical_json = build_technical_data(snapshot, prev_snapshot)
+
+        print(f"\n🔍 DEBUG technical_json:")
+        print(f"  Type: {type(technical_json)}")
+        print(f"  Keys: {technical_json.keys() if isinstance(technical_json, dict) else 'N/A'}")
+        print(f"  Has 'services': {'services' in technical_json}")
+        if 'services' in technical_json:
+            print(f"  Services count: {len(technical_json['services'])}")
         
-        # 8. PDF erstellen
+        # 9. PDF erstellen
         if verbose:
             print("Generiere PDF...")
+        
+        # Konvertiere EvaluationResult zu Dict für PDF
+        evaluation_dict = evaluation_result_to_dict(evaluation_result)
+
+        # Füge in runner.py nach evaluation_result_to_dict() hinzu:
+        print(f"\nEvaluation Dict nach Konvertierung:")
+        print(f"  risk: {evaluation_dict.get('risk')}")
+        print(f"  exposure_score: {evaluation_dict.get('exposure_score')}")
+        print(f"  exposure_level: {evaluation_dict.get('exposure_level')}")
+        print(f"  exposure: {evaluation_dict.get('exposure')}")
+        print("="*50 + "\n")
         
         pdf_path = generate_pdf(
             customer_name=customer_name,
@@ -134,13 +153,26 @@ def generate_report_pipeline(
         result = {
             "success": True,
             "pdf_path": pdf_path,
-            "business_risk": business_risk.value,
+            "business_risk": str(business_risk.value),
             "customer": customer_name,
             "ip": ip,
             "month": month
         }
-        
-        # 9. Archivierung (optional)
+
+        print("\n" + "="*50)
+        print("DEBUG: Evaluation Result vor PDF-Generierung")
+        print(f"Risk: {evaluation_result.risk}")  # ⬅️ GEÄNDERT: risk statt risk_level
+        print(f"Risk Type: {type(evaluation_result.risk)}")
+        print(f"Exposure Score: {evaluation_result.exposure_score}")
+        print(f"Exposure Score Type: {type(evaluation_result.exposure_score)}")
+        print(f"Critical Points: {evaluation_result.critical_points}")
+        print(f"Has messages attr: {hasattr(evaluation_result, 'messages')}")
+        if hasattr(evaluation_result, 'messages'):
+            print(f"Messages: {evaluation_result.messages}")
+        else:
+            print("EvaluationResult hat kein 'messages' Attribut (erwartet für neue Engine)")
+                
+        # 10. Archivierung (optional)
         if archive:
             if verbose:
                 print("Archiviere Report...")
@@ -167,76 +199,79 @@ def generate_report_pipeline(
             "ip": ip,
             "month": month
         }
-    
-def evaluation_to_dict(evaluation_obj: Evaluation) -> Dict[str, Any]:
-        """
-        Konvertiere Evaluation-Objekt zu einem aussagekräftigen Dictionary.
-        
-        Die PDF-Sektionen brauchen:
-        - exposure_level (1-5) für Management-Sektion
-        - critical_points_count für Risikobewertung
-        - risk_score (numerisch) für Visualisierungen
-        """
-        
-        # 1. Exposure-Level aus critical_points berechnen
-        exposure_level = _calculate_exposure_level(evaluation_obj.critical_points)
-        
-        # 2. Risk-Score aus RiskLevel Enum
-        risk_score_mapping = {
-            RiskLevel.LOW: 2,
-            RiskLevel.MEDIUM: 5, 
-            RiskLevel.HIGH: 8
-        }
-        risk_score = risk_score_mapping.get(evaluation_obj.risk, 3)
-        
-        # 3. Kritische Dienste identifizieren
-        critical_services = []
-        ssh_ports = []
-        rdp_ports = []
-        
-        for point in evaluation_obj.critical_points:
-            if "SSH" in point.upper() or "ssh" in point:
-                ssh_ports.append(point)
-                critical_services.append("SSH")
-            elif "RDP" in point.upper() or "rdp" in point:
-                rdp_ports.append(point)
-                critical_services.append("RDP")
-        
-        return {
-            "ip": evaluation_obj.ip,
-            "risk": evaluation_obj.risk.value,  # "low", "medium", "high"
-            "risk_score": risk_score,  # numerisch: 2, 5, 8
-            "critical_points": evaluation_obj.critical_points,
-            "critical_points_count": len(evaluation_obj.critical_points),
-            "exposure_level": exposure_level,  # 1-5
-            "critical_services": list(set(critical_services)),  # Einzigartige Dienste
-            "has_ssh": len(ssh_ports) > 0,
-            "has_rdp": len(rdp_ports) > 0,
-            "ssh_ports": ssh_ports,
-            "rdp_ports": rdp_ports
-        }
 
+
+def evaluation_result_to_dict(evaluation_result) -> Dict[str, Any]:
+    """
+    Konvertiere EvaluationResult-Objekt zu einem Dictionary für PDF-Generierung.
+    
+    WICHTIG: Neue Engine verwendet Enum RiskLevel (CRITICAL, HIGH, etc.)
+    """
+    # 1. Extrahiere Risk Level
+    risk = evaluation_result.risk  # Ist ein RiskLevel Enum
+
+    if hasattr(risk, 'value'):
+        risk_str = risk.value.lower()  # "critical", "high", etc.
+    else:
+        risk_str = str(risk).lower()
+        # Falls es noch "risklevel." Präfix hat
+        if risk_str.startswith("risklevel."):
+            risk_str = risk_str[10:]
+    
+    # Konvertiere Enum zu String und dann lowercase für Kompatibilität
+    risk_str = str(risk).lower()
+    
+    # 2. Mapping für risk_score (für Visualisierung)
+    risk_score_mapping = {
+        "critical": 10,
+        "high": 8, 
+        "medium": 5,
+        "low": 2
+    }
+    risk_score = risk_score_mapping.get(risk_str, 3)
+    
+    # 3. Kritische Dienste identifizieren
+    critical_services = []
+    ssh_ports = []
+    rdp_ports = []
+    mysql_ports = []
+    
+    for point in evaluation_result.critical_points:
+        point_lower = point.lower()
+        
+        if "ssh" in point_lower:
+            ssh_ports.append(point)
+            critical_services.append("SSH")
+        elif "rdp" in point_lower:
+            rdp_ports.append(point)
+            critical_services.append("RDP")
+        elif "mysql" in point_lower or "database" in point_lower:
+            mysql_ports.append(point)
+            critical_services.append("MySQL")
+    
+    # 4. Exposure Level: Konvertiere 1-5 Score zu "X/5" für PDF
+    exposure_score = evaluation_result.exposure_score
+    exposure_level_str = f"{exposure_score}/5"
+    
+    return {
+        "ip": evaluation_result.ip if hasattr(evaluation_result, 'ip') else "N/A",
+        "risk": risk_str,  # "critical", "high", etc.
+        "risk_score": risk_score,  # numerisch: 2, 5, 8, 10
+        "critical_points": evaluation_result.critical_points,
+        "critical_points_count": len(evaluation_result.critical_points),
+        "exposure_score": exposure_score,  # Original 1-5 Score
+        "exposure_level": exposure_level_str,  # String "5/5" für Template
+        "exposure": exposure_level_str,  # Alternative für Template-Kompatibilität
+        "critical_services": list(set(critical_services)),
+        "has_ssh": len(ssh_ports) > 0,
+        "has_rdp": len(rdp_ports) > 0,
+        "has_mysql": len(mysql_ports) > 0,
+        "ssh_ports": ssh_ports,
+        "rdp_ports": rdp_ports,
+        "mysql_ports": mysql_ports
+    }
 
 def _calculate_exposure_level(critical_points: List[str]) -> int:
-    """
-    Berechne Exposure-Level (1-5) basierend auf kritischen Punkten.
-    
-    Logik:
-    - 0 Punkte: Level 1 (sehr niedrig)
-    - 1-2 Punkte: Level 2 (niedrig) 
-    - 3-4 Punkte: Level 3 (mittel)
-    - 5-6 Punkte: Level 4 (hoch)
-    - 7+ Punkte: Level 5 (sehr hoch)
-    """
-    count = len(critical_points)
-    
-    if count == 0:
-        return 1
-    elif count <= 2:
-        return 2
-    elif count <= 4:
-        return 3
-    elif count <= 6:
-        return 4
-    else:
-        return 5
+    """Veraltet - wird jetzt von EvaluationEngine berechnet."""
+    print("⚠️  _calculate_exposure_level ist deprecated - nutze evaluation_result.exposure_score")
+    return 3  # Fallback

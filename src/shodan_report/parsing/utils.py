@@ -132,13 +132,9 @@ def parse_service(entry: Dict[str, Any], host_vulns: List = None) -> Service:
                 elif isinstance(vuln, str):
                     service_cves.append({"id": vuln})
 
-    if host_vulns and isinstance(host_vulns, list):
-        port = entry.get("port")
-        product, version = _extract_product_version(entry)
-        
+    if host_vulns:
         for vuln in host_vulns:
             if isinstance(vuln, dict):
-                # Einfache Zuordnung: Wenn Vuln für diesen Port/Product relevant ist
                 service_cves.append(vuln)
             elif isinstance(vuln, str):
                 service_cves.append({"id": vuln})
@@ -157,6 +153,7 @@ def parse_service(entry: Dict[str, Any], host_vulns: List = None) -> Service:
         version=version,
         ssl_info=entry.get("ssl"),
         ssh_info=entry.get("ssh"),
+        vulnerabilities=service_cves, 
         raw=enhanced_raw,
         
         # EXPLIZITE Flags übernehmen

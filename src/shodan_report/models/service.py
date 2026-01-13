@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 from typing import  Optional 
+from typing import Optional, List, Dict
 
 
 @dataclass
@@ -15,6 +16,8 @@ class Service:
     # EXPLIZITE Flags 
     is_encrypted: bool = False
     requires_auth: bool = False
+
+    vulnerabilities: List[Dict] = field(default_factory=list)  #NEU
 
     # KEINE Annahmen!
     vpn_protected: bool = False       # nur true, wenn Quelle es sagt
