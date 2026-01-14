@@ -1,7 +1,7 @@
 # Shodan Report — Automatisierte externe Sicherheitsanalyse (OSINT)
-
 **Status: MVP FUNKTIONIERT - Interne Testversion mit professionellem Layout**
-
+---
+*Letzte Aktualisierung: 14.01.2026 — Teststatus: 145 passed, 6 failed. Bitte vor Release offene Tests beheben.*
 Kurzfassung:  
 Automatisierter Security Report Generator für externe Angriffsflächenanalyse. Erstellt professionelle monatliche Berichte basierend auf Shodan-Snapshots mit vollständiger Pipeline von der Datenerfassung bis zur revisionssicheren Archivierung.
 
@@ -9,10 +9,10 @@ Automatisierter Security Report Generator für externe Angriffsflächenanalyse. 
 
 ## WICHTIGER HINWEIS
 
-**AKTUELLER STATUS:** Interne Testversion - Noch nicht kundenreif  
-• PDF zeigt **hartcodierte Beispielinhalte** (Layout steht 100%)  
-• Echte Datenanalyse funktioniert, muss nur noch im PDF sichtbar gemacht werden  
-• 82/82 Tests bestanden - Alle Kernfunktionen laufen  
+**AKTUELLER STATUS (14.01.2026):**
+- Kernfunktionen und PDF-Layout sind implementiert. Einige PDF-Abschnitte nutzen noch hartkodierte Platzhalter (Dynamisierung in Arbeit).
+- Teststatus: **145 passed, 6 failed** — Details zu den offenen Problemen weiter unten.
+
 
 ---
 
@@ -131,13 +131,71 @@ shodan-report/
 │   │   └── version_manager.py   # Versionsverwaltung
 │   ├── evaluation/              # Risikobewertung
 │   ├── reporting/               # Textgenerierung
-│   └── tests/                   # 82/82 Tests bestanden ✓
+│   └── tests/                   # Tests (siehe Teststatus oben)
 ├── config/customers/            # Kundenkonfigurationen
 ├── archive/                     # Revisionssichere Ablage
 │   └── {kunde}/{YYYY-MM}/{IP}_v{N}.pdf
 ├── reports/                     # Temporäre PDFs
 └── scripts/run-jobs-direct.py  # Batch-Verarbeitung
 ```
+
+## ARCHITEKTUR & WORKFLOW (Detaillierte Erklärung)
+
+Zweck: `shodan-report` ist ein automatisierter Report-Generator für externe Sicherheitsanalysen (OSINT). Ziel ist es, monatlich reproduzierbare, revisionssichere Reports zu erzeugen, die Management und Technik klare Handlungsfelder liefern.
+
+Pipeline (kurz und präzise, referenziert `src/shodan_report/core/runner.py`):
+
+- 1) Kundenkonfiguration laden (`load_customer_config`) — YAML per `config/customers/*`.
+- 2) Shodan API-Key aus Umgebung (`.env`) laden.
+- 3) Shodan-Daten abrufen (`ShodanClient.get_host`) und in ein internes `Snapshot`-Modell parsen (`parse_shodan_host`).
+- 4) Snapshot persistieren (`save_snapshot`) und optional historischen Snapshot laden (`load_snapshot`) für Trendanalyse.
+- 5) Trendanalyse durchführen (`analyze_trend`) — liefert menschlich lesbare `trend_text`.
+- 6) Evaluation mit `EvaluationEngine` (zentrale Komponente): aus dem `Snapshot` wird ein `EvaluationResult` erzeugt.
+- 7) Business-Risiko ableiten (`prioritize_risk`) — wird im Management-Teil verwendet.
+- 8) Management-Text generieren (`generate_management_text`) und HTML-Tags entfernen (Runner macht `re.sub`).
+- 9) Technischen Anhang bauen (`build_technical_data`).
+- 10) PDF erzeugen (`generate_pdf`) — `evaluation_result` wird vorher durch `evaluation_result_to_dict` in ein Template-kompatibles Dict umgewandelt.
+- 11) Report revisionssicher archivieren (`ReportArchiver.archive_report`) inklusive SHA256 & Versionierung.
+
+Wichtige Konzepte / Objekte:
+
+- `EvaluationEngine` (Empfohlen):
+  - Eingabe: `Snapshot` (von Shodan-parsing)
+  - Ausgabe: `EvaluationResult` mit klaren Attributen:
+    - `risk`: Enum `RiskLevel` (z.B. `CRITICAL`, `HIGH`, `MEDIUM`, `LOW`)
+    - `exposure_score`: Ganzzahl 1–5 (Exponiertheit)
+    - `critical_points`: Liste von Strings (kurze Problembeschreibungen)
+    - optional `messages`: zusätzliche Hinweise / Warnungen
+  - Gründe: zentrale, testbare, erweiterbare Bewertungslogik; ersetzt ältere, verstreute Funktionen.
+
+- `evaluation_result_to_dict(evaluation_result)` (Runner-Wrapper):
+  - Zweck: Normiert `EvaluationResult` in ein Dictionary, das das PDF-Template erwartet.
+  - Mapped Felder: `risk` → string (lowercase), `risk_score` (numerisch für Visualisierung), `exposure_score`, `exposure_level` (z.B. `5/5`), `critical_points_count`, `critical_services`, `has_ssh`/`has_rdp`/`has_mysql`, uvm.
+  - Hinweis: Anpassungen hier sind normal, wenn PDF-Templates oder Sections neue Felder benötigen.
+
+- Deprecation: `_calculate_exposure_level(critical_points: List[str])` ist im Runner als veraltet markiert — benutze stattdessen `evaluation_result.exposure_score` aus der `EvaluationEngine`.
+
+Debugging / Entwicklungshinweise (aus `runner.py`):
+
+- Der Runner enthält temporäre Debug-Prints (z.B. `Evaluation Dict nach Konvertierung`, `DEBUG: Evaluation Result vor PDF-Generierung`). Diese helfen beim Entwickeln, sollten vor Produktions-Run auf `verbose`/logging umgestellt oder entfernt werden.
+- Wenn Tests ImportError melden (z.B. fehlende Module unter `shodan_report.pdf.helpers`), prüfen: relative vs. absolute Imports und Paketstruktur (`src` in `pyproject.toml` ist korrekt eingestellt).
+
+Keine offenen Fragen (FAQ-basiert):
+
+- Q: Was ist die primäre Eingabe?  
+  A: Ein Shodan-Snapshot für eine IP (JSON → internal `Snapshot`).
+
+- Q: Wer berechnet das Risiko?  
+  A: `EvaluationEngine` liefert `EvaluationResult`; `prioritize_risk` wandelt das technischen Ergebnis in Business-Risk um.
+
+- Q: Was verwendet das PDF?  
+  A: `generate_pdf` erwartet die normalisierten Felder — `evaluation_result_to_dict` sorgt für Kompatibilität.
+
+- Q: Warum `_calculate_exposure_level` noch im Repo?  
+  A: Historischer Fallback; markiert als deprecated. Produktionscode soll `evaluation_result.exposure_score` nutzen.
+
+- Q: Wie gehe ich mit fehlschlagenden Tests um?  
+  A: `pytest -q` ausführen, Fehlermeldungen lesen (ImportErrors → Pfade/Init prüfen; AssertionErrors → Bewertungslogik/Defaultwerte prüfen). Siehe `TESTSTATUS` Abschnitt.
 
 ---
 
@@ -161,18 +219,16 @@ archive/
 
 ---
 
-## TESTSTATUS
+## TESTSTATUS (AKTUELL)
 
-```bash
-pytest  # 82/82 Tests erfolgreich ✅
+- Gesamt: **145 passed, 6 failed** (Stand: 14.01.2026)
+- Bekannte Probleme (Kurzüberblick):
+  - ImportError beim Laden einiger PDF-/Evaluation-Helper → Importpfade prüfen
+  - Management-Text: Aufzählungen werden bei vielen Punkten abgeschnitten (nur 10 gelistet)
+  - CVE-Konvertierung: Default-CVSS-Werte werden aktuell nicht wie erwartet gesetzt
 
-src/shodan_report/tests/
-├── integration/                 # Komplette Pipeline-Tests
-├── pdf/                        # PDF-Generierung
-├── archiver/                   # Archivierungslogik
-├── cli/                        # CLI-Parsing
-└── ...                         # Alle Module getestet
-```
+Tipp: Tests lokal ausführen mit `pytest -q` oder `pytest tests/<file>`
+
 
 ---
 
@@ -210,8 +266,8 @@ Shodan API → AssetSnapshot → Evaluation → Reporting → PDF → Archiv
 - [x] 82/82 Tests bestanden
 
 ### IN ARBEIT
-- [~] PDF-Inhalte dynamisieren (hartcodierte → echte Daten)
-- [~] Kundenkonfiguration voll integrieren
+- [~] PDF-Inhalte dynamisieren (einige Sections noch statisch)
+- [~] CVE-Integration: Parsing & Normalisierung (teilweise umgesetzt)
 
 ### ⏳ NÄCHSTE SCHRITTE (Priorisiert)
 1. **PDF-Inhalte dynamisieren** - Echte Daten statt Beispiele

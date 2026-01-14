@@ -63,6 +63,11 @@ if OLD_EVALUATION_AVAILABLE:
         'SECURE_INDICATORS', 
         'VULNERABLE_INDICATORS'
     ])
+    # Binde die alten Namen in das Package-Namespace für direkte Importe
+    Evaluation = OldEvaluation
+    HIGH_RISK_SERVICES = HIGH_RISK_SERVICES
+    SECURE_INDICATORS = SECURE_INDICATORS
+    VULNERABLE_INDICATORS = VULNERABLE_INDICATORS
 
 
 # ─────────────────────────────────────────────

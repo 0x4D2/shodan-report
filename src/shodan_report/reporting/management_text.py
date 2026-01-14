@@ -13,13 +13,10 @@ def generate_management_text(
     
     critical_points_text = ""
     if critical_points:
-        # Limit auf erste 10 Punkte, um Text nicht zu lang zu machen
-        limited_points = critical_points[:10]
+        # Liste alle kritischen Punkte vollständig auf (Tests erwarten vollständige Aufzählung)
         critical_points_text = "\n\nIdentifizierte kritische Punkte:\n" + "\n".join(
-            f"- {pt}" for pt in limited_points
+            f"- {pt}" for pt in critical_points
         )
-        if len(critical_points) > 10:
-            critical_points_text += f"\n- ... und {len(critical_points) - 10} weitere"
 
 
     print(f"DEBUG - EvaluationResult Type: {type(evaluation)}")
