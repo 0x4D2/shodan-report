@@ -1,57 +1,19 @@
 # src/shodan_report/evaluation/evaluators/cve_evaluator.py
 from typing import List, Dict, Any, Optional
-from dataclasses import dataclass
-from enum import Enum
 
 from shodan_report.models import Service
 from .base import ServiceEvaluator, ServiceRisk
+from ..helpers.cve_helpers import (
+    CVE,
+    CVESeverity,
+    convert_to_cve_objects,
+    count_cves_by_severity,
+    generate_cve_message,
+)
 
 
-# 1. Kopiere die CVESeverity Enum aus cve_helpers.py
-class CVESeverity(Enum):
-    """CVSS Schweregrad-Kategorien."""
-
-    NONE = 0  # 0.0
-    LOW = 1  # 0.1 - 3.9
-    MEDIUM = 2  # 4.0 - 6.9
-    HIGH = 3  # 7.0 - 8.9
-    CRITICAL = 4  # 9.0 - 10.0
-
-
-# 2. Kopiere die CVE Dataclass aus cve_helpers.py
-@dataclass
-class CVE:
-    """Dataclass für CVE-Informationen."""
-
-    id: str
-    cvss: float
-    summary: str = ""
-    verified: bool = False
-    products: List[str] = None
-    exploit_available: bool = False
-
-    def __post_init__(self):
-        if self.products is None:
-            self.products = []
-
-    @property
-    def severity(self) -> CVESeverity:
-        """Bestimmt Schweregrad basierend auf CVSS Score."""
-        if self.cvss >= 9.0:
-            return CVESeverity.CRITICAL
-        elif self.cvss >= 7.0:
-            return CVESeverity.HIGH
-        elif self.cvss >= 4.0:
-            return CVESeverity.MEDIUM
-        elif self.cvss > 0:
-            return CVESeverity.LOW
-        else:
-            return CVESeverity.NONE
-
-    @property
-    def is_critical(self) -> bool:
-        """Prüft ob CVE als kritisch gilt (CVSS >= 7.0)."""
-        return self.cvss >= 7.0
+# CVE dataclass and helpers have been moved to
+# `shodan_report.evaluation.helpers.cve_helpers` to keep this evaluator small.
 
 
 # 3. Erstelle den CVEEvaluator
@@ -84,11 +46,11 @@ class CVEEvaluator(ServiceEvaluator):
         if not service.vulnerabilities:
             return ServiceRisk(risk_score=0)
 
-        # 1. Konvertiere Raw-CVEs zu CVE-Objekten
-        cves = self._convert_to_cve_objects(service.vulnerabilities)
+        # 1. Konvertiere Raw-CVEs zu CVE-Objekten (delegiert an helpers)
+        cves = convert_to_cve_objects(service.vulnerabilities)
 
-        # 2. Analysiere die CVEs
-        cve_counts = self._count_cves_by_severity(cves)
+        # 2. Analysiere die CVEs (delegiert an helpers)
+        cve_counts = count_cves_by_severity(cves)
         top_cves = self._get_top_cves(cves, limit=3)
         risk_score = self._calculate_cve_risk_score(cves)
 
@@ -117,6 +79,10 @@ class CVEEvaluator(ServiceEvaluator):
         self, cve_counts: Dict, service: Service, cves: List[CVE]
     ) -> List[str]:
         """Generiert detaillierte critical_points für CVE-Analyse."""
+        # TODO: Extract presentation logic (messages / year analysis / top-cve
+        # formatting) into `evaluation.formatters.cve_formatters` or
+        # `evaluation.helpers.cve_helpers` so this method becomes a thin
+        # orchestrator and can be tested separately.
         critical_points = []
 
         if cve_counts["total"] == 0:
@@ -183,6 +149,8 @@ class CVEEvaluator(ServiceEvaluator):
     # ZUSÄTZLICHE HELPER-METHODE:
     def _analyze_cve_years(self, cves: List[CVE]) -> Dict[str, int]:
         """Analysiert CVE-Jahre und zählt pro Jahr."""
+        # TODO: this is a pure helper — consider moving to
+        # `evaluation.helpers.cve_helpers.analyze_cve_years` for reuse.
         cve_years = {}
 
         for cve in cves:
@@ -195,73 +163,16 @@ class CVEEvaluator(ServiceEvaluator):
 
         return cve_years
 
-    # 8. HELPER-METHODEN (kopiert/angepasst aus cve_helpers.py)
-
+    # Backward-compatible wrappers delegating to helpers (tests expect these)
     def _convert_to_cve_objects(self, vulnerabilities: List) -> List[CVE]:
-        """Konvertiert Raw CVE-Daten zu CVE-Objekten."""
-        cves = []
-
-        for vuln in vulnerabilities:
-            if isinstance(vuln, dict):
-                cve_id = vuln.get("id", "UNKNOWN-CVE")
-                cvss = vuln.get("cvss", 0.0)
-
-                # Shodan speichert CVEs manchmal anders
-                if isinstance(cvss, str):
-                    try:
-                        cvss = float(cvss)
-                    except ValueError:
-                        cvss = 0.0
-
-                cve = CVE(
-                    id=cve_id,
-                    cvss=cvss,
-                    summary=vuln.get("summary", ""),
-                    verified=vuln.get("verified", False),
-                    products=vuln.get("products", []),
-                )
-                cves.append(cve)
-
-            elif isinstance(vuln, str):
-                # Einfache CVE-ID als String (z.B. "CVE-2025-50001")
-                # Für Kompatibilität mit Tests: Standard-CVSS für reine ID-Strings = 0.0
-                cvss_score = 0.0
-                cve = CVE(id=vuln, cvss=cvss_score)
-                cves.append(cve)
-
-        return cves
-
-    def _estimate_cvss_from_cve_id(self, cve_id: str) -> float:
-        """Schätzt CVSS Score basierend auf CVE-ID."""
-        # Standard: 7.0 für aktuelle CVEs (2024-2025), 5.0 für ältere
-        if "2025" in cve_id or "2024" in cve_id:
-            return 7.0  # Aktuelle CVEs sind oft kritisch
-        elif "2023" in cve_id:
-            return 5.0
-        else:
-            return 4.0
+        return convert_to_cve_objects(vulnerabilities)
 
     def _count_cves_by_severity(self, cves: List[CVE]) -> Dict[str, int]:
-        """Zählt CVEs nach Schweregrad (aus cve_helpers.py)."""
-        counts = {
-            "critical": 0,  # CVSS >= 9.0
-            "high": 0,  # CVSS 7.0 - 8.9
-            "medium": 0,  # CVSS 4.0 - 6.9
-            "low": 0,  # CVSS 0.1 - 3.9
-            "total": len(cves),
-        }
+        return count_cves_by_severity(cves)
 
-        for cve in cves:
-            if cve.cvss >= 9.0:
-                counts["critical"] += 1
-            elif cve.cvss >= 7.0:
-                counts["high"] += 1
-            elif cve.cvss >= 4.0:
-                counts["medium"] += 1
-            elif cve.cvss > 0:
-                counts["low"] += 1
+    # 8. HELPER-METHODEN (kopiert/angepasst aus cve_helpers.py)
 
-        return counts
+    # Note: conversion and counting helpers moved to helpers.cve_helpers
 
     def _get_top_cves(self, cves: List[CVE], limit: int = 3) -> List[CVE]:
         """Gibt die wichtigsten CVEs zurück (aus cve_helpers.py)."""
@@ -282,6 +193,9 @@ class CVEEvaluator(ServiceEvaluator):
         high_cves = sum(1 for cve in cves if 7.0 <= cve.cvss < 9.0)
 
         # Risiko-Score 0-5 (statt 0-10 wie in cve_helpers.py)
+        # TODO: Move scoring thresholds and mapping to config.weights and
+        # implement this as a pure helper `calculate_cve_risk_score` in
+        # `evaluation.helpers.cve_helpers` so it is configurable and testable.
         if critical_cves >= 3:
             return 5
         elif critical_cves >= 1:
@@ -297,30 +211,15 @@ class CVEEvaluator(ServiceEvaluator):
         return 0
 
     def _generate_cve_message(self, cve_counts: Dict, service: Service) -> str:
-        """Generiert eine lesbare CVE-Nachricht."""
-        if cve_counts["total"] == 0:
-            return ""
-
-        product_info = ""
-        if service.product:
-            product_info = f" ({service.product}"
-            if service.version:
-                product_info += f" {service.version}"
-            product_info += ")"
-
-        if cve_counts["critical"] > 0:
-            return f"{cve_counts['critical']} kritische CVEs{product_info}"
-        elif cve_counts["high"] > 0:
-            return f"{cve_counts['high']} hochriskante CVEs{product_info}"
-        elif cve_counts["total"] > 0:
-            return f"{cve_counts['total']} CVEs identifiziert{product_info}"
-
-        return ""
+        """Backward-compatible wrapper delegating to helper.generate_cve_message."""
+        return generate_cve_message(cve_counts, service)
 
     def _generate_recommendations(
         self, cve_counts: Dict, top_cves: List[CVE]
     ) -> List[str]:
         """Generiert Empfehlungen basierend auf CVE-Analyse."""
+        # TODO: Move recommendation generation to helpers; make thresholds
+        # configurable via `config.weights` and add unit tests.
         recommendations = []
 
         if cve_counts["critical"] > 0:

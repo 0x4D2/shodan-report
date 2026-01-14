@@ -160,18 +160,29 @@ class ReportArchiver:
 
         dst.parent.mkdir(parents=True, exist_ok=True)
 
-        # Versuche mit temp file (atomar)
+        # Versuche mit NamedTemporaryFile im selben Verzeichnis (atomar via replace)
         for attempt in range(3):
+            temp_file = None
             try:
-                # 1. Zuerst zu temp file im gleichen Verzeichnis kopieren
-                temp_dst = dst.parent / f".tmp_{dst.name}"
-                shutil.copy2(src, temp_dst)
+                with tempfile.NamedTemporaryFile(
+                    dir=str(dst.parent), prefix=f".tmp_{dst.name}", delete=False
+                ) as tf:
+                    temp_file = Path(tf.name)
+                # Copy bytes into temp file (preserve metadata)
+                shutil.copy2(src, temp_file)
 
-                # 2. Dann umbenennen (atomar auf den meisten Filesystemen)
-                temp_dst.replace(dst)
+                # Replace atomar
+                temp_file.replace(dst)
                 return
 
             except (PermissionError, OSError) as e:
+                # Cleanup temp file if present
+                if temp_file and temp_file.exists():
+                    try:
+                        temp_file.unlink()
+                    except Exception:
+                        pass
+
                 if attempt == 2:
                     # Fallback: Direktes Kopieren
                     try:
@@ -180,19 +191,11 @@ class ReportArchiver:
                     except PermissionError:
                         raise PermissionError(
                             f"Kann PDF nicht archivieren nach {attempt+1} Versuchen. "
-                            f"Möglicherweise ist die Datei gesperrt. "
-                            f"Fehler: {e}"
+                            f"Möglicherweise ist die Datei gesperrt. Fehler: {e}"
                         )
 
                 # Warte kurz und versuche es erneut
                 time.sleep(0.1 * (attempt + 1))
-
-                # Versuche temp file zu löschen falls existiert
-                if "temp_dst" in locals() and temp_dst.exists():
-                    try:
-                        temp_dst.unlink()
-                    except:
-                        pass
 
     def _create_metadata(
         self,
@@ -232,7 +235,6 @@ class ReportArchiver:
         metadata: Dict[str, Any],
         version: int,
     ) -> None:
-
         meta_path = target_dir / f"{base_filename}.meta.json"
 
         all_metadata = {"versions": {}}
@@ -242,14 +244,30 @@ class ReportArchiver:
                     existing = json.load(f)
                 all_metadata.update(existing)
             except json.JSONDecodeError:
-                pass
+                # Corrupt metadata — start fresh
+                all_metadata = {"versions": {}}
 
         all_metadata["versions"][str(version)] = metadata
         all_metadata["latest_version"] = version
         all_metadata["updated_at"] = datetime.now().isoformat()
 
-        with meta_path.open("w", encoding="utf-8") as f:
-            json.dump(all_metadata, f, indent=2, ensure_ascii=False)
+        # Schreibe atomar: in temp file im selben Verzeichnis schreiben und ersetzen
+        target_dir.mkdir(parents=True, exist_ok=True)
+        tmp_meta = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", dir=str(target_dir), prefix=f".tmp_{base_filename}", delete=False
+            ) as tf:
+                tmp_meta = Path(tf.name)
+                json.dump(all_metadata, tf, indent=2, ensure_ascii=False)
+
+            tmp_meta.replace(meta_path)
+        finally:
+            if tmp_meta and tmp_meta.exists():
+                try:
+                    tmp_meta.unlink()
+                except Exception:
+                    pass
 
     def _is_valid_month(self, month_str: str) -> bool:
         try:

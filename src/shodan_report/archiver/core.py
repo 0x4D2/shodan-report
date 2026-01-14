@@ -1,19 +1,31 @@
 from pathlib import Path
 import json
+from typing import Iterable
+
 from shodan_report.models import AssetSnapshot, Service
 
 ARCHIVE_DIR = Path("archive")
-ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
+
 
 
 def _customer_dir(customer_name: str) -> Path:
-    dir_path = ARCHIVE_DIR / customer_name.replace(" ", "_")
+    """Return the Path for a customer's archive directory (does not create it)."""
+    return ARCHIVE_DIR / customer_name.replace(" ", "_")
+
+
+def _ensure_customer_dir(customer_name: str) -> Path:
+    """Ensure the customer's archive directory exists and return it."""
+    dir_path = _customer_dir(customer_name)
     dir_path.mkdir(parents=True, exist_ok=True)
     return dir_path
 
 
 def archive_snapshot(snapshot: AssetSnapshot, customer_name: str, month: str) -> Path:
-    customer_dir = _customer_dir(customer_name)
+    """Serialize and write an `AssetSnapshot` to the customer's archive directory.
+
+    This function ensures the archive directory exists before writing.
+    """
+    customer_dir = _ensure_customer_dir(customer_name)
     filename = f"{month}_{snapshot.ip}.json"
     path = customer_dir / filename
 
@@ -33,7 +45,13 @@ def archive_snapshot(snapshot: AssetSnapshot, customer_name: str, month: str) ->
 
 
 def list_archived_snapshots(customer_name: str) -> list[Path]:
+    """Return a list of archived snapshot paths for a customer.
+
+    Does not create the customer's directory; returns an empty list if none exists.
+    """
     customer_dir = _customer_dir(customer_name)
+    if not customer_dir.exists():
+        return []
     return list(customer_dir.glob("*.json"))
 
 

@@ -75,3 +75,28 @@ def test_handles_empty_critical_points():
     text = generate_management_text(BusinessRisk.CRITICAL, evaluation)
     assert "kritisch eingestuft" in text
     assert "Identifizierte kritische Punkte" not in text
+
+
+def test_critical_points_are_expanded_with_technical_json():
+    # Simuliere einen Snapshot mit einem SSH-Dienst
+    critical_points = ["Kritischer Dienst gefunden: SSH auf Port 22"]
+    evaluation = Evaluation(ip="5.6.7.8", risk=RiskLevel.HIGH, critical_points=critical_points)
+
+    technical_json = {
+        "services": [
+            {
+                "port": 22,
+                "product": "OpenSSH",
+                "version": "8.2p1",
+                "banner": "OpenSSH_8.2p1",
+                "cves": ["CVE-2020-14145"],
+            }
+        ]
+    }
+
+    text = generate_management_text(BusinessRisk.CRITICAL, evaluation, technical_json=technical_json)
+
+    assert "Identifizierte kritische Punkte (mit Details)" in text
+    assert "Port 22" in text
+    assert "OpenSSH" in text
+    assert "CVE-2020-14145" in text

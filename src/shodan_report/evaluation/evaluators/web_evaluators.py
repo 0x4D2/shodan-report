@@ -1,5 +1,6 @@
 from shodan_report.models import Service
 from .base import ServiceEvaluator, ServiceRisk
+from .helpers import create_unencrypted_service_risk
 
 
 class HTTPSEvaluator(ServiceEvaluator):
@@ -13,13 +14,12 @@ class HTTPSEvaluator(ServiceEvaluator):
 
         version_risk = self._check_version_risk(service.version or "")
 
-        return ServiceRisk(
-            risk_score=1 + version_risk,
-            message=f"HTTP ohne Verschlüsselung auf Port {service.port}",
+        return create_unencrypted_service_risk(
+            service=service,
+            base_score=1,
+            version_risk=version_risk,
+            message_prefix="HTTP",
             is_critical=False,
+            recommendations=["Auf HTTPS umstellen", "Automatische Umleitung von HTTP zu HTTPS"],
             should_exclude_from_critical=True,
-            recommendations=[
-                "Auf HTTPS umstellen",
-                "Automatische Umleitung von HTTP zu HTTPS",
-            ],
         )

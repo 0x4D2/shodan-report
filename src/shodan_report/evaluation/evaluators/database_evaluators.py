@@ -1,5 +1,6 @@
 from shodan_report.models import Service
 from .base import ServiceEvaluator, ServiceRisk
+from .helpers import create_unencrypted_service_risk
 
 
 class DatabaseEvaluator(ServiceEvaluator):
@@ -24,14 +25,14 @@ class DatabaseEvaluator(ServiceEvaluator):
         version_info = f" {service.version}" if service.version else ""
         message = f"{product_info}{version_info} öffentlich erreichbar auf Port {service.port}"
 
-        return ServiceRisk(
-            risk_score=self.config.weights.high_risk_services.get(
+        return create_unencrypted_service_risk(
+            service=service,
+            base_score=self.config.weights.high_risk_services.get(
                 "database_unencrypted", 3
-            )
-            + version_risk,
-            message=message,
+            ),
+            version_risk=version_risk,
+            message_prefix=product_info,
             is_critical=True,
-            critical_points=[message],  # ⬅️ WICHTIG: critical_points setzen!
             recommendations=[
                 "Datenbank hinter Firewall/VPN schützen",
                 "IP-Whitelisting verwenden",

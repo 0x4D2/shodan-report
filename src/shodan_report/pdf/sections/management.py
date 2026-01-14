@@ -7,6 +7,7 @@ from reportlab.platypus import Paragraph, Spacer, Table, TableStyle
 from typing import List, Dict, Any, Optional
 from shodan_report.pdf.styles import Theme
 from reportlab.lib.units import mm
+from reportlab.lib.colors import HexColor
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Management-Text & Insights Helpers
@@ -155,7 +156,8 @@ def create_management_section(
     total_ports = len(open_ports) if open_ports else 0
 
     # CVE-Analyse: dedupliziere CVE-IDs aus Evaluation und technischen Daten
-    top_vulns = technical_json.get("vulns", []) or []
+    # support both legacy key 'vulns' and newer 'vulnerabilities'
+    top_vulns = technical_json.get("vulns") or technical_json.get("vulnerabilities") or []
     # evaluation may be dict or object
     eval_cves = []
     if isinstance(evaluation, dict):
@@ -164,47 +166,81 @@ def create_management_section(
         eval_cves = getattr(evaluation, "cves", []) or []
 
     unique_cves = set()
+    # include top-level vulns
     for v in list(top_vulns) + list(eval_cves):
         unique_cves.add(str(v))
 
+    # include per-service vulnerabilities if present
+    try:
+        for svc in technical_json.get("open_ports", []) or []:
+            if isinstance(svc, dict):
+                sv_vulns = svc.get("vulnerabilities") or svc.get("_cves") or svc.get("vulns") or []
+            else:
+                sv_vulns = getattr(svc, "vulnerabilities", []) or getattr(svc, "_cves", []) or getattr(svc, "vulns", []) or []
+            for vv in sv_vulns:
+                unique_cves.add(str(vv))
+    except Exception:
+        pass
+
     cve_count = len(unique_cves)
 
-    # 4a. Erster Absatz: Faktenbasierte Einleitung
+    # 4a. Erster Absatz: Knackige Fakten
     intro_text = f"Auf Basis passiver OSINT-Daten wurden {total_ports} öffentlich erreichbare Dienste identifiziert."
     elements.append(Paragraph(intro_text, styles["normal"]))
     elements.append(Spacer(1, 4))
 
     # 4b. Zweiter Absatz: CVE- und Risiko-Situation
     if cve_count == 0:
-        cve_text = "Aktuell wurden keine kritisch ausnutzbaren Schwachstellen mit bekannter aktiver Exploit-Verfügbarkeit festgestellt."
+        cve_text = "Keine kritisch ausnutzbaren, bekannten Schwachstellen festgestellt."
         elements.append(Paragraph(cve_text, styles["normal"]))
         elements.append(Spacer(1, 4))
     else:
-        # Zeige konkrete, deduplizierte Anzahl
-        cve_text = f"Es wurden {cve_count} Sicherheitslücken identifiziert."
+        cve_text = f"Identifizierte Sicherheitslücken: {cve_count}. Weitere Details im Anhang."
         elements.append(Paragraph(cve_text, styles["normal"]))
         elements.append(Spacer(1, 4))
 
     # 4c. Dritter Absatz: Risiko-Einschätzung und Handlungsempfehlung
     if risk_level == "critical":
-        risk_text = (
-            "Die externe Angriffsfläche weist kritische Sicherheitsprobleme auf. Wir empfehlen sofortige Priorisierung und Incident-Response-Maßnahmen."
-        )
+        risk_text = "Kritische Sicherheitsprobleme identifiziert. Sofortige Priorisierung empfohlen."
     elif risk_level == "high":
-        risk_text = (
-            "Die externe Angriffsfläche zeigt erhöhte Sicherheitsrisiken; zeitnahe, priorisierte Maßnahmen werden empfohlen."
-        )
+        risk_text = "Erhöhte Sicherheitsrisiken erkannt; zeitnahe Maßnahmen empfohlen."
     elif risk_level == "medium":
-        risk_text = (
-            "Die externe Angriffsfläche ist kontrolliert, es bestehen jedoch strukturelle Risiken. Kurzfristige Härtungsmaßnahmen werden empfohlen, kombiniert mit erweitertem Monitoring."
-        )
+        risk_text = "Strukturelle Risiken vorhanden; Härtung und erweitertes Monitoring empfohlen."
     else:  # low
-        risk_text = (
-            "Die externe Angriffsfläche ist überwiegend kontrolliert. Keine akuten Notfallmaßnahmen erforderlich; regelmäßige Überprüfung wird empfohlen."
-        )
+        risk_text = "Angriffsfläche überwiegend kontrolliert; regelmäßige Überprüfung empfohlen."
 
     elements.append(Paragraph(risk_text, styles["normal"]))
     elements.append(Spacer(1, 12))
+    # Optional: kompakte Service-Tabelle für Management (Kurzüberblick)
+    try:
+        service_rows = _build_service_summary(technical_json)
+    except Exception:
+        service_rows = []
+
+    if service_rows:
+        elements.append(Paragraph("Kurzdetail zu betroffenen Diensten:", styles["normal"]))
+        elements.append(Spacer(1, 6))
+
+        table_data = [["Port", "Dienst", "Kurzbefund", "Kurzmaßnahme"]]
+        for port, prod, finding, action in service_rows:
+            table_data.append([str(port), prod or "-", finding, action])
+
+        tbl = Table(table_data, colWidths=[16 * mm, 50 * mm, 70 * mm, 36 * mm])
+        tbl.setStyle(
+            TableStyle(
+                [
+                    ("GRID", (0, 0), (-1, -1), 0.2, (theme.muted if (theme and hasattr(theme, "muted")) else HexColor("#d1d5db"))),
+                    ("BACKGROUND", (0, 0), (-1, 0), HexColor("#f8fafc")),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("FONTSIZE", (0, 0), (-1, -1), 9),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+                ]
+            )
+        )
+
+        elements.append(tbl)
+        elements.append(Spacer(1, 12))
 
     # ──────────────────────────────────────────────────────────────────────────
     # 5. WICHTIGSTE ERKENNTNISSE (PROFESSIONELLE BULLET POINTS)
@@ -244,6 +280,8 @@ def create_management_section(
 
     elements.append(Spacer(1, 12))
 
+    
+
     # ──────────────────────────────────────────────────────────────────────────
     # 6. EMPFEHLUNGEN AUF MANAGEMENT-EBENE
     # ──────────────────────────────────────────────────────────────────────────
@@ -280,6 +318,67 @@ def create_management_section(
             sanitized = _sanitize_critical_point(point)
             elements.append(Paragraph(f"{i}. {sanitized}", styles["normal"]))
             elements.append(Spacer(1, 4))
+
+            # Versuche den kritischen Punkt mit technischen Diensten abzugleichen
+            try:
+                services = (technical_json.get("services") or []) if isinstance(technical_json, dict) else []
+            except Exception:
+                services = []
+
+            matched = []
+            for s in services:
+                try:
+                    port = s.get("port") if isinstance(s, dict) else getattr(s, "port", None)
+                    prod = (s.get("product") if isinstance(s, dict) else getattr(s, "product", "")) or "unknown"
+                    ver = (s.get("version") if isinstance(s, dict) else getattr(s, "version", "")) or ""
+                    banner = (s.get("banner") if isinstance(s, dict) else getattr(s, "banner", "")) or ""
+                    cves = s.get("cves") if isinstance(s, dict) else getattr(s, "cves", [])
+                except Exception:
+                    continue
+
+                pt_lower = (point or "").lower()
+                prod_l = (prod or "").lower()
+
+                if (isinstance(port, int) and str(port) in pt_lower) or any(k in pt_lower for k in [prod_l, "ssh", "rdp", "http", "https", "nginx", "apache", "mysql"]):
+                    matched.append((port, prod, ver, banner, cves))
+
+            if matched:
+                for (port, prod, ver, banner, cves) in matched:
+                    line = f"- Port {port}: {prod} {ver}".strip()
+                    if banner:
+                        line += f"; Banner: {banner}"
+                    if cves:
+                        # normalize cve representations to simple ids
+                        cve_ids = []
+                        for cv in cves:
+                            if isinstance(cv, dict):
+                                cid = cv.get("id") or cv.get("cve")
+                                if cid:
+                                    cve_ids.append(str(cid))
+                                    continue
+                            cid = getattr(cv, "id", None) or getattr(cv, "cve", None)
+                            if cid:
+                                cve_ids.append(str(cid))
+                            else:
+                                cve_ids.append(str(cv))
+                        line += f"; bekannte CVEs: {', '.join(cve_ids)}"
+                    # kurze, prägnante Gegenmaßnahme
+                    prod_l = (prod or "").lower()
+                    if port == 22 or "ssh" in prod_l:
+                        short = "z.B. Fail2Ban, SSH-Keys"
+                    elif port in (80, 8080) or "http" in prod_l:
+                        short = "z.B. HSTS, WAF"
+                    elif port == 443 or "https" in prod_l:
+                        short = "z.B. TLS≥1.2, starke Cipher"
+                    else:
+                        short = "Zugriffsregeln prüfen"
+
+                    line += f"; Empfehlung: Zugangskontrollen und Patching prüfen; Kurz: {short}"
+                    elements.append(Paragraph(line, styles["bullet"]))
+                    elements.append(Spacer(1, 2))
+            else:
+                elements.append(Paragraph("- Keine direkten Service-Details im Snapshot gefunden; technische Bewertung empfohlen.", styles["bullet"]))
+                elements.append(Spacer(1, 2))
 
     elements.append(Spacer(1, 15))
 
@@ -386,6 +485,143 @@ def _generate_fallback_recommendations(
             "Proaktive Überwachung der Angriffsfläche etablieren",
             "Regelmäßige Überprüfung der Sicherheitskonfigurationen",
         ]
+ 
+
+def _build_service_flags(technical_json: Dict[str, Any]) -> List[str]:
+    """
+    Extrahiert kurze, lesbare Flags aus den `technical_json` Services.
+    Die Funktion verwendet einfache Heuristiken basierend auf verfügbaren
+    Feldern wie `services[].port`, `product`, `version`, sowie Top-Level
+    `ssl_info`.
+    """
+    flags: List[str] = []
+    # Support both legacy `services` and new `open_ports` formats
+    services = technical_json.get("services") or []
+    if not services and technical_json.get("open_ports"):
+        services = []
+        for p in technical_json.get("open_ports", []):
+            if isinstance(p, dict):
+                port = p.get("port")
+                product = p.get("service", {}).get("product") if isinstance(p.get("service"), dict) else None
+                version = p.get("service", {}).get("version") if isinstance(p.get("service"), dict) else None
+                banner = p.get("service", {}).get("banner") if isinstance(p.get("service"), dict) else None
+            else:
+                port = getattr(p, "port", None)
+                product = getattr(p, "product", None)
+                version = getattr(p, "version", None)
+                # raw may contain parsed banner info
+                banner = getattr(p, "raw", None)
+
+            services.append({"port": port, "product": product, "version": version, "banner": banner})
+    # top-level ssl presence
+    has_ssl_info = bool(technical_json.get("ssl_info"))
+
+    for svc in services:
+        try:
+            port = svc.get("port") if isinstance(svc, dict) else getattr(svc, "port", None)
+            prod = (svc.get("product") if isinstance(svc, dict) else getattr(svc, "product", "")) or ""
+            ver = (svc.get("version") if isinstance(svc, dict) else getattr(svc, "version", "")) or ""
+            prod_l = prod.lower()
+
+            if port == 22 or "ssh" in prod_l:
+                # SSH: Banner sichtbar -> prüfe Auth/RootLogin/Fail2Ban
+                summary = f"Port {port}: SSH ({prod} {ver.split()[0] if ver else ''}) - Banner sichtbar; prüfen: Passwort-Authentifizierung, Root-Login und Schutzmechanismen"
+                flags.append(summary)
+                continue
+
+            # Prefer TLS/HTTPS note for port 443 regardless of product banner
+            if port == 443 or "https" in prod_l:
+                # HTTPS: TLS Hinweise
+                tls_note = f"Port {port}: HTTPS - Zertifikat/Chain prüfen; HSTS/OCSP prüfen; (ssl_info vorhanden: {'ja' if has_ssl_info else 'nein'})"
+                flags.append(tls_note)
+                continue
+
+            if port in (80, 8080) or "http" in prod_l:
+                # HTTP: Server-Banner / Default-Seite Hinweise
+                note = f"Port {port}: HTTP ({'nginx' if 'nginx' in ver.lower() or 'nginx' in prod_l else prod}) - Server-Banner sichtbar; prüfen: Default-Seiten, Härtung und Sicherheits-Header"
+                flags.append(note)
+                continue
+
+            # Generic fallback for other services
+            if prod:
+                flags.append(f"Port {port}: {prod} — weitere Prüfung empfohlen")
+        except Exception:
+            continue
+
+    # Deduplicate and limit to 6 lines
+    seen = []
+    out = []
+    for f in flags:
+        if f not in seen:
+            seen.append(f)
+            out.append(f)
+        if len(out) >= 6:
+            break
+    return out
+
+
+def _build_service_summary(technical_json: Dict[str, Any]) -> List[tuple]:
+    """
+    Liefert strukturierte, kurze Zusammenfassungszeilen für die Tabelle:
+    (port, product, finding, short_action). Sortiert nach Schweregrad.
+    """
+    services = technical_json.get("services") or []
+    if not services and technical_json.get("open_ports"):
+        services = []
+        for p in technical_json.get("open_ports", []):
+            if isinstance(p, dict):
+                port = p.get("port")
+                product = p.get("service", {}).get("product") if isinstance(p.get("service"), dict) else p.get("product")
+                version = p.get("service", {}).get("version") if isinstance(p.get("service"), dict) else p.get("version")
+            else:
+                port = getattr(p, "port", None)
+                product = getattr(p, "product", None)
+                version = getattr(p, "version", None)
+            services.append({"port": port, "product": product, "version": version})
+
+    # Build candidate rows with a simple severity heuristic
+    rows = []
+    critical_list = technical_json.get("critical_services") or []
+    vuln_list = technical_json.get("vulnerable_versions") or []
+
+    for s in services:
+        try:
+            port = s.get("port") if isinstance(s, dict) else getattr(s, "port", None)
+            prod = (s.get("product") if isinstance(s, dict) else getattr(s, "product", "")) or "-"
+            ver = (s.get("version") if isinstance(s, dict) else getattr(s, "version", "")) or ""
+        except Exception:
+            continue
+
+        prod_l = (prod or "").lower()
+        # Determine finding and short action
+        if port == 22 or "ssh" in prod_l:
+            finding = "SSH Service - Banner sichtbar"
+            action = "Fail2Ban; SSH-Keys"
+        elif port in (80, 8080) or "http" in prod_l:
+            finding = "HTTP Service - Server-Banner / No HSTS"
+            action = "HSTS; WAF"
+        elif port == 443 or "https" in prod_l:
+            finding = "HTTPS Service - Zertifikat/Chain prüfen"
+            action = "TLS>=1.2; starke Cipher"
+        else:
+            finding = "Öffentlicher Dienst"
+            action = "Zugriffsregeln prüfen"
+
+        # severity: 2 = critical, 1 = vulnerable, 0 = info
+        severity = 0
+        for c in critical_list:
+            if c.get("port") == port:
+                severity = max(severity, 2)
+        for v in vuln_list:
+            if v.get("port") == port:
+                severity = max(severity, 1)
+
+        rows.append((severity, port, prod, finding, action))
+
+    # sort by severity desc, then port
+    rows_sorted = sorted(rows, key=lambda x: (-x[0], x[1] or 0))
+    # return tuples without severity
+    return [(r[1], r[2], r[3], r[4]) for r in rows_sorted]
 
 
 # ──────────────────────────────────────────────────────────────────────────────

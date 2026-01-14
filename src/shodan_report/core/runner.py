@@ -114,14 +114,19 @@ def generate_report_pipeline(
         business_risk = prioritize_risk(evaluation_result)
         business_risk_str = str(business_risk).upper()
 
+        # 8. Technischer Anhang (frühzeitig bauen, damit Management-Text
+        # detaillierte Dienst-Flags erzeugen kann)
+        technical_json = build_technical_data(snapshot, prev_snapshot)
+
         # 7. Management Text (HTML Tags entfernen)
         management_text = generate_management_text(
-            business_risk, evaluation_result
-        )  # ← evaluation_result
+            business_risk, evaluation_result, technical_json
+        )  # ← evaluation_result + technical_json
         management_text = re.sub(r"<[^>]+>", "", management_text)
-
-        # 8. Technischer Anhang
-        technical_json = build_technical_data(snapshot, prev_snapshot)
+        if verbose:
+            print("\n--- Management Text (generated) ---\n")
+            print(management_text)
+            print("\n--- End Management Text ---\n")
 
         # 9. PDF erstellen
         if verbose:

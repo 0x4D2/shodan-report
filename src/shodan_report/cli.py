@@ -6,8 +6,6 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from shodan_report.core.runner import generate_report_pipeline
-
 
 def parse_args(args: Optional[list[str]] = None) -> argparse.Namespace:
     """Parse command line arguments."""
@@ -100,6 +98,29 @@ def validate_args(args: argparse.Namespace) -> bool:
     return True
 
 
+def build_pipeline_kwargs(args: argparse.Namespace) -> dict:
+    """Build keyword arguments for `generate_report_pipeline` from parsed args."""
+    return {
+        "customer_name": args.customer,
+        "ip": args.ip,
+        "month": args.month,
+        "compare_month": args.compare,
+        "config_path": args.config,
+        "output_dir": args.output_dir,
+        "archive": not args.no_archive,
+        "verbose": args.verbose,
+    }
+
+
+def run_pipeline_with_args(args: argparse.Namespace) -> dict:
+    """Import and run `generate_report_pipeline` using an args namespace.
+
+    Kept as a small helper to avoid import-time issues and make testing easier.
+    """
+    from shodan_report.core.runner import generate_report_pipeline
+
+    return generate_report_pipeline(**build_pipeline_kwargs(args))
+
 def main() -> int:
     """Main entry point."""
     args = parse_args()
@@ -117,19 +138,7 @@ def main() -> int:
             print(f"Konfiguration: {args.config}")
 
     try:
-        # Import here to avoid circular imports
-        from shodan_report.core.runner import generate_report_pipeline
-
-        result = generate_report_pipeline(
-            customer_name=args.customer,
-            ip=args.ip,
-            month=args.month,
-            compare_month=args.compare,
-            config_path=args.config,
-            output_dir=args.output_dir,
-            archive=not args.no_archive,
-            verbose=args.verbose,
-        )
+        result = run_pipeline_with_args(args)
 
         if result.get("success"):
             if not args.quiet:

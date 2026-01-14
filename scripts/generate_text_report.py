@@ -199,6 +199,27 @@ def generate_text_report(parsed):
     else:
         lines.append('• Keine kritischen Risikopunkte')
 
+    # Wenn keine kritischen Punkte gelistet sind, ergänzen wir kurze,
+    # nachvollziehbare Flags pro Dienst, damit die Aussage "keine kritischen
+    # Risikopunkte" nicht leer wirkt. Diese Flags sind heuristisch aus den
+    # erkannten Services abgeleitet.
+    if not critical_points and services:
+        lines.append('')
+        lines.append('Konkrete Hinweise zu erkannten Diensten:')
+        for s in services:
+            port = s.get('port')
+            prod = s.get('product') or 'unknown'
+            ver = s.get('version') or ''
+            prod_l = (prod or '').lower()
+            if port == 22 or 'ssh' in prod_l:
+                lines.append(f'- Port {port}: SSH ({prod} {ver}) — Banner sichtbar; prüfen: Passwort-Authentifizierung, Root-Login, Schutzmechanismen')
+            elif port == 443 or 'https' in prod_l:
+                lines.append(f'- Port {port}: HTTPS ({prod}) — Zertifikat/Chain prüfen; HSTS/OCSP prüfen; TLS-Version/Cipher-Policy prüfen')
+            elif port in (80, 8080) or 'http' in prod_l:
+                lines.append(f'- Port {port}: HTTP ({prod}) — Default/Welcome-Seite möglich; prüfen: Security-Header, Redirect auf HTTPS')
+            else:
+                lines.append(f'- Port {port}: {prod} — weitere Prüfung empfohlen')
+
     lines.append('')
     lines.append('Empfehlung auf Management-Ebene')
     lines.append('')
