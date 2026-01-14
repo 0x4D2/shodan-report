@@ -17,12 +17,18 @@ from shodan_report.pdf.helpers.management_helpers import (
     generate_priority_insights,
     generate_priority_recommendations,
     _sanitize_critical_point,
+    _generate_fallback_insights,
+    _generate_fallback_recommendations,
+    _build_service_flags,
+    _build_service_summary,
 )
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # PDF Helpers
 # ──────────────────────────────────────────────────────────────────────────────
 from shodan_report.pdf.helpers.pdf_helpers import build_horizontal_exposure_ampel
+from shodan_report.pdf.layout import keep_section, set_table_repeat
 import re
 
 
@@ -100,8 +106,8 @@ def create_management_section(
     # ──────────────────────────────────────────────────────────────────────────
     # 2. ABSCHNITTS-TITEL
     # ──────────────────────────────────────────────────────────────────────────
-    elements.append(Paragraph("1. Management-Zusammenfassung", styles["heading1"]))
-    elements.append(Spacer(1, 12))
+    # Keep section header and the brief spacing together to avoid orphan headings
+    elements.append(keep_section([Paragraph("1. Management-Zusammenfassung", styles["heading1"]), Spacer(1, 12)]))
 
     # ──────────────────────────────────────────────────────────────────────────
     # 3. GESAMTBEWERTUNG & EXPOSURE-LEVEL (PROFESSIONELL)
@@ -124,28 +130,28 @@ def create_management_section(
     # Ampel visualisierung
     ampel = build_horizontal_exposure_ampel(exposure_score, theme=theme)
 
-    elements.append(
-        Table(
+    exp_tbl = Table(
+        [
             [
-                [
-                    Paragraph(
-                        f"<b>Exposure-Level:</b> {exposure_score} von 5 ({exposure_desc})",
-                        styles["exposure"],
-                    ),
-                    ampel,
-                ]
-            ],
-            style=TableStyle(
-                [
-                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                    ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-                    ("TOPPADDING", (0, 0), (-1, -1), 2),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
-                ]
-            ),
-        )
+                Paragraph(
+                    f"<b>Exposure-Level:</b> {exposure_score} von 5 ({exposure_desc})",
+                    styles["exposure"],
+                ),
+                ampel,
+            ]
+        ],
+        style=TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                ("TOPPADDING", (0, 0), (-1, -1), 2),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+            ]
+        ),
     )
+    elements.append(exp_tbl)
     elements.append(Spacer(1, 12))
+    # leave table as top-level element for test visibility
 
     # ──────────────────────────────────────────────────────────────────────────
     # 4. PROFESSIONELLE EINLEITUNGSTEXTE
@@ -238,9 +244,11 @@ def create_management_section(
                 ]
             )
         )
-
+        # repeat header row and keep table together with spacer
+        set_table_repeat(tbl, 1)
         elements.append(tbl)
         elements.append(Spacer(1, 12))
+        # leave table as top-level element for test visibility
 
     # ──────────────────────────────────────────────────────────────────────────
     # 5. WICHTIGSTE ERKENNTNISSE (PROFESSIONELLE BULLET POINTS)
@@ -383,245 +391,7 @@ def create_management_section(
     elements.append(Spacer(1, 15))
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# INTERNE HELPER-FUNKTIONEN (nur für diese Datei)
-# ──────────────────────────────────────────────────────────────────────────────
 
-
-def _generate_fallback_insights(
-    technical_json: Dict[str, Any],
-    risk_level: str,
-    cve_count: int,
-    total_ports: int,
-    critical_points: List[str],
-) -> List[str]:
-    """
-    Generiert Fallback-Insights wenn keine von der Helper-Funktion geliefert werden.
-
-    Returns:
-        Liste mit professionellen Insights
-    """
-    insights = []
-
-    # 1. Port- und Dienst-Informationen
-    if total_ports > 0:
-        insights.append(
-            "Öffentliche Dienste sind konsistent erreichbar und stabil konfiguriert"
-        )
-
-    # 2. CVE-Informationen
-    if cve_count == 0:
-        insights.append(
-            "Keine hochkritischen CVEs (CVSS ≥ 9.0) mit bekannter Exploit-Reife"
-        )
-    elif cve_count < 5:
-        insights.append(f"{cve_count} Sicherheitslücken mit mittlerem bis niedrigem Risiko identifiziert")
-    else:
-        insights.append(f"{cve_count} Sicherheitslücken identifiziert – detaillierte Analyse im Anhang")
-
-    # 3. Struktur- und Konfigurationshinweise
-    structural_risk = False
-    open_ports = technical_json.get("open_ports", []) or []
-    for svc in open_ports:
-        try:
-            if getattr(svc, "version_risk", 0) > 0 or getattr(svc, "_version_risk", 0) > 0:
-                structural_risk = True
-                break
-        except Exception:
-            continue
-
-    if structural_risk:
-        insights.append("TLS-Konfiguration teilweise veraltet oder unvollständig")
-    elif len(open_ports) > 0:
-        insights.append("Einige Dienste zeigen unsichere Konfigurationen, Härtung empfohlen")
-
-    # 4. Monitoring-Empfehlung als Standard
-    insights.append("Regelmäßige externe Sicherheitsscans und Monitoring werden empfohlen")
-
-    return insights[:5]
-
-
-def _generate_fallback_recommendations(
-    risk_level: str, business_risk: str
-) -> List[str]:
-    """
-    Generiert Fallback-Empfehlungen basierend auf Risiko-Level.
-
-    Returns:
-        Liste mit professionellen Empfehlungen
-    """
-
-    business_risk_upper = str(business_risk).upper()
-
-    # Kombiniere Business-Risiko mit Technical-Risiko für Empfehlungen
-    if risk_level == "critical" or business_risk_upper == "CRITICAL":
-        return [
-            "SOFORT: Kritische Dienste isolieren oder Zugriff einschränken",
-            "Innerhalb 24h: Incident Response Team aktivieren und Priorisierungs-Meeting durchführen",
-            "Innerhalb 7 Tagen: Sicherheitsaudit und umfassende Härtungsmaßnahmen",
-            "Mittelfristig: Etablierung eines kontinuierlichen Security-Monitorings",
-        ]
-
-    elif risk_level == "high" or business_risk_upper == "HIGH":
-        return [
-            "Innerhalb 7 Tagen: Detaillierte Sicherheitsanalyse durchführen",
-            "Priorisierte Behebung der identifizierten Sicherheitsprobleme",
-            "Kurzfristig: Härtung kritischer Konfigurationen",
-            "Mittelfristig: Etablierung eines proaktiven Patch-Managements",
-        ]
-
-    elif risk_level == "medium" or business_risk_upper == "MEDIUM":
-        return [
-            "Keine sofortigen Notfallmaßnahmen erforderlich",
-            "Innerhalb 30 Tagen: Geplante Sicherheitsupdates durchführen",
-            "Regelmäßige Schwachstellenscans etablieren",
-            "Security Awareness Training für verantwortliche Teams",
-        ]
-
-    else:  # low
-        return [
-            "Keine sofortigen Maßnahmen erforderlich",
-            "Nächster Wartungszyklus: Geplante Sicherheitsüberprüfung",
-            "Proaktive Überwachung der Angriffsfläche etablieren",
-            "Regelmäßige Überprüfung der Sicherheitskonfigurationen",
-        ]
- 
-
-def _build_service_flags(technical_json: Dict[str, Any]) -> List[str]:
-    """
-    Extrahiert kurze, lesbare Flags aus den `technical_json` Services.
-    Die Funktion verwendet einfache Heuristiken basierend auf verfügbaren
-    Feldern wie `services[].port`, `product`, `version`, sowie Top-Level
-    `ssl_info`.
-    """
-    flags: List[str] = []
-    # Support both legacy `services` and new `open_ports` formats
-    services = technical_json.get("services") or []
-    if not services and technical_json.get("open_ports"):
-        services = []
-        for p in technical_json.get("open_ports", []):
-            if isinstance(p, dict):
-                port = p.get("port")
-                product = p.get("service", {}).get("product") if isinstance(p.get("service"), dict) else None
-                version = p.get("service", {}).get("version") if isinstance(p.get("service"), dict) else None
-                banner = p.get("service", {}).get("banner") if isinstance(p.get("service"), dict) else None
-            else:
-                port = getattr(p, "port", None)
-                product = getattr(p, "product", None)
-                version = getattr(p, "version", None)
-                # raw may contain parsed banner info
-                banner = getattr(p, "raw", None)
-
-            services.append({"port": port, "product": product, "version": version, "banner": banner})
-    # top-level ssl presence
-    has_ssl_info = bool(technical_json.get("ssl_info"))
-
-    for svc in services:
-        try:
-            port = svc.get("port") if isinstance(svc, dict) else getattr(svc, "port", None)
-            prod = (svc.get("product") if isinstance(svc, dict) else getattr(svc, "product", "")) or ""
-            ver = (svc.get("version") if isinstance(svc, dict) else getattr(svc, "version", "")) or ""
-            prod_l = prod.lower()
-
-            if port == 22 or "ssh" in prod_l:
-                # SSH: Banner sichtbar -> prüfe Auth/RootLogin/Fail2Ban
-                summary = f"Port {port}: SSH ({prod} {ver.split()[0] if ver else ''}) - Banner sichtbar; prüfen: Passwort-Authentifizierung, Root-Login und Schutzmechanismen"
-                flags.append(summary)
-                continue
-
-            # Prefer TLS/HTTPS note for port 443 regardless of product banner
-            if port == 443 or "https" in prod_l:
-                # HTTPS: TLS Hinweise
-                tls_note = f"Port {port}: HTTPS - Zertifikat/Chain prüfen; HSTS/OCSP prüfen; (ssl_info vorhanden: {'ja' if has_ssl_info else 'nein'})"
-                flags.append(tls_note)
-                continue
-
-            if port in (80, 8080) or "http" in prod_l:
-                # HTTP: Server-Banner / Default-Seite Hinweise
-                note = f"Port {port}: HTTP ({'nginx' if 'nginx' in ver.lower() or 'nginx' in prod_l else prod}) - Server-Banner sichtbar; prüfen: Default-Seiten, Härtung und Sicherheits-Header"
-                flags.append(note)
-                continue
-
-            # Generic fallback for other services
-            if prod:
-                flags.append(f"Port {port}: {prod} — weitere Prüfung empfohlen")
-        except Exception:
-            continue
-
-    # Deduplicate and limit to 6 lines
-    seen = []
-    out = []
-    for f in flags:
-        if f not in seen:
-            seen.append(f)
-            out.append(f)
-        if len(out) >= 6:
-            break
-    return out
-
-
-def _build_service_summary(technical_json: Dict[str, Any]) -> List[tuple]:
-    """
-    Liefert strukturierte, kurze Zusammenfassungszeilen für die Tabelle:
-    (port, product, finding, short_action). Sortiert nach Schweregrad.
-    """
-    services = technical_json.get("services") or []
-    if not services and technical_json.get("open_ports"):
-        services = []
-        for p in technical_json.get("open_ports", []):
-            if isinstance(p, dict):
-                port = p.get("port")
-                product = p.get("service", {}).get("product") if isinstance(p.get("service"), dict) else p.get("product")
-                version = p.get("service", {}).get("version") if isinstance(p.get("service"), dict) else p.get("version")
-            else:
-                port = getattr(p, "port", None)
-                product = getattr(p, "product", None)
-                version = getattr(p, "version", None)
-            services.append({"port": port, "product": product, "version": version})
-
-    # Build candidate rows with a simple severity heuristic
-    rows = []
-    critical_list = technical_json.get("critical_services") or []
-    vuln_list = technical_json.get("vulnerable_versions") or []
-
-    for s in services:
-        try:
-            port = s.get("port") if isinstance(s, dict) else getattr(s, "port", None)
-            prod = (s.get("product") if isinstance(s, dict) else getattr(s, "product", "")) or "-"
-            ver = (s.get("version") if isinstance(s, dict) else getattr(s, "version", "")) or ""
-        except Exception:
-            continue
-
-        prod_l = (prod or "").lower()
-        # Determine finding and short action
-        if port == 22 or "ssh" in prod_l:
-            finding = "SSH Service - Banner sichtbar"
-            action = "Fail2Ban; SSH-Keys"
-        elif port in (80, 8080) or "http" in prod_l:
-            finding = "HTTP Service - Server-Banner / No HSTS"
-            action = "HSTS; WAF"
-        elif port == 443 or "https" in prod_l:
-            finding = "HTTPS Service - Zertifikat/Chain prüfen"
-            action = "TLS>=1.2; starke Cipher"
-        else:
-            finding = "Öffentlicher Dienst"
-            action = "Zugriffsregeln prüfen"
-
-        # severity: 2 = critical, 1 = vulnerable, 0 = info
-        severity = 0
-        for c in critical_list:
-            if c.get("port") == port:
-                severity = max(severity, 2)
-        for v in vuln_list:
-            if v.get("port") == port:
-                severity = max(severity, 1)
-
-        rows.append((severity, port, prod, finding, action))
-
-    # sort by severity desc, then port
-    rows_sorted = sorted(rows, key=lambda x: (-x[0], x[1] or 0))
-    # return tuples without severity
-    return [(r[1], r[2], r[3], r[4]) for r in rows_sorted]
 
 
 # ──────────────────────────────────────────────────────────────────────────────

@@ -1,6 +1,6 @@
 # src/shodan_report/pdf/pdf_manager.py
 
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Callable
 
 from .styles import create_theme, create_styles
 from .sections.header import _create_header
@@ -25,6 +25,10 @@ def prepare_pdf_elements(
     evaluation: Dict[str, Any],
     business_risk: str,
     config: Optional[Dict[str, Any]] = None,
+    *,
+    compare_month: Optional[str] = None,
+    # Optional dependency-injection points for testability
+    sections: Optional[List[Callable[..., None]]] = None,
 ) -> List:
     # ─────────────────────────────────────────────
     # Config & Theme
@@ -40,9 +44,29 @@ def prepare_pdf_elements(
 
     elements: List = []
 
-    # ─────────────────────────────────────────────
-    # 1. HEADER
-    # ─────────────────────────────────────────────
+    # If a `sections` list was provided, call each section callable in order.
+    # Each callable is expected to accept keyword args including at least
+    # `elements` and `styles`. This allows tests to inject mock sections.
+    if sections is not None:
+        for sec in sections:
+            # Call section with common params; individual sections may ignore extras
+            sec(
+                elements=elements,
+                styles=styles,
+                theme=theme,
+                customer_name=customer_name,
+                month=month,
+                ip=ip,
+                management_text=management_text,
+                trend_text=trend_text,
+                technical_json=technical_json,
+                evaluation=evaluation,
+                business_risk=business_risk,
+                config=config,
+            )
+        return elements
+
+    # Default (legacy) behavior: call built-in section functions in order
     _create_header(
         elements=elements,
         styles=styles,
@@ -53,9 +77,6 @@ def prepare_pdf_elements(
         config=config,
     )
 
-    # ─────────────────────────────────────────────
-    # 2. MANAGEMENT SUMMARY
-    # ─────────────────────────────────────────────
     create_management_section(
         elements=elements,
         styles=styles,
@@ -67,19 +88,17 @@ def prepare_pdf_elements(
         theme=theme,
     )
 
-    # ─────────────────────────────────────────────
-    # 3. TREND ANALYSIS
-    # ─────────────────────────────────────────────
     create_trend_section(
         elements=elements,
         styles=styles,
         trend_text=trend_text,
+        compare_month=compare_month,
         legacy_mode=False,
+        technical_json=technical_json,
+        evaluation=evaluation,
+        theme=theme,
     )
 
-    # ─────────────────────────────────────────────
-    # 4. TECHNICAL DETAILS
-    # ─────────────────────────────────────────────
     create_technical_section(
         elements=elements,
         styles=styles,
@@ -87,9 +106,6 @@ def prepare_pdf_elements(
         config=config,
     )
 
-    # ─────────────────────────────────────────────
-    # 5. CVE OVERVIEW
-    # ─────────────────────────────────────────────
     create_cve_overview_section(
         elements=elements,
         styles=styles,
@@ -97,9 +113,6 @@ def prepare_pdf_elements(
         evaluation=evaluation,
     )
 
-    # ─────────────────────────────────────────────
-    # 6. RECOMMENDATIONS
-    # ─────────────────────────────────────────────
     create_recommendations_section(
         elements=elements,
         styles=styles,
@@ -108,17 +121,11 @@ def prepare_pdf_elements(
         evaluation=evaluation,
     )
 
-    # ─────────────────────────────────────────────
-    # 7. METHODOLOGY
-    # ─────────────────────────────────────────────
     create_methodology_section(
         elements=elements,
         styles=styles,
     )
 
-    # ─────────────────────────────────────────────
-    # 8. CONCLUSION
-    # ─────────────────────────────────────────────
     create_conclusion_section(
         elements=elements,
         styles=styles,
@@ -126,9 +133,6 @@ def prepare_pdf_elements(
         business_risk=business_risk,
     )
 
-    # ─────────────────────────────────────────────
-    # 9. FOOTER
-    # ─────────────────────────────────────────────
     create_footer_section(
         elements=elements,
         styles=styles,

@@ -79,12 +79,7 @@ class TestTrendSection:
             compare_month="November 2023",
         )
 
-        # Suche nach Vergleichs-Tabelle
-        table_content = False
-        for element in mock_elements:
-            if isinstance(element, Paragraph) and hasattr(element, "text"):
-                if "Vormonat" in element.text and "Aktuell" in element.text:
-                    table_content = True
-                    break
+        # Expect a Table to be present for the comparison view
+        from reportlab.platypus import Table
 
-        assert table_content, "Vergleichstabelle sollte vorhanden sein"
+        assert any(isinstance(e, Table) for e in mock_elements), "Vergleichstabelle sollte vorhanden sein"
