@@ -9,15 +9,17 @@ from reportlab.platypus import Spacer, Paragraph
 def create_methodology_section(elements: List, styles: Dict) -> None:
     """
     Erstelle Section mit Methodik und Grenzen der Analyse.
-    
+
     Args:
         elements: Liste der PDF-Elemente
         styles: Dictionary mit PDF-Styles
     """
     elements.append(Spacer(1, 20))
-    elements.append(Paragraph("<b>6. Methodik & Grenzen der Analyse</b>", styles['heading2']))
+    elements.append(
+        Paragraph("<b>6. Methodik & Grenzen der Analyse</b>", styles["heading2"])
+    )
     elements.append(Spacer(1, 12))
-    
+
     methodology_points = [
         "<b>Ausschließlich passive OSINT-Daten:</b>",
         "• Keine aktiven Scans oder Penetrationstests",
@@ -40,25 +42,27 @@ def create_methodology_section(elements: List, styles: Dict) -> None:
         "<b>Zeitlicher Rahmen:</b>",
         "• Momentaufnahme zum Analysezeitpunkt",
         "• Keine Echtzeit-Überwachung",
-        "• Veränderungen nach Erstellung nicht erfasst"
+        "• Veränderungen nach Erstellung nicht erfasst",
     ]
-    
+
     for point in methodology_points:
         if point.startswith("<b>"):
             # Überschrift
-            elements.append(Paragraph(point, styles['normal']))
+            elements.append(Paragraph(point, styles["normal"]))
         elif point.startswith("•"):
             # Bullet Point
-            elements.append(Paragraph(point, styles['bullet']))
+            elements.append(Paragraph(point, styles["bullet"]))
         elif point == "":
             # Leerzeile
             elements.append(Spacer(1, 6))
         else:
             # Normaler Text
-            elements.append(Paragraph(point, styles['normal']))
-    
+            elements.append(Paragraph(point, styles["normal"]))
+
     elements.append(Spacer(1, 8))
-    elements.append(Paragraph(
-        "<i>Diese Analyse ersetzt keinen Penetrationstest oder Sicherheitsaudit.</i>",
-        styles['disclaimer']
-    ))
+    elements.append(
+        Paragraph(
+            "<i>Diese Analyse ersetzt keinen Penetrationstest oder Sicherheitsaudit.</i>",
+            styles["disclaimer"],
+        )
+    )

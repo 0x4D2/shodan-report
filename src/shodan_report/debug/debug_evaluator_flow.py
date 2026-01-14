@@ -3,10 +3,10 @@ from shodan_report.evaluation.evaluators.cve_evaluator import CVEEvaluator
 
 # Mock-Konfiguration erstellen
 mock_config = {
-    'cve_scoring': {
-        'critical_threshold': 9.0,
-        'high_threshold': 7.0,
-        'medium_threshold': 4.0
+    "cve_scoring": {
+        "critical_threshold": 9.0,
+        "high_threshold": 7.0,
+        "medium_threshold": 4.0,
     }
 }
 
@@ -19,11 +19,7 @@ evaluator = CVEEvaluator(mock_config)
 # Erstelle 88 Test-CVEs
 test_cves = [f"CVE-2025-{50000 + i}" for i in range(88)]
 
-test_data = {
-    "cves": test_cves,
-    "service": "mysql",
-    "port": 3306
-}
+test_data = {"cves": test_cves, "service": "mysql", "port": 3306}
 
 print(f"Test mit {len(test_cves)} CVEs")
 
@@ -39,11 +35,11 @@ print("\n🔍 INTERNE METHODEN:")
 print(f"  _calculate_cve_risk_score wurde aufgerufen: {'score' in result}")
 
 # 4. Manuell _generate_critical_points prüfen
-if result.get('score', 0) >= 4:
+if result.get("score", 0) >= 4:
     print(f"\n🎯 Score >= 4: {result['score']}")
     try:
         # Verwende Reflektion um private Methode aufzurufen
-        points = evaluator._generate_critical_points(test_data, result['score'])
+        points = evaluator._generate_critical_points(test_data, result["score"])
         print(f"  Generierte Points: {points}")
     except Exception as e:
         print(f"  Fehler bei _generate_critical_points: {e}")

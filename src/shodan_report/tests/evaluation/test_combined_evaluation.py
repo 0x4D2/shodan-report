@@ -11,8 +11,8 @@ test_service = Service(
     version="5.7.33",
     vulnerabilities=[
         {"id": "CVE-2023-12345", "cvss": 9.8},
-        {"id": "CVE-2023-56789", "cvss": 8.5}
-    ]
+        {"id": "CVE-2023-56789", "cvss": 8.5},
+    ],
 )
 
 config = EvaluationConfig()

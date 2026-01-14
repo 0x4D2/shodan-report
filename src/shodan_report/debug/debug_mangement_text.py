@@ -10,14 +10,11 @@ result1 = EvaluationResult(
     ip="217.154.224.104",
     risk=RiskLevel.CRITICAL,
     exposure_score=5,
-    critical_points=["MySQL auf Port 3306", "SSH ohne Authentifizierung"]
+    critical_points=["MySQL auf Port 3306", "SSH ohne Authentifizierung"],
 )
 
 result2 = EvaluationResult(
-    ip="111.170.152.60", 
-    risk=RiskLevel.LOW,
-    exposure_score=2,
-    critical_points=[]
+    ip="111.170.152.60", risk=RiskLevel.LOW, exposure_score=2, critical_points=[]
 )
 
 print("✓ EvaluationResult Instanzen erstellt")

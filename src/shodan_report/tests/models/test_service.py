@@ -12,9 +12,9 @@ class TestService:
             transport="tcp",
             product="nginx",
             version="1.18.0",
-            raw={"port": 80, "product": "nginx"}
+            raw={"port": 80, "product": "nginx"},
         )
-        
+
         assert service.port == 80
         assert service.transport == "tcp"
         assert service.product == "nginx"
@@ -25,10 +25,10 @@ class TestService:
         """Testet Service-Erstellung mit optionalen None-Feldern."""
         service = Service(
             port=443,
-            transport="tcp"
+            transport="tcp",
             # Keine optionalen Felder
         )
-        
+
         assert service.port == 443
         assert service.transport == "tcp"
         assert service.product is None
@@ -40,7 +40,7 @@ class TestService:
     def test_security_flags_default_false(self):
         """Testet, dass Sicherheits-Flags standardmäßig False sind."""
         service = Service(port=22, transport="tcp")
-        
+
         assert service.is_encrypted is False
         assert service.requires_auth is False
         assert service.vpn_protected is False
@@ -52,36 +52,32 @@ class TestService:
         ssl_info = {
             "protocol": "TLSv1.3",
             "cipher": "AES256-GCM-SHA384",
-            "cert": {"issuer": "Let's Encrypt"}
+            "cert": {"issuer": "Let's Encrypt"},
         }
-        
+
         service = Service(
             port=443,
             transport="tcp",
             product="Apache",
             ssl_info=ssl_info,
-            is_encrypted=True
+            is_encrypted=True,
         )
-        
+
         assert service.ssl_info == ssl_info
         assert service.is_encrypted is True
 
     def test_service_with_ssh_info(self):
         """Testet Service mit SSH-Informationen."""
-        ssh_info = {
-            "version": "OpenSSH_8.2p1",
-            "key_type": "ssh-rsa",
-            "key_bits": 2048
-        }
-        
+        ssh_info = {"version": "OpenSSH_8.2p1", "key_type": "ssh-rsa", "key_bits": 2048}
+
         service = Service(
             port=22,
             transport="tcp",
             product="OpenSSH",
             ssh_info=ssh_info,
-            requires_auth=True
+            requires_auth=True,
         )
-        
+
         assert service.ssh_info == ssh_info
         assert service.requires_auth is True
 
@@ -93,9 +89,9 @@ class TestService:
             product="Windows RDP",
             vpn_protected=True,
             tunneled=True,
-            cert_required=True
+            cert_required=True,
         )
-        
+
         assert service.vpn_protected is True
         assert service.tunneled is True
         assert service.cert_required is True
@@ -106,14 +102,14 @@ class TestService:
             "port": 8080,
             "product": "Tomcat",
             "version": "9.0.50",
-            "extra": {"java": "11.0.12"}
+            "extra": {"java": "11.0.12"},
         }
-        
+
         service = Service(port=8080, transport="tcp", raw=raw_data)
-        
+
         # Ändere das originale dict
         raw_data["modified"] = True
-        
+
         # In Python wird das dict per Referenz gespeichert
         # Das ist das erwartete Verhalten für mutable objects
         assert "modified" in service.raw
@@ -124,20 +120,15 @@ class TestService:
         service1 = Service(port=80, transport="tcp", product="nginx")
         service2 = Service(port=80, transport="tcp", product="nginx")
         service3 = Service(port=443, transport="tcp", product="nginx")
-        
+
         # Dataclasses implementieren __eq__ basierend auf Attributen
         assert service1 == service2
         assert service1 != service3
 
     def test_service_string_representation(self):
         """Testet die String-Repräsentation."""
-        service = Service(
-            port=3306,
-            transport="tcp",
-            product="MySQL",
-            version="8.0.26"
-        )
-        
+        service = Service(port=3306, transport="tcp", product="MySQL", version="8.0.26")
+
         str_repr = str(service)
         assert "3306" in str_repr
         assert "tcp" in str_repr
@@ -152,13 +143,13 @@ class TestService:
             (443, "tcp"),
             (22, "tcp"),
             (53, "udp"),
-            (-1, "tcp"),      # Ungültiger Port, wird aber akzeptiert
-            (65536, "tcp"),   # Port zu hoch, wird aber akzeptiert
-            (80, "icmp"),     # Ungültiges Protokoll, wird aber akzeptiert
-            (None, "tcp"),    # Port None, wird aber akzeptiert
-            (80, None),       # Transport None, wird aber akzeptiert
+            (-1, "tcp"),  # Ungültiger Port, wird aber akzeptiert
+            (65536, "tcp"),  # Port zu hoch, wird aber akzeptiert
+            (80, "icmp"),  # Ungültiges Protokoll, wird aber akzeptiert
+            (None, "tcp"),  # Port None, wird aber akzeptiert
+            (80, None),  # Transport None, wird aber akzeptiert
         ]
-        
+
         for port, transport in test_cases:
             service = Service(port=port, transport=transport)
             assert service.port == port
@@ -184,10 +175,10 @@ class TestService:
                 "service": "https",
                 "product": "Apache Tomcat",
                 "version": "9.0.50",
-                "ssl": {"protocol": "TLSv1.2"}
-            }
+                "ssl": {"protocol": "TLSv1.2"},
+            },
         )
-        
+
         # Teste alle Attribute
         assert service.port == 8443
         assert service.transport == "tcp"

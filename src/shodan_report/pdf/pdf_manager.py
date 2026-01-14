@@ -64,6 +64,7 @@ def prepare_pdf_elements(
         evaluation=evaluation,
         business_risk=business_risk,
         config=config,
+        theme=theme,
     )
 
     # ─────────────────────────────────────────────
@@ -132,6 +133,5 @@ def prepare_pdf_elements(
         elements=elements,
         styles=styles,
     )
-    
 
     return elements

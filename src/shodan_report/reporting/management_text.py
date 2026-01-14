@@ -7,10 +7,10 @@ def generate_management_text(
     evaluation: EvaluationResult,
 ) -> str:
     # Sicherstellen, dass critical_points existiert und iterierbar ist
-    critical_points = getattr(evaluation, 'critical_points', [])
+    critical_points = getattr(evaluation, "critical_points", [])
     if critical_points is None:
         critical_points = []
-    
+
     critical_points_text = ""
     if critical_points:
         # Liste alle kritischen Punkte vollständig auf (Tests erwarten vollständige Aufzählung)
@@ -18,13 +18,16 @@ def generate_management_text(
             f"- {pt}" for pt in critical_points
         )
 
-
     print(f"DEBUG - EvaluationResult Type: {type(evaluation)}")
     print(f"DEBUG - Has critical_points: {hasattr(evaluation, 'critical_points')}")
-    print(f"DEBUG - critical_points: {evaluation.critical_points if hasattr(evaluation, 'critical_points') else 'N/A'}")
-    print(f"DEBUG - critical_points count: {len(evaluation.critical_points) if hasattr(evaluation, 'critical_points') else 0}")
+    print(
+        f"DEBUG - critical_points: {evaluation.critical_points if hasattr(evaluation, 'critical_points') else 'N/A'}"
+    )
+    print(
+        f"DEBUG - critical_points count: {len(evaluation.critical_points) if hasattr(evaluation, 'critical_points') else 0}"
+    )
     # Texte nach Risiko
-    
+
     if business_risk == BusinessRisk.MONITOR:
         return (
             f"Gesamteinschätzung:\n"

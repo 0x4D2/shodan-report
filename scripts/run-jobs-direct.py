@@ -57,7 +57,7 @@ for i, line in enumerate(jobs, 1):
         ip=ip,
         month=month,
         config_path=config_path,  
-        archive=True,
+        archive=False,
         compare_month=None,
         verbose=False
     )

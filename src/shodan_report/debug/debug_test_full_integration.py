@@ -15,17 +15,12 @@ test_data = {
             "version": "5.7.33",
             "vulns": [
                 {"id": "CVE-2023-12345", "cvss": 9.8},
-                {"id": "CVE-2023-56789", "cvss": 8.5}
-            ]
+                {"id": "CVE-2023-56789", "cvss": 8.5},
+            ],
         },
-        {
-            "port": 22,
-            "transport": "tcp", 
-            "product": "OpenSSH",
-            "version": "7.6p1"
-        }
+        {"port": 22, "transport": "tcp", "product": "OpenSSH", "version": "7.6p1"},
     ],
-    "open_ports": [3306, 22]
+    "open_ports": [3306, 22],
 }
 
 print("1. Test mit MySQL 5.7.33 (kritische CVEs + EOL):")

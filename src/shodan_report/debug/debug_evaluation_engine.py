@@ -15,11 +15,11 @@ test_data = {
             "version": "5.7.33",
             "vulns": [
                 {"id": "CVE-2023-12345", "cvss": 9.8},
-                {"id": "CVE-2023-56789", "cvss": 8.5}
-            ]
+                {"id": "CVE-2023-56789", "cvss": 8.5},
+            ],
         }
     ],
-    "open_ports": [3306]
+    "open_ports": [3306],
 }
 
 print("=== TEST: Evaluation Engine mit CVEs und EOL ===")
@@ -35,7 +35,7 @@ print(f"Port: {service.port}")
 print(f"Product: {service.product}")
 print(f"Version: {service.version}")
 print(f"Has vulnerabilities: {hasattr(service, 'vulnerabilities')}")
-if hasattr(service, 'vulnerabilities'):
+if hasattr(service, "vulnerabilities"):
     print(f"Number of vulnerabilities: {len(service.vulnerabilities)}")
 
 # Nutze Evaluation Engine
@@ -62,7 +62,7 @@ else:
     print(f"\n❌ PROBLEM: MySQL sollte 'critical' sein, ist aber '{result.risk.value}'")
     print(f"   Critical points vorhanden: {len(result.critical_points)}")
     print(f"   Exposure score: {result.exposure_score}/5")
-    
+
     # Debug: Zeige was in critical_points ist
     print(f"\n   Critical points Inhalt:")
     for i, point in enumerate(result.critical_points):
@@ -79,7 +79,7 @@ risk = registry.evaluate_service(service)
 
 print(f"Registry risk score: {risk.risk_score}")
 print(f"Registry has critical_points: {hasattr(risk, 'critical_points')}")
-if hasattr(risk, 'critical_points'):
+if hasattr(risk, "critical_points"):
     print(f"Registry critical_points count: {len(risk.critical_points)}")
     for i, point in enumerate(risk.critical_points):
         print(f"  {i+1}. {point}")

@@ -5,11 +5,12 @@ from reportlab.platypus import Image, Spacer
 import os
 from reportlab.lib.units import cm
 
+
 # ──────────────
 # Report-ID
 # ──────────────
 def generate_compact_report_id(customer_name: str, month: str, ip: str) -> str:
-   # Format: <Kunde3><YYMM><IP3><DD>
+    # Format: <Kunde3><YYMM><IP3><DD>
     clean_name = re.sub(r"[^A-Za-z]", "", customer_name)
     customer_code = clean_name[:3].upper() if clean_name else "CST"
 

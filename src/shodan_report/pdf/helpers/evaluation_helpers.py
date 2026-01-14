@@ -1,6 +1,7 @@
 from typing import List
 import math
 
+
 def is_service_secure(service, secure_indicators: List[str]) -> bool:
     """Bestimmt, ob ein Service als sicher gilt.
 
@@ -12,28 +13,36 @@ def is_service_secure(service, secure_indicators: List[str]) -> bool:
     - Ansonsten: unsicher.
     """
     # SSL / Encryption short-circuit
-    if getattr(service, 'ssl_info', None):
+    if getattr(service, "ssl_info", None):
         return True
-    if getattr(service, 'is_encrypted', False):
+    if getattr(service, "is_encrypted", False):
         return True
 
     # Admin services (SSH/RDP) need stricter checks: require VPN/Tunnel/Cert or encryption
-    port = getattr(service, 'port', None)
+    port = getattr(service, "port", None)
     if port in (22, 3389):
-        if getattr(service, 'vpn_protected', False) or getattr(service, 'tunneled', False) or getattr(service, 'cert_required', False) or getattr(service, 'is_encrypted', False):
+        if (
+            getattr(service, "vpn_protected", False)
+            or getattr(service, "tunneled", False)
+            or getattr(service, "cert_required", False)
+            or getattr(service, "is_encrypted", False)
+        ):
             # still consider version risk
-            if getattr(service, '_version_risk', 0) > 0 or getattr(service, 'version_risk', 0) > 0:
+            if (
+                getattr(service, "_version_risk", 0) > 0
+                or getattr(service, "version_risk", 0) > 0
+            ):
                 return False
             return True
         return False
 
     # Version risk makes service insecure
-    if getattr(service, '_version_risk', 0) and service._version_risk > 0:
+    if getattr(service, "_version_risk", 0) and service._version_risk > 0:
         return False
-    if getattr(service, 'version_risk', 0) and getattr(service, 'version_risk', 0) > 0:
+    if getattr(service, "version_risk", 0) and getattr(service, "version_risk", 0) > 0:
         return False
 
-    product = (getattr(service, 'product', '') or '').lower()
+    product = (getattr(service, "product", "") or "").lower()
 
     # If product contains any secure indicator -> secure
     for ind in secure_indicators:
@@ -44,7 +53,9 @@ def is_service_secure(service, secure_indicators: List[str]) -> bool:
     return False
 
 
-def calculate_exposure_level(risk: str, critical_points_count: int, open_ports: List[object]) -> int:
+def calculate_exposure_level(
+    risk: str, critical_points_count: int, open_ports: List[object]
+) -> int:
     """Berechnet das Exposure-Level (1-5) basierend auf einfachen Heuristiken.
 
     Implementierung ist abgestimmt auf bestehende Tests:

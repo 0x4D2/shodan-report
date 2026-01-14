@@ -14,11 +14,11 @@ test_data = {
             "version": "5.7.33",
             "vulns": [
                 {"id": "CVE-2023-12345", "cvss": 9.8},
-                {"id": "CVE-2023-56789", "cvss": 8.5}
-            ]
+                {"id": "CVE-2023-56789", "cvss": 8.5},
+            ],
         }
     ],
-    "open_ports": [3306]
+    "open_ports": [3306],
 }
 
 print("=== TEST: Intelligente Evaluation Engine ===")

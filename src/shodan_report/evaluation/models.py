@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from typing import List, Optional
 from .risk_level import RiskLevel
 
+
 @dataclass
 class ServiceRisk:
     risk_score: int = 0
@@ -9,6 +10,7 @@ class ServiceRisk:
     is_critical: bool = False
     recommendations: List[str] = field(default_factory=list)
     should_exclude_from_critical: bool = False
+
 
 @dataclass
 class EvaluationResult:
@@ -24,11 +26,16 @@ class EvaluationResult:
     insecure_services: int = 0
 
     # ================== NEU: Konstruktor-freundlich ==================
-    def __init__(self, ip: str, risk: RiskLevel, exposure_score: int,
-                 critical_points: Optional[List[str]] = None,
-                 recommendations: Optional[List[str]] = None,
-                 total_services: int = 0,
-                 insecure_services: int = 0):
+    def __init__(
+        self,
+        ip: str,
+        risk: RiskLevel,
+        exposure_score: int,
+        critical_points: Optional[List[str]] = None,
+        recommendations: Optional[List[str]] = None,
+        total_services: int = 0,
+        insecure_services: int = 0,
+    ):
         self.ip = ip
         self.risk = risk
         self.exposure_score = exposure_score
@@ -36,6 +43,7 @@ class EvaluationResult:
         self.recommendations = recommendations or []
         self.total_services = total_services
         self.insecure_services = insecure_services
+
     # ================================================================
 
     @property
@@ -47,6 +55,5 @@ class EvaluationResult:
 
     def _is_recommendation(self, point: str) -> bool:
         return any(
-            k in point.lower()
-            for k in ["empfohlen", "empfehlung", "sollte", "könnte"]
+            k in point.lower() for k in ["empfohlen", "empfehlung", "sollte", "könnte"]
         )

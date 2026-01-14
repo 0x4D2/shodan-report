@@ -34,7 +34,9 @@ from shodan_report.evaluation.evaluation import Evaluation, RiskLevel
 def test_generate_management_text_variants(
     business_risk, eval_risk, critical_points, expected_phrases, header_expected
 ):
-    evaluation = Evaluation(ip="1.2.3.4", risk=eval_risk, critical_points=critical_points)
+    evaluation = Evaluation(
+        ip="1.2.3.4", risk=eval_risk, critical_points=critical_points
+    )
     text = generate_management_text(business_risk, evaluation)
 
     for phrase in expected_phrases:
@@ -58,13 +60,15 @@ def test_business_risk_parameter_takes_precedence():
 
 def test_many_critical_points_are_listed():
     critical_points = [f"Problem {i}" for i in range(1, 21)]
-    evaluation = Evaluation(ip="3.3.3.3", risk=RiskLevel.HIGH, critical_points=critical_points)
+    evaluation = Evaluation(
+        ip="3.3.3.3", risk=RiskLevel.HIGH, critical_points=critical_points
+    )
     text = generate_management_text(BusinessRisk.CRITICAL, evaluation)
 
     assert "Identifizierte kritische Punkte" in text
     found = sum(1 for pt in critical_points if f"- {pt}" in text)
     assert found == len(critical_points)
-    
+
 
 def test_handles_empty_critical_points():
     evaluation = Evaluation(ip="10.10.10.10", risk=RiskLevel.HIGH, critical_points=[])

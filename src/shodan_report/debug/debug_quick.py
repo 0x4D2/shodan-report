@@ -7,8 +7,10 @@ print("=== QUICK SANITY CHECK ===")
 # Minimaler Test
 test_minimal = {
     "ip_str": "test",
-    "data": [{"port": 3306, "transport": "tcp", "product": "MySQL", "version": "5.7.33"}],
-    "open_ports": [3306]
+    "data": [
+        {"port": 3306, "transport": "tcp", "product": "MySQL", "version": "5.7.33"}
+    ],
+    "open_ports": [3306],
 }
 
 snapshot = parse_shodan_host(test_minimal)

@@ -2,6 +2,7 @@ from .asset_snapshot import AssetSnapshot
 from .service import Service
 from datetime import datetime
 
+
 def snapshot_to_dict(snapshot: AssetSnapshot) -> dict:
     return {
         "ip": snapshot.ip,
@@ -20,9 +21,12 @@ def snapshot_to_dict(snapshot: AssetSnapshot) -> dict:
                 "version": s.version,
                 "ssl_info": s.ssl_info,
                 "ssh_info": s.ssh_info,
-            } for s in snapshot.services
+            }
+            for s in snapshot.services
         ],
-        "last_update": snapshot.last_update.isoformat() if snapshot.last_update else None,
+        "last_update": (
+            snapshot.last_update.isoformat() if snapshot.last_update else None
+        ),
         "open_ports": snapshot.open_ports,
         "raw_banner": snapshot.raw_banner,
     }

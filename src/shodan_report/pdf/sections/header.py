@@ -33,8 +33,7 @@ def create_header_section(
         Paragraph(
             f"<b>SICHERHEITSREPORT</b><br/>{customer_name}",
             styles["title"].clone(
-                'title_theme',
-                textColor=theme.primary  # Theme Farbe nutzen
+                "title_theme", textColor=theme.primary  # Theme Farbe nutzen
             ),
         )
     )
@@ -60,10 +59,7 @@ def create_header_section(
             f"<b>Scan:</b> {month_formatted} &nbsp;&nbsp;|&nbsp;&nbsp; "
             f"<b>Assets:</b> {assets_text} &nbsp;&nbsp;|&nbsp;&nbsp; "
             f"<b>Report-ID:</b> {report_id}",
-            styles["meta"].clone(
-                'meta_theme',
-                textColor=theme.secondary
-            ),
+            styles["meta"].clone("meta_theme", textColor=theme.secondary),
         )
     )
 
@@ -75,10 +71,7 @@ def create_header_section(
     elements.append(
         Paragraph(
             "<hr width='80%'/>",
-            styles["normal"].clone(
-                'hr_theme',
-                textColor=theme.muted
-            ),
+            styles["normal"].clone("hr_theme", textColor=theme.muted),
         )
     )
 

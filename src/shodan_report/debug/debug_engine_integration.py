@@ -13,7 +13,7 @@ test_service = {
     "cves": ["CVE-2025-50000", "CVE-2025-50001", ...],  # deine 88 CVEs
     "port": 3306,
     "is_public": True,
-    "transport": "tcp"
+    "transport": "tcp",
 }
 
 print("1. Prüfe welche Evaluatoren aktiviert werden:")
@@ -27,8 +27,8 @@ print(f"   Evaluator-Ergebnisse: {len(results['evaluator_results'])}")
 
 print("\n3. Critical Points sammeln:")
 all_points = []
-for eval_result in results['evaluator_results']:
-    points = eval_result.get('critical_points', [])
+for eval_result in results["evaluator_results"]:
+    points = eval_result.get("critical_points", [])
     if points:
         print(f"   - {eval_result['evaluator_name']}: {points}")
         all_points.extend(points)

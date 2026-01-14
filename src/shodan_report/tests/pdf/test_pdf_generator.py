@@ -3,7 +3,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 from shodan_report.pdf import pdf_generator
 from shodan_report.pdf.pdf_generator import generate_pdf
-from shodan_report.evaluation.evaluation import Evaluation, RiskLevel  
+from shodan_report.evaluation.evaluation import Evaluation, RiskLevel
 
 
 def test_generate_pdf_calls_renderer_and_returns_path(tmp_path, monkeypatch):
@@ -13,12 +13,8 @@ def test_generate_pdf_calls_renderer_and_returns_path(tmp_path, monkeypatch):
     mgmt = "management text"
     trend = "trend text"
     technical = {"open_ports": []}
-    
-    mock_evaluation = Evaluation(
-        ip=ip,
-        risk=RiskLevel.MEDIUM,
-        critical_points=[]
-    )
+
+    mock_evaluation = Evaluation(ip=ip, risk=RiskLevel.MEDIUM, critical_points=[])
     mock_business_risk = "medium"
 
     elements = [{"type": "header", "text": "Acme"}]
@@ -35,9 +31,9 @@ def test_generate_pdf_calls_renderer_and_returns_path(tmp_path, monkeypatch):
         management_text=mgmt,
         trend_text=trend,
         technical_json=technical,
-        evaluation=mock_evaluation,      
+        evaluation=mock_evaluation,
         business_risk=mock_business_risk,
-        output_dir=tmp_path / "reports"
+        output_dir=tmp_path / "reports",
     )
 
     expected_dir = tmp_path / "reports" / customer.replace(" ", "_")
@@ -48,8 +44,13 @@ def test_generate_pdf_calls_renderer_and_returns_path(tmp_path, monkeypatch):
     assert result_path == expected_path
 
     prepare_mock.assert_called_once_with(
-        customer, month, ip, mgmt, trend, technical, 
-        mock_evaluation,   
-        mock_business_risk, 
-        {}
+        customer,
+        month,
+        ip,
+        mgmt,
+        trend,
+        technical,
+        mock_evaluation,
+        mock_business_risk,
+        {},
     )

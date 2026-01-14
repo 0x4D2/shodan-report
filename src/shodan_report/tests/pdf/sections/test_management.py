@@ -8,8 +8,11 @@ from shodan_report.pdf.sections.management import create_management_section
 from shodan_report.models import Service
 from shodan_report.evaluation import Evaluation
 
+
 # Dummy-Helfer, falls nicht verfügbar
-def make_service(port, product="TestProduct", vpn=False, tunneled=False, cert=False, ssl_info=None):
+def make_service(
+    port, product="TestProduct", vpn=False, tunneled=False, cert=False, ssl_info=None
+):
     return Service(
         port=port,
         transport="tcp",
@@ -18,8 +21,9 @@ def make_service(port, product="TestProduct", vpn=False, tunneled=False, cert=Fa
         vpn_protected=vpn,
         tunneled=tunneled,
         cert_required=cert,
-        raw={}
+        raw={},
     )
+
 
 class TestManagementSection:
 
@@ -27,7 +31,7 @@ class TestManagementSection:
     def styles(self):
         theme = create_theme("#1a365d", "#2d3748")
         return create_styles(theme)
-    
+
     # ────────────────────────────────
     # 1. Grundlegende Erstellung
     # ────────────────────────────────
@@ -37,7 +41,7 @@ class TestManagementSection:
         technical_json = {
             "open_ports": [
                 {"port": 22, "product": "OpenSSH"},
-                {"port": 80, "product": "nginx"}
+                {"port": 80, "product": "nginx"},
             ]
         }
 
@@ -47,7 +51,7 @@ class TestManagementSection:
             management_text="Externe Angriffsfläche stabil.",
             technical_json=technical_json,
             evaluation=evaluation,
-            business_risk="LOW"
+            business_risk="LOW",
         )
 
         assert len(elements) > 0
@@ -68,12 +72,11 @@ class TestManagementSection:
             management_text="",
             technical_json=technical_json,
             evaluation=evaluation,
-            business_risk="LOW"
+            business_risk="LOW",
         )
 
         assert len(elements) > 0
         assert any(isinstance(e, (Paragraph, Table)) for e in elements)
-
 
     # ────────────────────────────────
     # 3. Kritische CVEs & strukturelle Risiken
@@ -95,7 +98,7 @@ class TestManagementSection:
             management_text="",
             technical_json={"open_ports": services},
             evaluation=evaluation,
-            business_risk="HIGH"
+            business_risk="HIGH",
         )
 
         # Prüfen, dass strukturelle Risiken erkannt wurden
@@ -111,14 +114,10 @@ class TestManagementSection:
         technical_json = {
             "open_ports": [
                 {"port": 22, "product": "OpenSSH"},
-                {"port": 80, "product": "nginx"}
+                {"port": 80, "product": "nginx"},
             ]
         }
-        evaluation = Evaluation(
-            ip="192.168.1.1",
-            risk="LOW",
-            critical_points=[]
-        )
+        evaluation = Evaluation(ip="192.168.1.1", risk="LOW", critical_points=[])
         business_risk = "LOW"
 
         create_management_section(
@@ -128,7 +127,7 @@ class TestManagementSection:
             technical_json=technical_json,
             evaluation=evaluation,
             business_risk=business_risk,
-            config={}
+            config={},
         )
 
         assert len(elements) > 0
@@ -149,10 +148,12 @@ class TestManagementSection:
             management_text="Test Insights",
             technical_json=technical_json,
             evaluation=evaluation,
-            business_risk="MEDIUM"
+            business_risk="MEDIUM",
         )
 
-        bullets = [e for e in elements if isinstance(e, Paragraph) and e.style.name == "Bullet"]
+        bullets = [
+            e for e in elements if isinstance(e, Paragraph) and e.style.name == "Bullet"
+        ]
         assert len(bullets) > 0  # Es gibt Insights & Empfehlungen
         # Optional: Max 4 Insights, max 3 Empfehlungen? → abhängig von generate_priority_*
         # Wenn die Helper limitiert sind, könnte man das hier prüfen
@@ -171,11 +172,11 @@ class TestManagementSection:
             management_text="Test dict evaluation",
             technical_json=technical_json,
             evaluation=evaluation_dict,
-            business_risk="LOW"
+            business_risk="LOW",
         )
 
         assert len(elements) > 0
-    
+
     # ────────────────────────────────
     # 6. VPN, Tunnel, cert_flags
     # ────────────────────────────────
@@ -184,7 +185,9 @@ class TestManagementSection:
         evaluation = Evaluation(ip="5.6.7.8", risk="MEDIUM", critical_points=[])
         services = [
             make_service(22, vpn=True),
-            make_service(443, tunneled=True, ssl_info={"protocol": "TLSv1.3"}, cert=True)
+            make_service(
+                443, tunneled=True, ssl_info={"protocol": "TLSv1.3"}, cert=True
+            ),
         ]
         technical_json = {"open_ports": [s.raw for s in services]}
 
@@ -194,10 +197,12 @@ class TestManagementSection:
             management_text="Test Flags",
             technical_json=technical_json,
             evaluation=evaluation,
-            business_risk="MEDIUM"
+            business_risk="MEDIUM",
         )
 
-        paragraph_texts = [str(e.getPlainText()) for e in elements if isinstance(e, Paragraph)]
+        paragraph_texts = [
+            str(e.getPlainText()) for e in elements if isinstance(e, Paragraph)
+        ]
         assert any("Dienste identifiziert" in t for t in paragraph_texts)
 
     def test_management_section_with_realistic_services(self):
@@ -211,13 +216,11 @@ class TestManagementSection:
             "open_ports": [
                 {"port": 22, "product": "OpenSSH"},
                 {"port": 80, "product": "nginx", "ssl_info": None},
-                {"port": 443, "product": "nginx", "ssl_info": {"protocol": "TLSv1.3"}}
+                {"port": 443, "product": "nginx", "ssl_info": {"protocol": "TLSv1.3"}},
             ]
         }
         evaluation = Evaluation(
-            ip="10.0.0.1",
-            risk="MEDIUM",
-            critical_points=["SSH auf Port 22 öffentlich"]
+            ip="10.0.0.1", risk="MEDIUM", critical_points=["SSH auf Port 22 öffentlich"]
         )
         business_risk = "MEDIUM"
 
@@ -228,7 +231,7 @@ class TestManagementSection:
             technical_json=technical_json,
             evaluation=evaluation,
             business_risk=business_risk,
-            config={}
+            config={},
         )
 
         assert any(isinstance(e, Paragraph) for e in elements)
@@ -244,11 +247,7 @@ class TestManagementSection:
 
         management_text = "Keine offenen Dienste."
         technical_json = {}
-        evaluation = Evaluation(
-            ip="10.0.0.1",
-            risk="LOW",
-            critical_points=[]
-        )
+        evaluation = Evaluation(ip="10.0.0.1", risk="LOW", critical_points=[])
         business_risk = "LOW"
 
         create_management_section(
@@ -258,10 +257,9 @@ class TestManagementSection:
             technical_json=technical_json,
             evaluation=evaluation,
             business_risk=business_risk,
-            config={}
+            config={},
         )
 
         assert len(elements) > 0
         # Es sollten trotzdem wichtige Absätze erstellt werden
         assert any(isinstance(e, Paragraph) for e in elements)
-

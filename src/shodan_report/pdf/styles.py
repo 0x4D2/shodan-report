@@ -4,18 +4,27 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.colors import HexColor
 from typing import Dict
 
+
 @dataclass(frozen=True)
 class Theme:
     primary: HexColor
     secondary: HexColor
     muted: HexColor
+    success: HexColor = HexColor("#22c55e")
+    warn: HexColor = HexColor("#f97316")
+    danger: HexColor = HexColor("#dc2626")
+
 
 def create_theme(primary_hex: str, secondary_hex: str) -> Theme:
     return Theme(
         primary=HexColor(primary_hex),
         secondary=HexColor(secondary_hex),
         muted=HexColor("#d1d5db"),
+        success=HexColor("#22c55e"),
+        warn=HexColor("#f97316"),
+        danger=HexColor("#dc2626"),
     )
+
 
 def create_styles(theme: Theme) -> Dict[str, ParagraphStyle]:
     base = getSampleStyleSheet()
@@ -87,7 +96,7 @@ def create_styles(theme: Theme) -> Dict[str, ParagraphStyle]:
             alignment=1,  # zentriert
             leading=10,
             spaceBefore=12,
-            spaceAfter=6
+            spaceAfter=6,
         ),
         "footer": ParagraphStyle(
             "Footer",
