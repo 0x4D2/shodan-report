@@ -29,19 +29,10 @@ from shodan_report.pdf.helpers.management_helpers import (
 # ──────────────────────────────────────────────────────────────────────────────
 from shodan_report.pdf.helpers.pdf_helpers import build_horizontal_exposure_ampel
 from shodan_report.pdf.layout import keep_section, set_table_repeat
+from .data.management_data import prepare_management_data
 import re
 
-
-def create_management_section(
-    elements: List,
-    styles: Dict,
-    management_text: str,
-    technical_json: Dict[str, Any],
-    evaluation: Any,
-    business_risk: str,
-    config: Dict[str, Any] = None,
-    theme: Optional[Theme] = None,
-) -> None:
+def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> None:
     """
     Erzeugt professionelle Management-Zusammenfassung im Security-Reporting-Stil.
 
@@ -55,54 +46,36 @@ def create_management_section(
         config: Konfigurations-Parameter
     """
 
-    config = config or {}
+    # Support both DI-style call (elements, styles, theme, context=ctx)
+    # and legacy call (elements=..., styles=..., management_text=..., technical_json=..., evaluation=..., business_risk=..., config=..., theme=...)
+    config = {}
+    theme = kwargs.get("theme", None)
 
-    # ──────────────────────────────────────────────────────────────────────────
-    # 1. DATEN EXTRACTION - KOMPATIBEL MIT ALT UND NEU
-    # ──────────────────────────────────────────────────────────────────────────
-
-    # Extrahiere Exposure Score
-    if isinstance(evaluation, dict):
-        # NEUE VERSION: evaluation ist ein dict von runner.py
-        exposure_score = evaluation.get("exposure_score", 1)
-        exposure_display = evaluation.get("exposure_level", f"{exposure_score}/5")
-
-        # Extrahiere und bereinige Risk Level
-        risk_level_raw = evaluation.get("risk", "low")
-        if isinstance(risk_level_raw, str):
-            risk_level = risk_level_raw.lower()
-            # Entferne "risklevel." Präfix falls vorhanden
-            if "risklevel." in risk_level:
-                risk_level = risk_level.replace("risklevel.", "")
-        else:
-            risk_level = str(risk_level_raw).lower()
-            if "risklevel." in risk_level:
-                risk_level = risk_level.replace("risklevel.", "")
-
-        critical_points = evaluation.get("critical_points", [])
-        critical_points_count = evaluation.get("critical_points_count", 0)
-        cves = evaluation.get("cves", [])
-
+    if "context" in kwargs and kwargs.get("context") is not None:
+        ctx = kwargs["context"]
+        management_text = getattr(ctx, "management_text", "")
+        technical_json = getattr(ctx, "technical_json", {})
+        evaluation = getattr(ctx, "evaluation", {})
+        business_risk = getattr(ctx, "business_risk", "")
+        config = getattr(ctx, "config", {}) or {}
     else:
-        # ALTE VERSION: evaluation ist Evaluation Objekt
-        exposure_score = getattr(evaluation, "exposure_score", 1)
-        exposure_display = f"{exposure_score}/5"
+        management_text = kwargs.get("management_text", "")
+        technical_json = kwargs.get("technical_json", {})
+        evaluation = kwargs.get("evaluation", {})
+        business_risk = kwargs.get("business_risk", "")
+        config = kwargs.get("config", {}) or {}
 
-        # Risk Level aus Evaluation Objekt
-        risk_level_raw = getattr(evaluation, "risk", "low")
-        if hasattr(risk_level_raw, "value"):
-            risk_level = risk_level_raw.value.lower()
-        elif hasattr(risk_level_raw, "name"):
-            risk_level = risk_level_raw.name.lower()
-        else:
-            risk_level = str(risk_level_raw).lower()
-            if "risklevel." in risk_level:
-                risk_level = risk_level.replace("risklevel.", "")
-
-        critical_points = getattr(evaluation, "critical_points", [])
-        critical_points_count = len(critical_points)
-        cves = getattr(evaluation, "cves", [])
-
+    # Extract canonical management data (keeps renderer thin and testable)
+    mdata = prepare_management_data(technical_json, evaluation)
+    exposure_score = mdata.get("exposure_score", 1)
+    exposure_display = mdata.get("exposure_display", f"{exposure_score}/5")
+    risk_level = mdata.get("risk_level", "low")
+    critical_points = mdata.get("critical_points", [])
+    critical_points_count = mdata.get("critical_points_count", 0)
+    cves = mdata.get("cves", [])
+    total_ports = mdata.get("total_ports", 0)
+    cve_count = mdata.get("cve_count", 0)
+    service_rows = mdata.get("service_rows", [])
     # ──────────────────────────────────────────────────────────────────────────
     # 2. ABSCHNITTS-TITEL
     # ──────────────────────────────────────────────────────────────────────────

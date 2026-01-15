@@ -11,17 +11,23 @@ from reportlab.lib.colors import HexColor
 from shodan_report.pdf.layout import keep_section, set_table_repeat
 
 
-def create_trend_section(
-    elements: List,
-    styles: Dict,
-    trend_text: str,
-    compare_month: Optional[str] = None,
-    legacy_mode: bool = False,  # NEU: Für Backward Compatibility
-    trend_table: Optional[Dict[str, Any]] = None,
-    technical_json: Optional[Dict[str, Any]] = None,
-    evaluation: Optional[Dict[str, Any]] = None,
-    theme: Optional[Any] = None,
-) -> None:
+def create_trend_section(elements: List, styles: Dict, *args, **kwargs) -> None:
+    # Support DI call: create_trend_section(elements, styles, theme=theme, context=ctx)
+    trend_text = kwargs.get("trend_text", "")
+    compare_month = kwargs.get("compare_month", None)
+    legacy_mode = kwargs.get("legacy_mode", False)
+    trend_table = kwargs.get("trend_table", None)
+    technical_json = kwargs.get("technical_json", None)
+    evaluation = kwargs.get("evaluation", None)
+    theme = kwargs.get("theme", None)
+
+    if "context" in kwargs and kwargs.get("context") is not None:
+        ctx = kwargs.get("context")
+        trend_text = getattr(ctx, "trend_text", trend_text)
+        compare_month = getattr(ctx, "compare_month", compare_month)
+        technical_json = getattr(ctx, "technical_json", technical_json)
+        evaluation = getattr(ctx, "evaluation", evaluation)
+        # theme is passed separately from pdf_manager
     """
     Erstelle Trend-Analyse Section.
 

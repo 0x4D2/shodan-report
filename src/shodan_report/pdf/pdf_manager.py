@@ -4,6 +4,7 @@ from typing import List, Dict, Any, Optional, Callable
 
 from .styles import create_theme, create_styles
 from .sections.header import _create_header
+from .context import ReportContext
 
 from .sections.management import create_management_section
 from .sections.technical import create_technical_section
@@ -44,26 +45,25 @@ def prepare_pdf_elements(
 
     elements: List = []
 
+    # Build a ReportContext for sections to consume
+    ctx = ReportContext(
+        customer_name=customer_name,
+        month=month,
+        ip=ip,
+        management_text=management_text,
+        trend_text=trend_text,
+        technical_json=technical_json,
+        evaluation=evaluation,
+        business_risk=business_risk,
+        config=config,
+        compare_month=compare_month,
+    )
+
     # If a `sections` list was provided, call each section callable in order.
-    # Each callable is expected to accept keyword args including at least
-    # `elements` and `styles`. This allows tests to inject mock sections.
+    # Callables receive `elements`, `styles`, `theme`, and a `context` object.
     if sections is not None:
         for sec in sections:
-            # Call section with common params; individual sections may ignore extras
-            sec(
-                elements=elements,
-                styles=styles,
-                theme=theme,
-                customer_name=customer_name,
-                month=month,
-                ip=ip,
-                management_text=management_text,
-                trend_text=trend_text,
-                technical_json=technical_json,
-                evaluation=evaluation,
-                business_risk=business_risk,
-                config=config,
-            )
+            sec(elements=elements, styles=styles, theme=theme, context=ctx)
         return elements
 
     # Default (legacy) behavior: call built-in section functions in order
