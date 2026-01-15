@@ -19,7 +19,7 @@ def create_conclusion_section(
         business_risk: Business Risk Level (HIGH/MEDIUM/LOW)
     """
     elements.append(Spacer(1, 20))
-    elements.append(Paragraph("<b>7. Fazit</b>", styles["heading2"]))
+    elements.append(Paragraph("<b>7. Fazit</b>", styles.get("heading1") or styles.get("heading2") or styles["normal"]))
     elements.append(Spacer(1, 12))
 
     # Risikobasierte Fazit-Formulierung
@@ -65,14 +65,7 @@ def create_conclusion_section(
     elements.append(Spacer(1, 8))
     elements.append(Paragraph(follow_up, styles["normal"]))
 
-    # Optional: Call-to-Action
-    elements.append(Spacer(1, 12))
-    elements.append(
-        Paragraph(
-            "<i>Nächste Schritte: Besprechung der Ergebnisse und Planung konkreter Maßnahmen.</i>",
-            styles["disclaimer"],
-        )
-    )
+    # optional: call-to-action removed per request
 
 
 def _extract_risk_level(business_risk) -> str:

@@ -11,6 +11,13 @@ from reportlab.lib.styles import ParagraphStyle
 from ..sections.data.cve_enricher import enrich_cves
 
 
+def _get_style(styles: Dict, name: str, fallback: str = "normal"):
+    """Safely get a style by name with fallback."""
+    if not isinstance(styles, dict):
+        return None
+    return styles.get(name) or styles.get(fallback)
+
+
 def create_cve_overview_section(
     elements: List,
     styles: Dict,
@@ -28,7 +35,7 @@ def create_cve_overview_section(
     """
     # Weniger Abstand für kompaktes Design
     elements.append(Spacer(1, 8))
-    elements.append(Paragraph("5. CVE-ÜBERSICHT", styles["heading2"]))
+    elements.append(Paragraph("5. CVE-ÜBERSICHT", _get_style(styles, "heading1", "heading2")))
     elements.append(Spacer(1, 4))
 
     # Extrahiere CVE-Daten
@@ -44,11 +51,9 @@ def create_cve_overview_section(
     # 1. RISIKO-ÜBERSICHT (kompakte farbige Boxen)
     _create_risk_overview(elements, styles, cve_data)
 
-    # 2. TOP-RISIKEN Tabelle (kompakt, farbcodiert)
-    _create_compact_cve_table(elements, styles, cve_data)
-
-    # 3. EXPLOIT STATUS (einzeilig)
-    _create_exploit_summary(elements, styles, cve_data)
+    # 2. DETAILED CVE TABLE (per-service) ersetzt die alte kompakte Tabelle und Indicator
+    _create_detailed_cve_table(elements, styles, cve_data, technical_json)
+    _final_evaluation_paragraph(elements, styles, cve_data)
 
 
 def _extract_cve_data(technical_json: Dict[str, Any]) -> List[Dict]:
@@ -74,7 +79,19 @@ def _extract_cve_data(technical_json: Dict[str, Any]) -> List[Dict]:
         # per-service
         services = technical_json.get("open_ports") or technical_json.get("services") or []
         for s in services:
-            sv_vulns = s.get("vulnerabilities") or s.get("vulns") or s.get("cves") or []
+            sv_vulns = []
+            if isinstance(s, dict):
+                sv_vulns = s.get("vulnerabilities") or s.get("vulns") or s.get("cves") or []
+            else:
+                # service may be an int (port), a string, or an object-like with attributes
+                try:
+                    sv_vulns = getattr(s, "vulnerabilities", None) or getattr(s, "vulns", None) or getattr(s, "cves", None) or []
+                except Exception:
+                    sv_vulns = []
+
+            if not sv_vulns:
+                continue
+
             for vv in sv_vulns:
                 if isinstance(vv, str):
                     ids.add(vv)
@@ -332,3 +349,133 @@ def _create_exploit_summary(elements: List, styles: Dict, cve_data: List[Dict]) 
                 ),
             )
         )
+
+
+def _create_detailed_cve_table(elements: List, styles: Dict, cve_data: List[Dict], technical_json: Dict[str, Any]) -> None:
+    """Erstelle eine detaillierte per-service CVE-Tabelle mit Spalten:
+    Dienst | CVE | CVSS | Exploit-Status | Relevanz
+    """
+    if not cve_data:
+        return
+
+    # Build port -> product map for nicer service names
+    port_product = {}
+    if isinstance(technical_json, dict):
+        for s in technical_json.get("open_ports") or technical_json.get("services") or []:
+            try:
+                p = s.get("port") if isinstance(s, dict) else getattr(s, "port", None)
+                prod = None
+                if isinstance(s, dict):
+                    prod = (s.get("service") or s.get("product") or {}).get("product") if isinstance(s.get("service") or s.get("product"), dict) else (s.get("service") or s.get("product") or "")
+                else:
+                    prod = getattr(s, "product", "")
+                port_product[p] = prod or str(p)
+            except Exception:
+                continue
+
+    # Header
+    elements.append(Spacer(1, 6))
+    elements.append(Paragraph("Detaillierte CVE-Übersicht", _get_style(styles, "heading3", "heading2")))
+    elements.append(Spacer(1, 4))
+
+    table_data = [[
+        Paragraph("<b>Dienst</b>", styles["normal"]),
+        Paragraph("<b>CVE</b>", styles["normal"]),
+        Paragraph("<b>CVSS</b>", styles["normal"]),
+        Paragraph("<b>Exploit-Status</b>", styles["normal"]),
+        Paragraph("<b>Relevanz</b>", styles["normal"]),
+    ]]
+
+    def map_exploit(status: str) -> str:
+        return {
+            "public": "öffentlich bekannt",
+            "private": "teilweise",
+            "none": "nicht bekannt",
+            "unknown": "unbekannt",
+        }.get(status, str(status) if status else "unbekannt")
+
+    def relevance_from_cvss(cvss: float) -> str:
+        try:
+            if cvss >= 9.0:
+                return "kritisch"
+            if cvss >= 7.0:
+                return "hoch"
+            if cvss >= 4.0:
+                return "mittel"
+            return "niedrig"
+        except Exception:
+            return "unbekannt"
+
+    # Each cve_data entry may correspond to ports (list) or service string
+    for c in sorted(cve_data, key=lambda x: x.get("cvss", 0), reverse=True):
+        cid = c.get("id")
+        cvss = c.get("cvss", 0) or 0
+        serv = c.get("service") or ""
+        # if service is list of ports, map to product names
+        if isinstance(serv, str) and "," in serv:
+            # keep as-is
+            service_label = serv
+        else:
+            # attempt to map numeric port
+            try:
+                ports = c.get("ports", []) or []
+                if ports:
+                    names = [str(port_product.get(p, p)) for p in ports]
+                    service_label = ",".join(names)
+                else:
+                    service_label = serv or "-"
+            except Exception:
+                service_label = serv or "-"
+
+        exploit_status = map_exploit(c.get("exploit_status", c.get("exploit", "unknown")))
+        rel = relevance_from_cvss(float(cvss) if cvss is not None else 0)
+
+        table_data.append([
+            Paragraph(str(service_label), styles["normal"]),
+            Paragraph(str(cid), styles["normal"]),
+            Paragraph(f"{cvss}", styles["normal"]),
+            Paragraph(exploit_status, styles["normal"]),
+            Paragraph(rel, styles["normal"]),
+        ])
+
+    col_widths = [60, 70, 30, 80, 50]
+    table = Table(table_data, colWidths=col_widths, repeatRows=1)
+    # Modern table styling similar to compact view
+    table_style = TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#374151")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, 0), 9),
+        ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
+        ("PADDING", (0, 0), (-1, -1), (4, 3)),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f9fafb")]),
+        ("ALIGNMENT", (2, 1), (2, -1), "CENTER"),
+    ])
+
+    # Add per-row CVSS accent backgrounds like the compact table
+    for i, c in enumerate(sorted(cve_data, key=lambda x: x.get("cvss", 0), reverse=True), start=1):
+        cvss = c.get("cvss", 0) or 0
+        if cvss >= 9.0:
+            table_style.add("BACKGROUND", (0, i), (-1, i), colors.HexColor("#fee2e2"))
+        elif cvss >= 7.0:
+            table_style.add("BACKGROUND", (0, i), (-1, i), colors.HexColor("#ffedd5"))
+        elif cvss >= 4.0:
+            table_style.add("BACKGROUND", (0, i), (-1, i), colors.HexColor("#fef9c3"))
+
+    table.setStyle(table_style)
+
+    elements.append(table)
+    elements.append(Spacer(1, 6))
+
+
+def _final_evaluation_paragraph(elements: List, styles: Dict, cve_data: List[Dict]) -> None:
+    total = len(cve_data)
+    high = len([c for c in cve_data if (c.get("cvss") or 0) >= 9.0])
+    public_exploits = len([c for c in cve_data if c.get("exploit_status") == "public"])
+
+    eval_text = (
+        "Bewertung:<br/>"
+        f"Keine aktuell aktiv ausgenutzten Schwachstellen mit kritischer Priorität identifiziert.<br/>"
+        f"Insgesamt identifizierte CVEs: {total}. Kritisch (CVSS≥9): {high}. Öffentliche Exploits: {public_exploits}."
+    )
+    elements.append(Paragraph(eval_text, styles["normal"]))

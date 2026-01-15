@@ -6,6 +6,7 @@
 # ──────────────────────────────────────────────────────────────────────────────
 
 from typing import List, Dict, Any
+from shodan_report.parsing.service_identity import extract_service_identity
 import re
 
 # Importe für Evaluation Engine (nur für Fallback, wenn keine Evaluationsdaten vorhanden)
@@ -805,9 +806,11 @@ def _build_service_summary(technical_json: Dict[str, Any]) -> List[tuple]:
 
     for s in services:
         try:
-            port = s.get("port") if isinstance(s, dict) else getattr(s, "port", None)
-            prod = (s.get("product") if isinstance(s, dict) else getattr(s, "product", "")) or "-"
-            ver = (s.get("version") if isinstance(s, dict) else getattr(s, "version", "")) or ""
+            ident = extract_service_identity(s)
+            port = ident.get("port")
+            prod = ident.get("product") or "-"
+            ver = ident.get("version") or ""
+            confidence = ident.get("confidence")
         except Exception:
             continue
 
