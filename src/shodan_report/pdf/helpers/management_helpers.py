@@ -799,6 +799,24 @@ def _build_service_summary(technical_json: Dict[str, Any]) -> List[tuple]:
                 version = getattr(p, "version", None)
             services.append({"port": port, "product": product, "version": version})
 
+        # (dedupe moved to after services normalization to handle both 'services' and 'open_ports')
+
+    # Deduplicate services by (port, product) to avoid repeated lines (e.g., duplicate DNS entries)
+    deduped = []
+    seen = set()
+    for s in services:
+        try:
+            port_k = s.get("port")
+            prod_k = str(s.get("product") or "").strip().lower()
+            key = (port_k, prod_k)
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(s)
+        except Exception:
+            deduped.append(s)
+    services = deduped
+
     # Build candidate rows with a simple severity heuristic
     rows = []
     critical_list = technical_json.get("critical_services") or []

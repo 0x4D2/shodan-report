@@ -40,12 +40,26 @@ def create_technical_section(elements: List, styles: Dict, *args, **kwargs) -> N
         Paragraph("<b>Risiko</b>", styles["normal"]),
     ]
     table_data = [header]
+    seen_rows = set()
     for s in services:
         port_txt = str(s.get("port") or "-")
         prod = s.get("product") or "-"
         ver = s.get("version") or "-"
         server = s.get("server") or "-"
         risk = s.get("risk") or "-"
+
+        # enforce single-line version (no newlines) and truncate to fit
+        if isinstance(ver, str):
+            ver = ver.replace("\n", " ").replace("\r", " ").strip()
+            if len(ver) > 60:
+                ver = ver[:57] + "..."
+
+        # Deduplicate identical rows (port, product, server)
+        key = (str(s.get("port")), str(prod), str(server))
+        if key in seen_rows:
+            continue
+        seen_rows.add(key)
+
         table_data.append([
             Paragraph(port_txt, styles["normal"]),
             Paragraph(prod, styles["normal"]),
@@ -54,7 +68,8 @@ def create_technical_section(elements: List, styles: Dict, *args, **kwargs) -> N
             Paragraph(risk, styles["normal"]),
         ])
 
-    tbl = Table(table_data, colWidths=[20 * mm, 60 * mm, 40 * mm, 40 * mm, 25 * mm])
+    # Make Version column slightly wider and Server column narrower to balance layout
+    tbl = Table(table_data, colWidths=[20 * mm, 60 * mm, 50 * mm, 30 * mm, 25 * mm])
     set_table_repeat(tbl, 1)
     border_color = HexColor("#e5e7eb")
     header_bg = HexColor("#f8fafc")
@@ -248,6 +263,11 @@ def _add_security_notes(
     for critical in critical_services[:3]:  # Max 3 Hinweise
         port = critical.get("port", "")
         reason = critical.get("reason", "")
+        # Remove stray debug tokens like 'nn' that may appear in snapshots
+        try:
+            reason = str(reason).replace("nn ", "").replace("nn", "").strip()
+        except Exception:
+            pass
         severity = critical.get("severity", "medium")
 
         severity_icon = "⚠️" if severity == "high" else "ℹ️"

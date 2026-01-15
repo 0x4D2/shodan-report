@@ -66,6 +66,24 @@ def generate_pdf(
     try:
         mdata = prepare_management_data(technical_json, evaluation)
         enriched = enrich_cves(mdata.get("unique_cves", []), technical_json, lookup_nvd=False)
+        # Include raw banners for forensic sidecar but keep PDF tables clean
+        # Attach a compact `services` snapshot with raw_banner preserved.
+        services_for_sidecar = []
+        for s in (technical_json.get("services") or technical_json.get("open_ports") or []):
+            try:
+                if isinstance(s, dict):
+                    services_for_sidecar.append({
+                        "port": s.get("port"),
+                        "product": s.get("product") or s.get("service") or None,
+                        "version": s.get("version") or None,
+                        "raw_banner": s.get("banner") or s.get("extra_info") or None,
+                    })
+                else:
+                    # object-like entries
+                    services_for_sidecar.append({"port": getattr(s, "port", None), "raw_banner": getattr(s, "banner", None)})
+            except Exception:
+                continue
+
         debug = {
             "pdf": str(pdf_path),
             "cve_count": mdata.get("cve_count"),
@@ -73,6 +91,7 @@ def generate_pdf(
             "risk_level": mdata.get("risk_level"),
             "unique_cves_sample": mdata.get("unique_cves", [])[:200],
             "cve_enriched_sample": enriched[:200],
+            "services": services_for_sidecar,
         }
         debug_json = json.dumps(debug, ensure_ascii=False, indent=2)
         print("[DEBUG-MANAGEMENT-DATA]", debug_json)
