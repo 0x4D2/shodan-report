@@ -16,6 +16,13 @@ Automatisierter Security Report Generator für externe Angriffsflächenanalyse. 
 
 ---
 
+## Notes / Known issues
+
+- Die Produkt-/Versionserkennung wurde verbessert, befindet sich aber noch in der Feinjustierung. Nicht alle Versionen werden in allen Bannern zuverlässig erkannt.
+- In der Management‑Zusammenfassung werden bewusst nur Versionen mit mittlerer oder hoher Konfidenz angezeigt, um irreführende Angaben zu vermeiden. Das bedeutet, dass einige Versionsinformationen nicht im Executive‑Summary auftauchen, auch wenn sie technisch im Snapshot vorkommen.
+- Die geplante `Top Vulnerability`‑Spalte im Management‑Table ist noch nicht aktiviert; diese wird nach weiterer CVE‑Zuordnung und Verifikation freigeschaltet.
+
+
 ## SCHNELLSTART
 
 ### Installation
