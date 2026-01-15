@@ -22,6 +22,7 @@ from shodan_report.pdf.helpers.management_helpers import (
     _build_service_flags,
     _build_service_summary,
 )
+from .data.cve_enricher import enrich_cves_with_local
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -173,12 +174,17 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
     if service_rows:
         elements.append(Paragraph("Kurzdetail zu betroffenen Diensten:", styles["normal"]))
         elements.append(Spacer(1, 6))
-
+        # use Paragraph cells for wrapping and set reasonable column widths
         table_data = [["Port", "Dienst", "Kurzbefund", "Kurzmaßnahme"]]
         for port, prod, finding, action in service_rows:
-            table_data.append([str(port), prod or "-", finding, action])
+            table_data.append([
+                Paragraph(str(port), styles.get("normal")),
+                Paragraph(prod or "-", styles.get("normal")),
+                Paragraph(finding, styles.get("normal")),
+                Paragraph(action, styles.get("normal")),
+            ])
 
-        tbl = Table(table_data, colWidths=[16 * mm, 50 * mm, 70 * mm, 36 * mm])
+        tbl = Table(table_data, colWidths=[14 * mm, 40 * mm, 80 * mm, 40 * mm], repeatRows=1)
         tbl.setStyle(
             TableStyle(
                 [
@@ -196,6 +202,8 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
         elements.append(tbl)
         elements.append(Spacer(1, 12))
         # leave table as top-level element for test visibility
+
+    # CVE overview removed from Management section per user request.
 
     # ──────────────────────────────────────────────────────────────────────────
     # 5. WICHTIGSTE ERKENNTNISSE (PROFESSIONELLE BULLET POINTS)

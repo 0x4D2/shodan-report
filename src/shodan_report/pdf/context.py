@@ -14,3 +14,6 @@ class ReportContext:
     business_risk: str
     config: Optional[Dict[str, Any]] = None
     compare_month: Optional[str] = None
+    # Presentation flags
+    show_full_cve_list: bool = False
+    cve_limit: int = 6

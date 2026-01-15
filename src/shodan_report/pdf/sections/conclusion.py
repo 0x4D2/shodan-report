@@ -7,7 +7,7 @@ from reportlab.platypus import Spacer, Paragraph
 
 
 def create_conclusion_section(
-    elements: List, styles: Dict, customer_name: str, business_risk: str
+    elements: List, styles: Dict, customer_name: str, business_risk: str, context: object = None
 ) -> None:
     """
     Erstelle Fazit-Section mit abschließender Bewertung.
@@ -22,8 +22,20 @@ def create_conclusion_section(
     elements.append(Paragraph("<b>7. Fazit</b>", styles.get("heading1") or styles.get("heading2") or styles["normal"]))
     elements.append(Spacer(1, 12))
 
-    # Risikobasierte Fazit-Formulierung
+    # Determine risk_level: prefer context-derived evaluation/mdata to stay consistent
     risk_level = _extract_risk_level(business_risk)
+    if context is not None:
+        try:
+            # avoid importing heavy modules at top-level; local import
+            from .data.management_data import prepare_management_data
+
+            technical_json = getattr(context, "technical_json", {}) or {}
+            evaluation = getattr(context, "evaluation", {}) or {}
+            mdata = prepare_management_data(technical_json, evaluation)
+            if mdata.get("risk_level"):
+                risk_level = mdata.get("risk_level")
+        except Exception:
+            pass
 
     if risk_level.upper() in ["HIGH", "CRITICAL"]:
         conclusion_text = f"""

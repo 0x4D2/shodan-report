@@ -57,6 +57,8 @@ def prepare_pdf_elements(
         business_risk=business_risk,
         config=config,
         compare_month=compare_month,
+        show_full_cve_list=config.get("show_full_cve_list", False),
+        cve_limit=config.get("cve_limit", 6),
     )
 
     # If a `sections` list was provided, call each section callable in order.
@@ -120,6 +122,7 @@ def prepare_pdf_elements(
         styles=styles,
         technical_json=technical_json,
         evaluation=evaluation,
+        context=ctx,
     )
 
     create_methodology_section(
@@ -132,6 +135,7 @@ def prepare_pdf_elements(
         styles=styles,
         customer_name=customer_name,
         business_risk=business_risk,
+        context=ctx,
     )
 
     create_footer_section(

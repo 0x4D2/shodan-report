@@ -31,17 +31,30 @@ def create_technical_section(elements: List, styles: Dict, *args, **kwargs) -> N
         elements.append(Paragraph("Keine offenen Ports identifiziert.", styles["normal"]))
         return
 
-    # Table: Port | Dienst | Version | Risiko
-    header = [Paragraph("<b>Port</b>", styles["normal"]), Paragraph("<b>Dienst</b>", styles["normal"]), Paragraph("<b>Version</b>", styles["normal"]), Paragraph("<b>Risiko</b>", styles["normal"])]
+    # Table: Port | Dienst | Version | Server | Risiko
+    header = [
+        Paragraph("<b>Port</b>", styles["normal"]),
+        Paragraph("<b>Dienst</b>", styles["normal"]),
+        Paragraph("<b>Version</b>", styles["normal"]),
+        Paragraph("<b>Server</b>", styles["normal"]),
+        Paragraph("<b>Risiko</b>", styles["normal"]),
+    ]
     table_data = [header]
     for s in services:
         port_txt = str(s.get("port") or "-")
         prod = s.get("product") or "-"
         ver = s.get("version") or "-"
+        server = s.get("server") or "-"
         risk = s.get("risk") or "-"
-        table_data.append([Paragraph(port_txt, styles["normal"]), Paragraph(prod, styles["normal"]), Paragraph(ver, styles["normal"]), Paragraph(risk, styles["normal"])])
+        table_data.append([
+            Paragraph(port_txt, styles["normal"]),
+            Paragraph(prod, styles["normal"]),
+            Paragraph(ver, styles["normal"]),
+            Paragraph(server, styles["normal"]),
+            Paragraph(risk, styles["normal"]),
+        ])
 
-    tbl = Table(table_data, colWidths=[25 * mm, 80 * mm, 30 * mm, 30 * mm])
+    tbl = Table(table_data, colWidths=[20 * mm, 60 * mm, 40 * mm, 40 * mm, 25 * mm])
     set_table_repeat(tbl, 1)
     border_color = HexColor("#e5e7eb")
     header_bg = HexColor("#f8fafc")
