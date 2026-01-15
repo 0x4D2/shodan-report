@@ -98,6 +98,15 @@ def prepare_pdf_elements(
         evaluation=evaluation,
         theme=theme,
     )
+    # Section 3: Priorisierte Handlungsempfehlungen (directly after Trend)
+    create_recommendations_section(
+        elements=elements,
+        styles=styles,
+        business_risk=business_risk,
+        technical_json=technical_json,
+        evaluation=evaluation,
+        theme=theme,
+    )
 
     create_technical_section(
         elements=elements,
@@ -109,14 +118,6 @@ def prepare_pdf_elements(
     create_cve_overview_section(
         elements=elements,
         styles=styles,
-        technical_json=technical_json,
-        evaluation=evaluation,
-    )
-
-    create_recommendations_section(
-        elements=elements,
-        styles=styles,
-        business_risk=business_risk,
         technical_json=technical_json,
         evaluation=evaluation,
     )

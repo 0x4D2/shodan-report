@@ -1,7 +1,10 @@
 from pathlib import Path
 from typing import Optional
+import json
 from .pdf_manager import prepare_pdf_elements
 from .pdf_renderer import render_pdf
+from .sections.data.management_data import prepare_management_data
+from .sections.data.cve_enricher import enrich_cves
 
 OUTPUT_DIR = Path("./reports")
 
@@ -58,5 +61,31 @@ def generate_pdf(
             compare_month=compare_month,
         )
     render_pdf(pdf_path, elements)
+
+    # --- Debug: dump canonical management data used for rendering ---
+    try:
+        mdata = prepare_management_data(technical_json, evaluation)
+        enriched = enrich_cves(mdata.get("unique_cves", []), technical_json, lookup_nvd=False)
+        debug = {
+            "pdf": str(pdf_path),
+            "cve_count": mdata.get("cve_count"),
+            "total_ports": mdata.get("total_ports"),
+            "risk_level": mdata.get("risk_level"),
+            "unique_cves_sample": mdata.get("unique_cves", [])[:200],
+            "cve_enriched_sample": enriched[:200],
+        }
+        debug_json = json.dumps(debug, ensure_ascii=False, indent=2)
+        print("[DEBUG-MANAGEMENT-DATA]", debug_json)
+
+        # write debug JSON next to the PDF for offline inspection
+        try:
+            dbg_path = pdf_path.with_suffix("")
+            dbg_file = pdf_path.parent / (pdf_path.stem + ".mdata.json")
+            dbg_file.write_text(debug_json, encoding="utf-8")
+        except Exception:
+            # non-fatal: ignore file write errors but preserve console output
+            pass
+    except Exception as e:
+        print(f"[DEBUG-MANAGEMENT-DATA] failed to prepare mdata: {e}")
 
     return pdf_path

@@ -120,7 +120,7 @@ python -m shodan_report --customer "Enterprise AG" --ip "203.0.113.10" --month "
 ```
 shodan-report/
 ├── src/shodan_report/
-│   ├── cli.py                    # CLI Entry Point
+│   ├── cli.py                   # CLI Entry Point
 │   ├── core/runner.py           # Haupt-Pipeline
 │   ├── pdf/                     # Professionelle PDF-Generierung
 │   │   ├── pdf_manager.py       # Layout-Koordination (6703 Zeilen → WIRD REFACTORED)

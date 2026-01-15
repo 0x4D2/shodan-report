@@ -4,15 +4,23 @@ Priorisierte Handlungsempfehlungen für PDF-Reports.
 
 from typing import List, Dict, Any
 from reportlab.platypus import Spacer, Paragraph, ListFlowable, ListItem
+from .data.recommendations_data import prepare_recommendations_data
+from shodan_report.pdf.layout import keep_section
+
+import typing
 
 
-def create_recommendations_section(
-    elements: List,
-    styles: Dict,
-    business_risk: str,
-    technical_json: Dict[str, Any],
-    evaluation: Dict[str, Any],
-) -> None:
+def create_recommendations_section(elements: List, styles: Dict, *args, **kwargs) -> None:
+    # support DI via context or legacy args
+    if "context" in kwargs and kwargs.get("context") is not None:
+        ctx = kwargs.get("context")
+        business_risk = getattr(ctx, "business_risk", "MEDIUM")
+        technical_json = getattr(ctx, "technical_json", {})
+        evaluation = getattr(ctx, "evaluation", {})
+    else:
+        business_risk = kwargs.get("business_risk")
+        technical_json = kwargs.get("technical_json", {})
+        evaluation = kwargs.get("evaluation", {})
     """
     Erstelle Section mit priorisierten Handlungsempfehlungen.
 
@@ -23,92 +31,35 @@ def create_recommendations_section(
         technical_json: Technische Daten
         evaluation: Evaluation Ergebnisse
     """
-    elements.append(Spacer(1, 20))
-    elements.append(
-        Paragraph("<b>3. Priorisierte Handlungsempfehlungen</b>", styles["heading2"])
-    )
-    elements.append(Spacer(1, 12))
+    # keep header and following spacing together (avoid orphan heading)
+    elements.append(keep_section([Paragraph("<b>3. Priorisierte Handlungsempfehlungen</b>", styles["heading1"]), Spacer(1, 12)]))
 
-    # 1. Risikobasierte Basis-Empfehlungen
-    risk_level = _extract_risk_level(business_risk)
+    # use prepared data for deterministic buckets
+    buckets = prepare_recommendations_data(technical_json, evaluation, business_risk)
 
-    if risk_level.upper() == "HIGH":
-        elements.append(
-            Paragraph("<b>Priorität 1 – Sofort (0–7 Tage)</b>", styles["normal"])
-        )
-        priority_items = [
-            "Kritische Dienste temporär isolieren oder härten",
-            "Notfall-Response-Plan aktivieren",
-            "24/7 Monitoring für betroffene Systeme",
-        ]
-    elif risk_level.upper() == "MEDIUM":
-        elements.append(
-            Paragraph(
-                "<b>Priorität 1 – Mittelfristig (30–90 Tage)</b>", styles["normal"]
-            )
-        )
-        priority_items = [
-            "Aktualisierung der TLS-Konfiguration",
-            "Abschaltung veralteter Protokolle (TLS 1.0 / 1.1)",
-            "Überprüfung der Zertifikatslaufzeiten",
-        ]
-    else:  # LOW
-        elements.append(
-            Paragraph(
-                "<b>Priorität 1 – Geplant (nächste 6 Monate)</b>", styles["normal"]
-            )
-        )
-        priority_items = [
-            "Regelmäßige Überprüfung neu auftretender Dienste",
-            "Security Awareness Training planen",
-            "Proaktive Schwachstellenscans etablieren",
-        ]
-
-    # Füge Priorität-1 Items als Liste hinzu
-    for item in priority_items:
+    # Priority 1
+    elements.append(Paragraph("<b>Priorität 1 – Kritisch</b>", styles["normal"]))
+    elements.append(Spacer(1, 6))
+    for item in buckets.get("priority1", []):
         elements.append(Paragraph(f"• {item}", styles["bullet"]))
 
     elements.append(Spacer(1, 8))
 
-    # 2. Spezifische Empfehlungen basierend auf technischen Daten
-    open_ports = technical_json.get("open_ports", [])
-    if open_ports:
-        elements.append(
-            Paragraph(
-                "<b>Priorität 2 – Spezifische Konfiguration</b>", styles["normal"]
-            )
-        )
-        elements.append(Spacer(1, 4))
+    # Priority 2
+    if buckets.get("priority2"):
+        elements.append(Paragraph("<b>Priorität 2 – Spezifische Empfehlungen</b>", styles["normal"]))
+        elements.append(Spacer(1, 6))
+        for item in buckets.get("priority2", []):
+            elements.append(Paragraph(f"• {item}", styles["bullet"]))
 
-        for port_info in open_ports:
-            port = _extract_port(port_info)
+    elements.append(Spacer(1, 8))
 
-            # HTTPS ohne aktuelles Zertifikat
-            if port == 443:
-                elements.append(
-                    Paragraph(
-                        "• TLS-Zertifikate erneuern und Konfiguration aktualisieren",
-                        styles["bullet"],
-                    )
-                )
-
-            # SSH auf Standard-Port
-            elif port == 22:
-                elements.append(
-                    Paragraph(
-                        "• SSH-Zugriff auf Schlüssel-Authentifizierung umstellen",
-                        styles["bullet"],
-                    )
-                )
-
-            # DNS rekursiv
-            elif port == 53:
-                elements.append(
-                    Paragraph(
-                        "• Rekursive DNS-Anfragen auf interne Netze beschränken",
-                        styles["bullet"],
-                    )
-                )
+    # Priority 3
+    if buckets.get("priority3"):
+        elements.append(Paragraph("<b>Priorität 3 – Optional</b>", styles["normal"]))
+        elements.append(Spacer(1, 6))
+        for item in buckets.get("priority3", []):
+            elements.append(Paragraph(f"• {item}", styles["bullet"]))
 
 
 def _extract_risk_level(business_risk) -> str:

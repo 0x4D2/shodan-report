@@ -8,6 +8,7 @@ from reportlab.platypus import Spacer, Paragraph, Table, TableStyle, KeepTogethe
 from reportlab.lib import colors
 from reportlab.lib.units import mm
 from reportlab.lib.styles import ParagraphStyle
+from ..sections.data.cve_enricher import enrich_cves
 
 
 def create_cve_overview_section(
@@ -51,54 +52,58 @@ def create_cve_overview_section(
 
 
 def _extract_cve_data(technical_json: Dict[str, Any]) -> List[Dict]:
-    """Extrahiert CVE-Daten aus technical_json."""
+    """Extrahiert CVE-Daten aus technical_json.
+
+    Nutzt lokalen Enricher (`enrich_cves`) um CVSS und betroffene Ports zu ermitteln,
+    falls diese Informationen in `technical_json` vorhanden sind.
+    """
+
+    # Sammle Kandidaten-CVE-IDs aus möglichen Feldern
+    ids = set()
+    if isinstance(technical_json, dict):
+        # top-level vulns
+        for k in ("vulnerabilities", "vulns", "vulns_list", "vulns"):
+            for v in technical_json.get(k, []) or []:
+                if isinstance(v, str):
+                    ids.add(v)
+                elif isinstance(v, dict):
+                    cid = v.get("id") or v.get("cve") or v.get("cve_id")
+                    if cid:
+                        ids.add(str(cid))
+
+        # per-service
+        services = technical_json.get("open_ports") or technical_json.get("services") or []
+        for s in services:
+            sv_vulns = s.get("vulnerabilities") or s.get("vulns") or s.get("cves") or []
+            for vv in sv_vulns:
+                if isinstance(vv, str):
+                    ids.add(vv)
+                elif isinstance(vv, dict):
+                    cid = vv.get("id") or vv.get("cve") or vv.get("cve_id")
+                    if cid:
+                        ids.add(str(cid))
+
+    unique_ids = sorted(ids)
+
+    # Enrich locally: get cvss and ports if available
+    enriched = enrich_cves(unique_ids, technical_json, lookup_nvd=False)
+
     cve_data = []
-    vulnerabilities = technical_json.get("vulnerabilities", [])
-
-    if isinstance(vulnerabilities, list):
-        for vuln in vulnerabilities:
-            if isinstance(vuln, dict):
-                cve_id = (
-                    vuln.get("id") or vuln.get("cve_id") or vuln.get("cve", "Unknown")
-                )
-                cvss_score = (
-                    vuln.get("cvss") or vuln.get("score") or vuln.get("cvss_score") or 0
-                )
-
-                cve_data.append(
-                    {
-                        "id": str(cve_id),
-                        "cvss": (
-                            float(cvss_score)
-                            if str(cvss_score).replace(".", "", 1).isdigit()
-                            else 0
-                        ),
-                        "service": vuln.get("service", vuln.get("product", "Various"))[
-                            :20
-                        ],  # Kürzer
-                        "summary": vuln.get("summary", vuln.get("description", ""))[
-                            :50
-                        ],  # Kürzer
-                        "exploit_status": vuln.get("exploit_status", "unknown"),
-                    }
-                )
-
-            elif isinstance(vuln, str):
-                # String CVE-ID
-                year_match = re.search(r"CVE-(\d{4})", vuln)
-                cvss_estimate = (
-                    6.0 if year_match and int(year_match.group(1)) >= 2023 else 4.0
-                )
-
-                cve_data.append(
-                    {
-                        "id": vuln,
-                        "cvss": cvss_estimate,
-                        "service": "Multiple",
-                        "summary": "CVE detected",
-                        "exploit_status": "unknown",
-                    }
-                )
+    for ent in enriched:
+        try:
+            cid = ent.get("id")
+            cvss = ent.get("cvss") if ent.get("cvss") is not None else 0
+            ports = ent.get("ports", []) or []
+            service = ",".join([str(p) for p in ports]) if ports else "Various"
+            cve_data.append({
+                "id": cid,
+                "cvss": float(cvss) if cvss is not None else 0,
+                "service": service[:20],
+                "summary": ent.get("summary") or "",
+                "exploit_status": ent.get("exploit_status", "unknown"),
+            })
+        except Exception:
+            continue
 
     return cve_data
 

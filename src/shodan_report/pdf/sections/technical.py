@@ -1,31 +1,101 @@
-from reportlab.platypus import Paragraph, Spacer
 from typing import List, Dict, Any
+from reportlab.platypus import Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.units import mm
+from reportlab.lib.colors import HexColor
+from shodan_report.pdf.layout import keep_section, set_table_repeat
+from shodan_report.pdf.sections.data.technical_data import prepare_technical_detail
 
 
-def create_technical_section(
-    elements: List,
-    styles: Dict,
-    technical_json: Dict[str, Any],
-    config: Dict[str, Any] = None,
-) -> None:
+def create_technical_section(elements: List, styles: Dict, *args, **kwargs) -> None:
+    # Support DI call: create_technical_section(elements, styles, context=ctx)
+    technical_json = kwargs.get("technical_json", {})
+    evaluation = kwargs.get("evaluation", None)
+    if "context" in kwargs and kwargs.get("context") is not None:
+        ctx = kwargs.get("context")
+        technical_json = getattr(ctx, "technical_json", technical_json)
+        evaluation = getattr(ctx, "evaluation", evaluation)
 
-    config = config or {}
-
-    # 1. Überschrift
     elements.append(Spacer(1, 12))
-    elements.append(Paragraph("<b>Technischer Anhang</b>", styles["heading2"]))
-    elements.append(Spacer(1, 6))
+    heading_style = styles.get("heading1", styles.get("heading2"))
+    # keep legacy header text so existing tests that look for "Technischer Anhang" still match
+    elements.append(keep_section([Paragraph("<b>4. Technischer Anhang — Technische Detailanalyse (Auszug)</b>", heading_style), Spacer(1, 12)]))
 
-    open_ports = technical_json.get("open_ports", [])
-
-    if not open_ports:
-        elements.append(
-            Paragraph("Keine offenen Ports identifiziert.", styles["normal"])
-        )
+    if not technical_json:
+        elements.append(Paragraph("Keine technischen Details verfügbar.", styles["normal"]))
         return
 
-    # 2. Port-Informationen
-    _add_port_information(elements, styles, open_ports)
+    data = prepare_technical_detail(technical_json or {}, evaluation)
+    services = data.get("services", [])
+
+    if not services:
+        elements.append(Paragraph("Keine offenen Ports identifiziert.", styles["normal"]))
+        return
+
+    # Table: Port | Dienst | Version | Risiko
+    header = [Paragraph("<b>Port</b>", styles["normal"]), Paragraph("<b>Dienst</b>", styles["normal"]), Paragraph("<b>Version</b>", styles["normal"]), Paragraph("<b>Risiko</b>", styles["normal"])]
+    table_data = [header]
+    for s in services:
+        port_txt = str(s.get("port") or "-")
+        prod = s.get("product") or "-"
+        ver = s.get("version") or "-"
+        risk = s.get("risk") or "-"
+        table_data.append([Paragraph(port_txt, styles["normal"]), Paragraph(prod, styles["normal"]), Paragraph(ver, styles["normal"]), Paragraph(risk, styles["normal"])])
+
+    tbl = Table(table_data, colWidths=[25 * mm, 80 * mm, 30 * mm, 30 * mm])
+    set_table_repeat(tbl, 1)
+    border_color = HexColor("#e5e7eb")
+    header_bg = HexColor("#f8fafc")
+    tbl.setStyle(
+        TableStyle(
+            [
+                ("GRID", (0, 0), (-1, -1), 0.3, border_color),
+                ("BACKGROUND", (0, 0), (-1, 0), header_bg),
+                ("TEXTCOLOR", (0, 0), (-1, 0), HexColor("#111827")),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("FONTSIZE", (0, 0), (-1, -1), 9),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+            ]
+        )
+    )
+    elements.append(tbl)
+    elements.append(Spacer(1, 8))
+
+    # Add per-service details (TLS / CVE / Banner)
+    top_vulns_count = 0
+    try:
+        if isinstance(technical_json, dict):
+            top_vulns_count = len(technical_json.get("vulns") or technical_json.get("vulnerabilities") or [])
+    except Exception:
+        top_vulns_count = 0
+    for s in services:
+        details = []
+        tls = s.get("tls", {}) or {}
+        if tls.get("protocols"):
+            details.append(f"TLS-Protokolle: {', '.join(tls.get('protocols'))}")
+        if tls.get("weak_ciphers"):
+            details.append("Schwache Cipher/Konfiguration identifiziert")
+        if tls.get("cert_expiry"):
+            details.append(f"Zertifikat gültig bis: {tls.get('cert_expiry')}")
+        # Only show per-service CVE count when service has its own vulnerability list
+        # Avoid repeating the host-level total for every service.
+        svc_cve_count = s.get("cve_count") or 0
+        if svc_cve_count and svc_cve_count != top_vulns_count:
+            details.append(f"Bekannte Schwachstellen: {svc_cve_count} (hoch: {s.get('high_cvss')})")
+        if s.get("banner"):
+            b = s.get("banner")
+            if isinstance(b, str) and len(b) > 0:
+                short = b.replace('\n', ' ').strip()
+                if len(short) > 140:
+                    short = short[:137] + "..."
+                details.append(f"Banner: {short}")
+
+        if details:
+            header_line = f"Port {s.get('port')}: {s.get('product') or '-'} ({s.get('version') or '-'})"
+            elements.append(Spacer(1, 6))
+            elements.append(Paragraph(f"<b>{header_line}</b>", styles["normal"]))
+            for d in details:
+                elements.append(Paragraph(f"• {d}", styles["bullet"]))
 
     # 3. System-Metadaten
     _add_system_metadata(elements, styles, technical_json)

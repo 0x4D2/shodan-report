@@ -2,7 +2,13 @@
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
+# Ensure local `src` is used so the script imports the workspace code,
+# not an installed package with the same name.
+root = Path(__file__).resolve().parents[1]
+src_dir = root / "src"
+if str(src_dir) not in sys.path:
+    sys.path.insert(0, str(src_dir))
+
 
 from shodan_report.core.runner import generate_report_pipeline
 

@@ -130,38 +130,12 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
     # 4. PROFESSIONELLE EINLEITUNGSTEXTE
     # ──────────────────────────────────────────────────────────────────────────
 
-    # Port-Anzahl aus technischen Daten
+    # Use prepared management data (deduped CVEs, per-service attribution)
     open_ports = technical_json.get("open_ports", [])
-    total_ports = len(open_ports) if open_ports else 0
-
-    # CVE-Analyse: dedupliziere CVE-IDs aus Evaluation und technischen Daten
-    # support both legacy key 'vulns' and newer 'vulnerabilities'
-    top_vulns = technical_json.get("vulns") or technical_json.get("vulnerabilities") or []
-    # evaluation may be dict or object
-    eval_cves = []
-    if isinstance(evaluation, dict):
-        eval_cves = evaluation.get("cves", []) or []
-    else:
-        eval_cves = getattr(evaluation, "cves", []) or []
-
-    unique_cves = set()
-    # include top-level vulns
-    for v in list(top_vulns) + list(eval_cves):
-        unique_cves.add(str(v))
-
-    # include per-service vulnerabilities if present
-    try:
-        for svc in technical_json.get("open_ports", []) or []:
-            if isinstance(svc, dict):
-                sv_vulns = svc.get("vulnerabilities") or svc.get("_cves") or svc.get("vulns") or []
-            else:
-                sv_vulns = getattr(svc, "vulnerabilities", []) or getattr(svc, "_cves", []) or getattr(svc, "vulns", []) or []
-            for vv in sv_vulns:
-                unique_cves.add(str(vv))
-    except Exception:
-        pass
-
-    cve_count = len(unique_cves)
+    total_ports = mdata.get("total_ports", len(open_ports))
+    cve_count = mdata.get("cve_count", 0)
+    unique_cves = mdata.get("unique_cves", [])
+    per_service = mdata.get("per_service", [])
 
     # 4a. Erster Absatz: Knackige Fakten
     intro_text = f"Auf Basis passiver OSINT-Daten wurden {total_ports} öffentlich erreichbare Dienste identifiziert."
