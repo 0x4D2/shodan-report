@@ -1,4 +1,5 @@
 from shodan_report.evaluation.models import EvaluationResult
+import re
 from shodan_report.evaluation.risk_prioritization import BusinessRisk
 from typing import Dict, Any, List, Optional
 
@@ -25,11 +26,39 @@ def _normalize_services_from_technical(technical_json: Optional[Dict[str, Any]])
                 svc_banner = getattr(p, "raw", None) or None
                 svc_cves = getattr(p, "vulnerabilities", []) or []
 
+            # sanitize fields to avoid leaking long banners/keys into management text
+            def _clean_field(v: Optional[str], max_len: int = 80) -> Optional[str]:
+                if v is None:
+                    return None
+                s = str(v).strip()
+                s = s.replace("\n", " ").replace("\r", " ")
+                s = re.sub(r"\s+", " ", s)
+                # redact long base64-like sequences (SSH keys)
+                if re.search(r"[A-Za-z0-9+/]{40,}=*", s):
+                    return "[SSH-Key entfernt]"
+                # if field begins with numeric FTP/SMTP code like '220 ' remove it for product
+                s = re.sub(r"^[0-9]{3}\s+", "", s)
+                if len(s) > max_len:
+                    return s[: max_len - 3] + "..."
+                return s
+
+            def _normalize_product_name(p: Optional[str]) -> Optional[str]:
+                if not p:
+                    return p
+                low = p.lower()
+                if "ssh-2.0" in low or "openssh" in low or "mod_sftp" in low or low.strip() == "ssh":
+                    if "mod_sftp" in low:
+                        return "SSH (mod_sftp)"
+                    return "SSH"
+                # strip numeric banners (e.g., '220 ...' seen in FTP)
+                cleaned = _clean_field(p, max_len=60)
+                return cleaned
+
             services.append({
                 "port": port,
-                "product": svc_product,
-                "version": svc_version,
-                "banner": svc_banner,
+                "product": _normalize_product_name(svc_product),
+                "version": _clean_field(svc_version, max_len=80),
+                "banner": _clean_field(svc_banner, max_len=200),
                 "cves": svc_cves,
             })
     return services

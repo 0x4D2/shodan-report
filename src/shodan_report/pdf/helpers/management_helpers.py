@@ -822,12 +822,56 @@ def _build_service_summary(technical_json: Dict[str, Any]) -> List[tuple]:
     critical_list = technical_json.get("critical_services") or []
     vuln_list = technical_json.get("vulnerable_versions") or []
 
+    def _clean_display_field_local(v: Any, max_len: int = 80) -> str:
+        try:
+            if v is None:
+                return "-"
+            s_val = str(v).strip()
+            s_val = s_val.replace("\n", " ").replace("\r", " ")
+            s_val = re.sub(r"\s+", " ", s_val)
+            # redact long base64-like sequences
+            if re.search(r"[A-Za-z0-9+/]{40,}=*", s_val):
+                return "[SSH-Key entfernt]"
+            # remove IPv4-mapped IPv6 tokens like '::ffff:82.100.220.31'
+            s_val = re.sub(r"::ffff:\d{1,3}(?:\.\d{1,3}){3}\s*", "", s_val)
+            # compact typical FTP banner fragments to 'FTP'
+            if "ftp" in s_val.lower():
+                return "FTP"
+            # remove leading numeric FTP/SMTP codes like '220 '
+            s_val = re.sub(r"^[0-9]{3}\s+", "", s_val)
+            if len(s_val) > max_len:
+                return s_val[: max_len - 3] + "..."
+            return s_val
+        except Exception:
+            try:
+                return str(v)
+            except Exception:
+                return "-"
+
+
+    def _normalize_product_local(prod: Any) -> str:
+        try:
+            if not prod:
+                return "-"
+            p = str(prod).strip()
+            low = p.lower()
+            if "ssh-2.0" in low or "openssh" in low or "mod_sftp" in low or low.strip() == "ssh":
+                if "mod_sftp" in low:
+                    return "SSH (mod_sftp)"
+                return "SSH"
+            return _clean_display_field_local(p, max_len=60)
+        except Exception:
+            return str(prod) if prod is not None else "-"
+
     for s in services:
         try:
             ident = extract_service_identity(s)
             port = ident.get("port")
             prod = ident.get("product") or "-"
             ver = ident.get("version") or ""
+            # apply conservative sanitization for management summary
+            prod = _normalize_product_local(prod)
+            ver = _clean_display_field_local(ver, max_len=60)
             confidence = ident.get("confidence")
         except Exception:
             continue

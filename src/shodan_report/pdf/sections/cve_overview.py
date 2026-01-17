@@ -177,9 +177,9 @@ def _create_risk_overview(elements: List, styles: Dict, cve_data: List[Dict]) ->
         ]
     ]
 
-    # Slightly smaller boxes for balanced layout: 5 * 26mm = 130mm total.
-    # Keeps boxes readable but less dominant on the page.
-    table = Table(table_data, colWidths=[26 * mm, 26 * mm, 26 * mm, 26 * mm, 26 * mm])
+    # Kleinere Boxen für kompaktere Layouts: 5 * 20mm = 100mm total.
+    # Bessere Option für enge oder zweiseitige Layouts.
+    table = Table(table_data, colWidths=[20 * mm, 20 * mm, 20 * mm, 20 * mm, 20 * mm])
     table.setStyle(
         TableStyle(
             [
@@ -191,7 +191,7 @@ def _create_risk_overview(elements: List, styles: Dict, cve_data: List[Dict]) ->
                 ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
                 ("ALIGNMENT", (0, 0), (-1, 0), "CENTER"),
                 ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("FONTSIZE", (0, 0), (-1, 0), 8),
+                # Removed table-level FONTSIZE to allow inline Paragraph font tags to take effect.
                 ("PADDING", (0, 0), (-1, 0), (6, 4)),
                 ("BOX", (0, 0), (-1, -1), 0.5, colors.grey),
             ]
@@ -204,15 +204,18 @@ def _create_risk_overview(elements: List, styles: Dict, cve_data: List[Dict]) ->
 
 def _create_risk_cell(label: str, count: int, color) -> Paragraph:
     """Erstelle eine Risiko-Zelle für die Übersicht."""
-    text = f"<b>{label}<br/>{count}</b>"
+    # label bold, count emphasized with larger bold font for readability
+    # Make label slightly smaller and the numeric count modestly larger but reduced
+    # from previous values to avoid visual dominance.
+    text = f"<font size=7><b>{label}</b></font><br/><font size=8><b>{count}</b></font>"
     return Paragraph(
         text,
         style=ParagraphStyle(
             "RiskCell",
             alignment=1,  # Center
             textColor=colors.white,
-            fontSize=8,
-            leading=9,
+            fontSize=7,
+            leading=8,
             spaceBefore=0,
             spaceAfter=0,
         ),

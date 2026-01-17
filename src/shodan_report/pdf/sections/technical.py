@@ -1,9 +1,39 @@
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
+import re
 from reportlab.platypus import Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.units import mm
 from reportlab.lib.colors import HexColor
 from shodan_report.pdf.layout import keep_section, set_table_repeat
 from shodan_report.pdf.sections.data.technical_data import prepare_technical_detail
+
+
+def _clean_display_field(v: Optional[str], max_len: int = 80) -> str:
+    if not v:
+        return "-"
+    s = str(v).strip()
+    s = s.replace("\n", " ").replace("\r", " ")
+    s = re.sub(r"\s+", " ", s)
+    # redact long base64-like sequences (SSH keys)
+    if re.search(r"[A-Za-z0-9+/]{40,}=*", s):
+        return "[SSH-Key entfernt]"
+    # remove leading numeric FTP/SMTP codes (e.g., '220 ')
+    s = re.sub(r"^[0-9]{3}\s+", "", s)
+    if len(s) > max_len:
+        return s[: max_len - 3] + "..."
+    return s
+
+
+def _normalize_product(prod: Optional[str]) -> str:
+    if not prod:
+        return "-"
+    p = str(prod).strip()
+    low = p.lower()
+    if "ssh-2.0" in low or "openssh" in low or "mod_sftp" in low or low.strip() == "ssh":
+        if "mod_sftp" in low:
+            return "SSH (mod_sftp)"
+        return "SSH"
+    # otherwise clean and truncate
+    return _clean_display_field(p, max_len=60)
 
 
 def create_technical_section(elements: List, styles: Dict, *args, **kwargs) -> None:
@@ -43,9 +73,11 @@ def create_technical_section(elements: List, styles: Dict, *args, **kwargs) -> N
     seen_rows = set()
     for s in services:
         port_txt = str(s.get("port") or "-")
-        prod = s.get("product") or "-"
-        ver = s.get("version") or "-"
-        server = s.get("server") or "-"
+        prod_raw = s.get("product") or ""
+        prod = _normalize_product(prod_raw)
+        ver_raw = s.get("version") or ""
+        ver = _clean_display_field(ver_raw, max_len=60)
+        server = _clean_display_field(s.get("server") or "-", max_len=40)
         risk = s.get("risk") or "-"
 
         # enforce single-line version (no newlines) and truncate to fit
@@ -119,8 +151,14 @@ def create_technical_section(elements: List, styles: Dict, *args, **kwargs) -> N
                     short = short[:137] + "..."
                 details.append(f"Banner: {short}")
 
+        # Recompute display product/version per-service to avoid using loop-scoped vars
+        prod_raw = s.get("product") or ""
+        prod = _normalize_product(prod_raw)
+        ver_raw = s.get("version") or ""
+        ver = _clean_display_field(ver_raw, max_len=60)
+
         if details:
-            header_line = f"Port {s.get('port')}: {s.get('product') or '-'} ({s.get('version') or '-'})"
+            header_line = f"Port {s.get('port')}: {prod} ({ver})"
             elements.append(Spacer(1, 6))
             elements.append(Paragraph(f"<b>{header_line}</b>", styles["normal"]))
             for d in details:
