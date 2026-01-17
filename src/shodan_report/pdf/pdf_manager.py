@@ -26,6 +26,7 @@ def prepare_pdf_elements(
     evaluation: Dict[str, Any],
     business_risk: str,
     config: Optional[Dict[str, Any]] = None,
+    trend_table: Optional[Dict[str, Any]] = None,
     *,
     compare_month: Optional[str] = None,
     # Optional dependency-injection points for testability
@@ -95,6 +96,7 @@ def prepare_pdf_elements(
         styles=styles,
         trend_text=trend_text,
         compare_month=compare_month,
+        trend_table=trend_table,
         legacy_mode=False,
         technical_json=technical_json,
         evaluation=evaluation,

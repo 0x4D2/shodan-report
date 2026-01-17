@@ -175,7 +175,12 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
         elements.append(Paragraph("Kurzdetail zu betroffenen Diensten:", styles["normal"]))
         elements.append(Spacer(1, 6))
         # use Paragraph cells for wrapping and set reasonable column widths
-        table_data = [["Port", "Dienst", "Kurzbefund", "Kurzmaßnahme"]]
+        table_data = [[
+            Paragraph("<b>Port</b>", styles["normal"]),
+            Paragraph("<b>Dienst</b>", styles["normal"]),
+            Paragraph("<b>Kurzbefund</b>", styles["normal"]),
+            Paragraph("<b>Maßnahme</b>", styles["normal"]),
+        ]]
         for port, prod, finding, action in service_rows:
             table_data.append([
                 Paragraph(str(port), styles.get("normal")),
@@ -184,7 +189,9 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
                 Paragraph(action, styles.get("normal")),
             ])
 
-        tbl = Table(table_data, colWidths=[14 * mm, 40 * mm, 80 * mm, 40 * mm], repeatRows=1)
+        # Align management table total width with the technical section table
+        # (match total ~163 mm used in technical.py) so both appear uniform.
+        tbl = Table(table_data, colWidths=[14 * mm, 55 * mm, 70 * mm, 24 * mm], repeatRows=1)
         tbl.setStyle(
             TableStyle(
                 [

@@ -47,7 +47,16 @@ def generate_pdf(
             config,
         )
     else:
-        # pass compare_month as keyword-only parameter
+        # build a structured trend_table from available technical/evaluation data
+        try:
+            # import locally to avoid circular-import issues
+            from shodan_report.reporting.trend import _derive_trend_table
+
+            trend_table = _derive_trend_table(technical_json or {}, evaluation)
+        except Exception:
+            trend_table = None
+
+        # pass compare_month and trend_table as keyword-only parameters
         elements = prepare_pdf_elements(
             customer_name,
             month,
@@ -59,6 +68,7 @@ def generate_pdf(
             business_risk,
             config,
             compare_month=compare_month,
+            trend_table=trend_table,
         )
     render_pdf(pdf_path, elements)
 

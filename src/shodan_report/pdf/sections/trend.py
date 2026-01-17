@@ -93,23 +93,26 @@ def _add_comparison_view(
             table_data.append(row)
 
         # (removed compatibility paragraph; tests now assert Table presence directly)
-        tbl = Table(table_data, colWidths=[70 * mm, 25 * mm, 25 * mm, 60 * mm])
+        # Use compact column widths and match management table styling
+        tbl = Table(table_data, colWidths=[50 * mm, 20 * mm, 20 * mm, 35 * mm])
         # ensure header repeats and table is kept together with following spacer
         set_table_repeat(tbl, 1)
-        border_color = HexColor("#e5e7eb")
+        border_color = HexColor("#d1d5db")
         header_bg = HexColor("#f8fafc")
         if theme and hasattr(theme, "muted"):
             border_color = getattr(theme, "muted")
+
         tbl.setStyle(
             TableStyle(
                 [
-                    ("GRID", (0, 0), (-1, -1), 0.3, border_color),
+                    ("GRID", (0, 0), (-1, -1), 0.2, border_color),
                     ("BACKGROUND", (0, 0), (-1, 0), header_bg),
                     ("TEXTCOLOR", (0, 0), (-1, 0), HexColor("#111827")),
                     ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
                     ("FONTSIZE", (0, 0), (-1, -1), 9),
-                    ("LEFTPADDING", (0, 0), (-1, -1), 6),
-                    ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+                    ("ALIGN", (1, 1), (2, -1), "CENTER"),
                 ]
             )
         )

@@ -154,6 +154,7 @@ def generate_report_pipeline(
             business_risk=business_risk_str,
             output_dir=output_dir,
             config=config,
+            compare_month=compare_month,
         )
 
         result = {

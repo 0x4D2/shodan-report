@@ -163,6 +163,7 @@ def _create_risk_overview(elements: List, styles: Dict, cve_data: List[Dict]) ->
     color_high = colors.HexColor("#f97316")  # Orange
     color_medium = colors.HexColor("#eab308")  # Gelb
     color_low = colors.HexColor("#16a34a")  # Grün
+    color_unknown = colors.HexColor("#585758DC")  # Grau
 
     # Kompakte Tabelle für Risiko-Boxen (inkl. 'UNBEKANNT' für CVEs ohne CVSS)
     unknown = len([c for c in cve_data if c.get("cvss") is None])
@@ -172,12 +173,13 @@ def _create_risk_overview(elements: List, styles: Dict, cve_data: List[Dict]) ->
             _create_risk_cell("HOCH", len(high), color_high),
             _create_risk_cell("MEDIUM", len(medium), color_medium),
             _create_risk_cell("NIEDRIG", len(low), color_low),
-            _create_risk_cell("UNBEKANNT", unknown, colors.HexColor("#9CA3AF")),
+            _create_risk_cell("UNBEKANNT", unknown, color_unknown),
         ]
     ]
 
-    # Slightly narrower columns to fit five boxes on one line
-    table = Table(table_data, colWidths=[36, 36, 36, 36, 36])
+    # Slightly smaller boxes for balanced layout: 5 * 26mm = 130mm total.
+    # Keeps boxes readable but less dominant on the page.
+    table = Table(table_data, colWidths=[26 * mm, 26 * mm, 26 * mm, 26 * mm, 26 * mm])
     table.setStyle(
         TableStyle(
             [
@@ -185,10 +187,11 @@ def _create_risk_overview(elements: List, styles: Dict, cve_data: List[Dict]) ->
                 ("BACKGROUND", (1, 0), (1, 0), color_high),
                 ("BACKGROUND", (2, 0), (2, 0), color_medium),
                 ("BACKGROUND", (3, 0), (3, 0), color_low),
+                ("BACKGROUND", (4, 0), (4, 0), color_unknown),
                 ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
                 ("ALIGNMENT", (0, 0), (-1, 0), "CENTER"),
                 ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("FONTSIZE", (0, 0), (-1, 0), 9),
+                ("FONTSIZE", (0, 0), (-1, 0), 8),
                 ("PADDING", (0, 0), (-1, 0), (6, 4)),
                 ("BOX", (0, 0), (-1, -1), 0.5, colors.grey),
             ]
@@ -208,8 +211,8 @@ def _create_risk_cell(label: str, count: int, color) -> Paragraph:
             "RiskCell",
             alignment=1,  # Center
             textColor=colors.white,
-            fontSize=9,
-            leading=11,
+            fontSize=8,
+            leading=9,
             spaceBefore=0,
             spaceAfter=0,
         ),
@@ -290,8 +293,9 @@ def _create_compact_cve_table(
             ]
         )
 
-    # Tabelle erstellen (sehr schmale Spalten) - use mm units for predictable widths
-    col_widths = [40 * mm, 20 * mm, 35 * mm, 15 * mm]
+    # Tabelle erstellen (kompakt) — setze Spaltenbreiten so, dass Dienste
+    # genügend Platz haben, aber die Tabelle nicht zu breit wird.
+    col_widths = [35 * mm, 20 * mm, 45 * mm, 15 * mm]
 
     table = Table(table_data, colWidths=col_widths, repeatRows=1)
 
@@ -305,7 +309,8 @@ def _create_compact_cve_table(
             ("FONTSIZE", (0, 0), (-1, 0), 8),
             # Grid
             ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
-            ("PADDING", (0, 0), (-1, -1), (2, 1)),  # Minimal padding
+            # Mehr Padding, damit längere Texte nicht visuell abgeschnitten wirken
+            ("PADDING", (0, 0), (-1, -1), (4, 2)),
             # Zeilen-Hintergrund für bessere Lesbarkeit
             (
                 "ROWBACKGROUNDS",

@@ -68,8 +68,9 @@ def create_technical_section(elements: List, styles: Dict, *args, **kwargs) -> N
             Paragraph(risk, styles["normal"]),
         ])
 
-    # Make Version column slightly wider and Server column narrower to balance layout
-    tbl = Table(table_data, colWidths=[20 * mm, 60 * mm, 50 * mm, 30 * mm, 25 * mm])
+    # Constrain total width to typical text area (~150-160 mm)
+    # Adjust column widths to avoid overflowing page margins
+    tbl = Table(table_data, colWidths=[18 * mm, 55 * mm, 40 * mm, 30 * mm, 20 * mm])
     set_table_repeat(tbl, 1)
     border_color = HexColor("#e5e7eb")
     header_bg = HexColor("#f8fafc")
