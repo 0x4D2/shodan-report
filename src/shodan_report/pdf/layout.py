@@ -1,5 +1,7 @@
 from typing import List
 from reportlab.platypus import KeepTogether, Table, Flowable
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.units import cm
 
 
 def keep_section(flowables: List[Flowable]) -> KeepTogether:
@@ -16,6 +18,30 @@ def set_table_repeat(tbl: Table, rows: int = 1) -> None:
         tbl.repeatRows = int(rows)
     except Exception:
         # best-effort: ignore if not supported
+        pass
+
+
+def set_table_no_split(tbl: Table) -> None:
+    """Prevent ReportLab from splitting a table across pages.
+
+    This sets Table attributes that discourage automatic splitting. If the
+    table is larger than a page, ReportLab may still overflow; callers should
+    ensure tables are reasonably sized or render an alternative view.
+    """
+    try:
+        # Estimate available page area using the same margins as pdf_renderer
+        page_w, page_h = A4
+        avail_w = page_w - (2 * cm) - (2 * cm)
+        avail_h = page_h - (2 * cm) - (2 * cm)
+        try:
+            w, h = tbl.wrap(avail_w, avail_h)
+            # Only disable splitting if table height fits on a single page
+            if h <= avail_h:
+                tbl.splitByRow = False
+        except Exception:
+            # Fallback: don't change splitting behavior
+            pass
+    except Exception:
         pass
 
 

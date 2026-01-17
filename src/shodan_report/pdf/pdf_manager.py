@@ -5,6 +5,7 @@ from typing import List, Dict, Any, Optional, Callable
 from .styles import create_theme, create_styles
 from .sections.header import _create_header
 from .context import ReportContext
+from .layout import keep_section
 
 from .sections.management import create_management_section
 from .sections.technical import create_technical_section
@@ -69,80 +70,48 @@ def prepare_pdf_elements(
             sec(elements=elements, styles=styles, theme=theme, context=ctx)
         return elements
 
-    # Default (legacy) behavior: call built-in section functions in order
-    _create_header(
-        elements=elements,
-        styles=styles,
-        theme=theme,
-        customer_name=customer_name,
-        month=month,
-        ip=ip,
-        config=config,
-    )
+    # Marker used to identify section starts. `render_pdf` will turn ranges
+    # starting at this marker into a `KeepTogether` block before building.
+    class _SectionMarker:
+        pass
 
-    create_management_section(
-        elements=elements,
-        styles=styles,
-        management_text=management_text,
-        technical_json=technical_json,
-        evaluation=evaluation,
-        business_risk=business_risk,
-        config=config,
-        theme=theme,
-    )
+    if sections is not None:
+        for sec in sections:
+            sec(elements=elements, styles=styles, theme=theme, context=ctx)
+        return elements
 
-    create_trend_section(
-        elements=elements,
-        styles=styles,
-        trend_text=trend_text,
-        compare_month=compare_month,
-        trend_table=trend_table,
-        legacy_mode=False,
-        technical_json=technical_json,
-        evaluation=evaluation,
-        theme=theme,
-    )
+    # Default (legacy) behavior: call built-in section functions in order.
+    # Insert a marker before each section so the renderer can keep the whole
+    # section together when producing the PDF.
+    elements.append(_SectionMarker())
+    _create_header(elements=elements, styles=styles, theme=theme, customer_name=customer_name, month=month, ip=ip, config=config)
+
+    # Do NOT insert a section marker between header and management — keep
+    # header and the management summary together on the same page when
+    # possible.
+    create_management_section(elements=elements, styles=styles, management_text=management_text, technical_json=technical_json, evaluation=evaluation, business_risk=business_risk, config=config)
+
+    elements.append(_SectionMarker())
+    create_trend_section(elements=elements, styles=styles, trend_text=trend_text, compare_month=compare_month, trend_table=trend_table, legacy_mode=False, technical_json=technical_json, evaluation=evaluation)
+
     # Section 3: Priorisierte Handlungsempfehlungen (directly after Trend)
-    create_recommendations_section(
-        elements=elements,
-        styles=styles,
-        business_risk=business_risk,
-        technical_json=technical_json,
-        evaluation=evaluation,
-        theme=theme,
-    )
+    # Keep Trend and Recommendations together — do not insert a marker here.
+    create_recommendations_section(elements=elements, styles=styles, business_risk=business_risk, technical_json=technical_json, evaluation=evaluation)
 
-    create_technical_section(
-        elements=elements,
-        styles=styles,
-        technical_json=technical_json,
-        config=config,
-    )
+    elements.append(_SectionMarker())
+    create_technical_section(elements=elements, styles=styles, technical_json=technical_json, config=config)
 
-    create_cve_overview_section(
-        elements=elements,
-        styles=styles,
-        technical_json=technical_json,
-        evaluation=evaluation,
-        context=ctx,
-    )
+    elements.append(_SectionMarker())
+    create_cve_overview_section(elements=elements, styles=styles, technical_json=technical_json, evaluation=evaluation, context=ctx)
 
-    create_methodology_section(
-        elements=elements,
-        styles=styles,
-    )
+    elements.append(_SectionMarker())
+    create_methodology_section(elements=elements, styles=styles)
 
-    create_conclusion_section(
-        elements=elements,
-        styles=styles,
-        customer_name=customer_name,
-        business_risk=business_risk,
-        context=ctx,
-    )
+    elements.append(_SectionMarker())
+    create_conclusion_section(elements=elements, styles=styles, customer_name=customer_name, business_risk=business_risk, context=ctx)
 
-    create_footer_section(
-        elements=elements,
-        styles=styles,
-    )
+    # Keep Conclusion and Footer together — no marker between them so the
+    # renderer will try to place them on the same page when possible.
+    create_footer_section(elements=elements, styles=styles)
 
     return elements

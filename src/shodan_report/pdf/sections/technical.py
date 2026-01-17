@@ -3,7 +3,7 @@ import re
 from reportlab.platypus import Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.units import mm
 from reportlab.lib.colors import HexColor
-from shodan_report.pdf.layout import keep_section, set_table_repeat
+from shodan_report.pdf.layout import keep_section, set_table_repeat, set_table_no_split
 from shodan_report.pdf.sections.data.technical_data import prepare_technical_detail
 
 
@@ -104,6 +104,7 @@ def create_technical_section(elements: List, styles: Dict, *args, **kwargs) -> N
     # Adjust column widths to avoid overflowing page margins
     tbl = Table(table_data, colWidths=[18 * mm, 55 * mm, 40 * mm, 30 * mm, 20 * mm])
     set_table_repeat(tbl, 1)
+    set_table_no_split(tbl)
     border_color = HexColor("#e5e7eb")
     header_bg = HexColor("#f8fafc")
     tbl.setStyle(

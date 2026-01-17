@@ -9,7 +9,7 @@ from reportlab.lib import colors
 from reportlab.lib.units import mm
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.colors import HexColor
-from shodan_report.pdf.layout import keep_section, set_table_repeat
+from shodan_report.pdf.layout import keep_section, set_table_repeat, set_table_no_split
 from ..sections.data.cve_enricher import enrich_cves
 
 
@@ -180,6 +180,7 @@ def _create_risk_overview(elements: List, styles: Dict, cve_data: List[Dict]) ->
     # Kleinere Boxen für kompaktere Layouts: 5 * 20mm = 100mm total.
     # Bessere Option für enge oder zweiseitige Layouts.
     table = Table(table_data, colWidths=[20 * mm, 20 * mm, 20 * mm, 20 * mm, 20 * mm])
+    set_table_no_split(table)
     table.setStyle(
         TableStyle(
             [
@@ -301,6 +302,7 @@ def _create_compact_cve_table(
     col_widths = [35 * mm, 20 * mm, 45 * mm, 15 * mm]
 
     table = Table(table_data, colWidths=col_widths, repeatRows=1)
+    set_table_no_split(table)
 
     # Styling für kompakte Tabelle
     table_style = TableStyle(
@@ -530,6 +532,7 @@ def _create_detailed_cve_table(elements: List, styles: Dict, cve_data: List[Dict
     col_widths = [25 * mm, 45 * mm, 20 * mm, 40 * mm, 30 * mm]
     table = Table(table_data, colWidths=col_widths)
     set_table_repeat(table, 1)
+    set_table_no_split(table)
     border_color = HexColor("#e5e7eb")
     header_bg = HexColor("#f8fafc")
     table_style = TableStyle([

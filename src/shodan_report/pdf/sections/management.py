@@ -29,7 +29,7 @@ from .data.cve_enricher import enrich_cves_with_local
 # PDF Helpers
 # ──────────────────────────────────────────────────────────────────────────────
 from shodan_report.pdf.helpers.pdf_helpers import build_horizontal_exposure_ampel
-from shodan_report.pdf.layout import keep_section, set_table_repeat
+from shodan_report.pdf.layout import keep_section, set_table_repeat, set_table_no_split
 from .data.management_data import prepare_management_data
 import re
 
@@ -192,6 +192,7 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
         # Align management table total width with the technical section table
         # (match total ~163 mm used in technical.py) so both appear uniform.
         tbl = Table(table_data, colWidths=[14 * mm, 55 * mm, 70 * mm, 24 * mm], repeatRows=1)
+        set_table_no_split(tbl)
         tbl.setStyle(
             TableStyle(
                 [
@@ -206,6 +207,7 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
         )
         # repeat header row and keep table together with spacer
         set_table_repeat(tbl, 1)
+        set_table_no_split(tbl)
         elements.append(tbl)
         elements.append(Spacer(1, 12))
         # leave table as top-level element for test visibility

@@ -8,7 +8,7 @@ from reportlab.platypus import Paragraph
 from reportlab.platypus import Spacer, Paragraph, Table, TableStyle
 from reportlab.lib.units import mm
 from reportlab.lib.colors import HexColor
-from shodan_report.pdf.layout import keep_section, set_table_repeat
+from shodan_report.pdf.layout import keep_section, set_table_repeat, set_table_no_split
 
 
 def create_trend_section(elements: List, styles: Dict, *args, **kwargs) -> None:
@@ -97,6 +97,7 @@ def _add_comparison_view(
         tbl = Table(table_data, colWidths=[50 * mm, 20 * mm, 20 * mm, 35 * mm])
         # ensure header repeats and table is kept together with following spacer
         set_table_repeat(tbl, 1)
+        set_table_no_split(tbl)
         border_color = HexColor("#d1d5db")
         header_bg = HexColor("#f8fafc")
         if theme and hasattr(theme, "muted"):
