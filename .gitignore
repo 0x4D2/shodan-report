@@ -4,7 +4,6 @@ __pycache__/
 .env
 snapshots/
 output/
-data/
 reports/
 *.egg-info/
 .DS_Store

@@ -3,6 +3,7 @@ CVE- & Exploit-Übersicht für PDF-Reports - KOMPAKTE VERSION für One-Page Desi
 """
 
 import re
+import os
 from typing import List, Dict, Any, Optional
 from reportlab.platypus import Spacer, Paragraph, Table, TableStyle
 from reportlab.lib import colors
@@ -10,7 +11,20 @@ from reportlab.lib.units import mm
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.colors import HexColor
 from shodan_report.pdf.layout import keep_section, set_table_repeat, set_table_no_split
-from ..sections.data.cve_enricher import enrich_cves
+try:
+    from ..sections.data.cve_enricher import enrich_cves
+except Exception:
+    # If the enricher module fails to import (temporary local corruption),
+    # provide a minimal fallback so PDF generation can proceed.
+    def enrich_cves(*args, **kwargs):
+        ids = []
+        if len(args) >= 1 and isinstance(args[0], (list, tuple)):
+            ids = list(args[0])
+        elif 'cve_ids' in kwargs:
+            ids = list(kwargs.get('cve_ids') or [])
+        else:
+            ids = []
+        return [{'id': str(i), 'nvd_url': f'https://nvd.nist.gov/vuln/detail/{i}', 'cvss': None, 'ports': []} for i in ids]
 
 
 def _get_style(styles: Dict, name: str, fallback: str = "normal"):
@@ -90,7 +104,7 @@ def _extract_cve_data(technical_json: Dict[str, Any]) -> List[Dict]:
                         ids.add(str(cid))
 
         # per-service
-        services = technical_json.get("open_ports") or technical_json.get("services") or []
+        services = technical_json.get("services") or technical_json.get("open_ports") or []
         for s in services:
             sv_vulns = []
             if isinstance(s, dict):
@@ -116,7 +130,18 @@ def _extract_cve_data(technical_json: Dict[str, Any]) -> List[Dict]:
     unique_ids = sorted(ids)
 
     # Enrich locally: get cvss and ports if available
-    enriched = enrich_cves(unique_ids, technical_json, lookup_nvd=False)
+    # Allow live NVD lookups via env or config
+    lookup_nvd = False
+    try:
+        if context is not None and hasattr(context, "config"):
+            cfg = getattr(context, "config") or {}
+            lookup_nvd = bool((cfg.get("nvd") or {}).get("enabled", False))
+    except Exception:
+        lookup_nvd = False
+    if os.environ.get("NVD_LIVE") == "1":
+        lookup_nvd = True
+
+    enriched = enrich_cves(unique_ids, technical_json, lookup_nvd=lookup_nvd)
 
     cve_data = []
     for ent in enriched:
@@ -134,14 +159,30 @@ def _extract_cve_data(technical_json: Dict[str, Any]) -> List[Dict]:
 
             ports = ent.get("ports", []) or []
             service = ",".join([str(p) for p in ports]) if ports else "Various"
-            cve_data.append({
+            # Preserve NVD url and any service indicator populated by the enricher
+            cve_entry = {
                 "id": cid,
                 "cvss": cvss_val,
                 "ports": ports,
                 "service": service[:40],
                 "summary": ent.get("summary") or "",
                 "exploit_status": ent.get("exploit_status", "unknown"),
-            })
+                "nvd_url": ent.get("nvd_url") or f'https://nvd.nist.gov/vuln/detail/{cid}',
+            }
+            # optional structured indicator from CPE helper
+            if ent.get("service_indicator"):
+                cve_entry["service_indicator"] = ent.get("service_indicator")
+                ind_label = None
+                try:
+                    ind_label = ent.get("service_indicator", {}).get("label")
+                except Exception:
+                    ind_label = None
+                if service == "Various" and ind_label:
+                    service = ind_label
+                    cve_entry["service"] = service
+            if ent.get("service_evidence"):
+                cve_entry["service_evidence"] = ent.get("service_evidence")
+            cve_data.append(cve_entry)
         except Exception:
             continue
 
@@ -472,7 +513,8 @@ def _create_detailed_cve_table(elements: List, styles: Dict, cve_data: List[Dict
     # Decide which CVEs to show: Top-N unless show_full is True
     def _sort_key_all(x):
         v = x.get("cvss")
-        return v if v is not None else -1
+        has_ind = 1 if x.get("service_indicator") else 0
+        return (has_ind, v if v is not None else -1)
 
     sorted_all = sorted(cve_data, key=_sort_key_all, reverse=True)
     if show_full:
@@ -520,9 +562,35 @@ def _create_detailed_cve_table(elements: List, styles: Dict, cve_data: List[Dict
         exploit_status = map_exploit(c.get("exploit_status", c.get("exploit", "unknown")))
         rel = relevance_from_cvss(cvss)
 
+        # Build service cell: prefer OSINT indicator label when available
+        try:
+            ind = c.get("service_indicator")
+            ind_label = None
+            if ind and isinstance(ind, dict):
+                ind_label = ind.get("label") or None
+
+            if ind_label:
+                svc_lines = [str(ind_label), "<font size=8 color='#6b7280'>(OSINT Indiz)</font>"]
+                service_cell = Paragraph("<br/>".join(svc_lines), styles["normal"])
+            else:
+                display_label = service_label
+                service_cell = Paragraph(str(display_label or "-"), styles["normal"])
+        except Exception:
+            service_cell = Paragraph(str(service_label), styles["normal"])
+
+        # CVE cell with clickable link when nvd_url available
+        try:
+            nvd_url = c.get("nvd_url")
+            if nvd_url:
+                cve_cell = Paragraph(f"<a href=\"{nvd_url}\">{cid}</a>", styles["normal"])
+            else:
+                cve_cell = Paragraph(str(cid), styles["normal"])
+        except Exception:
+            cve_cell = Paragraph(str(cid), styles["normal"])
+
         table_data.append([
-            Paragraph(str(service_label), styles["normal"]),
-            Paragraph(str(cid), styles["normal"]),
+            service_cell,
+            cve_cell,
             Paragraph(f"{cvss if cvss is not None else 'n/a'}", styles["normal"]),
             Paragraph(exploit_status, styles["normal"]),
             Paragraph(rel, styles["normal"]),
@@ -596,6 +664,7 @@ def _final_evaluation_paragraph(elements: List, styles: Dict, cve_data: List[Dic
     eval_text = (
         "Bewertung:<br/>"
         f"Keine aktuell aktiv ausgenutzten Schwachstellen mit kritischer Priorität identifiziert.<br/>"
-        f"Insgesamt identifizierte CVEs: {total}. Kritisch (CVSS≥9): {high}. Öffentliche Exploits: {public_exploits}."
+        f"Insgesamt identifizierte CVEs: {total}. Kritisch (CVSS≥9): {high}. Öffentliche Exploits: {public_exploits}.<br/>"
+        "Hinweis: Keine technischen Nachweise, keine aktiven Scans und keine bestätigten Schwachstellen; Empfehlung: technische Verifikation."
     )
     elements.append(Paragraph(eval_text, styles["normal"]))
