@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+- chore: update `.gitignore` — add caches and generated files
+ - feat: improve CPE parsing and service pretty-formatting
+   - `src/shodan_report/clients/helpers/cpe.py`: alias map and normalization for clearer service names (e.g. MySQL, Apache)
+ - feat: CVE enrichment (network-aware, test-friendly)
+   - `src/shodan_report/pdf/sections/data/cve_enricher.py`: optional NVD/CISA enrichment with injectable dummy clients for offline tests
+ - fix: CVE overview PDF rendering
+   - `src/shodan_report/pdf/sections/cve_overview.py`: render `nvd_url`, service indicators, OSINT checklist and clickable CVE links in overview tables
+ - test: deterministic tests and test bootstrap
+   - Added unit and demo tests that monkeypatch NVD/CISA clients; added `conftest.py` to fix `src.*` imports during pytest collection
+ - chore: reorganize scripts and docs
+   - moved dev/debug/demo scripts to `scripts/dev/` and added `scripts/README.md`; top-level stubs updated to point at dev scripts
+
 ## 2026-01-15
 
 - PDF: Neue CVE-Normalisierung und Zuordnung
