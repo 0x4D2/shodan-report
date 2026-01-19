@@ -13,6 +13,12 @@
    - Added unit and demo tests that monkeypatch NVD/CISA clients; added `conftest.py` to fix `src.*` imports during pytest collection
  - chore: reorganize scripts and docs
    - moved dev/debug/demo scripts to `scripts/dev/` and added `scripts/README.md`; top-level stubs updated to point at dev scripts
+ - fix: snapshot parsing for exposure scoring
+   - `src/shodan_report/parsing/utils.py`: parse stored snapshot `services` like live Shodan `data` payloads
+ - fix: OSINT exposure scoring calibration
+   - `src/shodan_report/evaluation/evaluation_engine.py`: adjusted port-count boost to avoid inflated exposure
+ - fix: conclusion alignment with critical CVEs
+   - `src/shodan_report/pdf/sections/conclusion.py`: raise conclusion risk when CVSS ≥ 9 CVEs exist (OSINT/NVD)
 
 ## 2026-01-15
 

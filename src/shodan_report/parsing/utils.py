@@ -177,7 +177,10 @@ def parse_shodan_host(data: Dict[str, Any]) -> AssetSnapshot:
     services: List[Service] = []
     host_vulns = data.get("vulns", [])
 
-    for entry in data.get("data", []):
+    # Support both live Shodan payloads (`data`) and stored snapshots (`services`)
+    entries = data.get("data") or data.get("services") or []
+
+    for entry in entries:
         if "port" not in entry:
             continue
 

@@ -3,6 +3,7 @@ Fazit-Section für PDF-Reports.
 """
 
 from typing import List, Dict
+import os
 from reportlab.platypus import Spacer, Paragraph
 
 
@@ -37,7 +38,44 @@ def create_conclusion_section(
         except Exception:
             pass
 
-    if risk_level.upper() in ["HIGH", "CRITICAL"]:
+    # Optional: adjust risk level based on critical CVEs (OSINT/NVD)
+    critical_cves_count = 0
+    if context is not None:
+        try:
+            from .data.cve_enricher import enrich_cves
+
+            technical_json = getattr(context, "technical_json", {}) or {}
+            evaluation = getattr(context, "evaluation", {}) or {}
+
+            # Use unique CVEs from management data if available
+            try:
+                from .data.management_data import prepare_management_data
+
+                mdata = prepare_management_data(technical_json, evaluation)
+                cve_ids = mdata.get("unique_cves", []) or []
+            except Exception:
+                cve_ids = evaluation.get("cves", []) if isinstance(evaluation, dict) else []
+
+            lookup_nvd = os.environ.get("NVD_LIVE") == "1"
+            if lookup_nvd and cve_ids:
+                enriched = enrich_cves(cve_ids, technical_json, lookup_nvd=True)
+                for ent in enriched:
+                    try:
+                        cvss = ent.get("cvss")
+                        if cvss is not None and float(cvss) >= 9.0:
+                            critical_cves_count += 1
+                    except Exception:
+                        continue
+        except Exception:
+            critical_cves_count = 0
+
+    effective_level = risk_level.upper()
+    if critical_cves_count >= 3 and effective_level in ["LOW", "MEDIUM"]:
+        effective_level = "HIGH"
+    elif critical_cves_count >= 1 and effective_level == "LOW":
+        effective_level = "MEDIUM"
+
+    if effective_level == "CRITICAL":
         conclusion_text = f"""
         Die externe Angriffsfläche der {customer_name} weist kritische Risiken auf, 
         die unmittelbare Maßnahmen erfordern. Es besteht akuter Handlungsbedarf, 
@@ -46,7 +84,15 @@ def create_conclusion_section(
         """
         follow_up = "Eine sofortige Nachverfolgung und Priorisierung der kritischen Punkte wird dringend empfohlen."
 
-    elif risk_level.upper() == "MEDIUM":
+    elif effective_level == "HIGH":
+        conclusion_text = f"""
+        Die externe Angriffsfläche der {customer_name} zeigt erhöhte Risiken, 
+        die zeitnahe Maßnahmen erfordern. Eine strukturierte Abarbeitung der 
+        identifizierten Punkte ist empfehlenswert.
+        """
+        follow_up = "Die priorisierte Umsetzung der empfohlenen Maßnahmen wird innerhalb der nächsten 30-60 Tage empfohlen."
+
+    elif effective_level == "MEDIUM":
         conclusion_text = f"""
         Die externe Angriffsfläche der {customer_name} ist derzeit kontrollierbar, 
         zeigt jedoch strukturelle Schwachstellen, die bei fehlender Härtung 

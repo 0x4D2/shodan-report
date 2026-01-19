@@ -42,12 +42,37 @@ def is_service_secure(service, secure_indicators: List[str]) -> bool:
     if getattr(service, "version_risk", 0) and getattr(service, "version_risk", 0) > 0:
         return False
 
+    # Common TLS ports treated as secure unless version risk overrides
+    tls_ports = {
+        443,
+        465,
+        636,
+        990,
+        992,
+        993,
+        994,
+        995,
+        8443,
+        9443,
+    }
+    if port in tls_ports:
+        return True
+
+    # VPN/Tunnel/Cert flags indicate protected exposure
+    if (
+        getattr(service, "vpn_protected", False)
+        or getattr(service, "tunneled", False)
+        or getattr(service, "cert_required", False)
+    ):
+        return True
+
     product = (getattr(service, "product", "") or "").lower()
 
-    # If product contains any secure indicator -> secure
-    for ind in secure_indicators:
-        if ind.lower() in product:
-            return True
+    # Only trust product indicators for TLS ports to avoid HTTP banner false positives
+    if port in tls_ports:
+        for ind in secure_indicators:
+            if ind.lower() in product:
+                return True
 
     # Default: insecure
     return False

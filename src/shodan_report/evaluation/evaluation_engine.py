@@ -1,9 +1,11 @@
 from typing import List
+import math
 from shodan_report.models import AssetSnapshot, Service
 from .config import EvaluationConfig
 from .evaluators.registry import ServiceEvaluatorRegistry
 from .models import EvaluationResult
 from .risk_level import RiskLevel
+from shodan_report.pdf.helpers.evaluation_helpers import is_service_secure
 
 
 class EvaluationEngine:
@@ -36,7 +38,7 @@ class EvaluationEngine:
 
         # 2. Port-Exposure berechnen
         exposure_score = self._calculate_exposure_score(
-            snapshot.services, total_risk_score
+            snapshot.services, total_risk_score, len(critical_points)
         )
 
         # 3. Risiko-Level bestimmen
@@ -51,24 +53,46 @@ class EvaluationEngine:
         )
 
     def _calculate_exposure_score(
-        self, services: List[Service], risk_score: int
+        self, services: List[Service], risk_score: int, critical_points_count: int = 0
     ) -> int:
-        """Berechnet Exposure-Score 1-5"""
-        num_ports = len(services)
+        """Berechnet Exposure-Score 1-5 anhand Shodan-Indikatoren.
 
-        # Make port-count thresholds more conservative: require substantially
-        # more exposed services before escalating purely on port count. Prefer
-        # to rely on accumulated `risk_score` from service evaluators.
-        if risk_score >= 10 or num_ports > 50:
-            return 5
-        elif risk_score >= 7 or num_ports > 30:
-            return 4
-        elif risk_score >= 4 or num_ports > 20:
-            return 3
-        elif risk_score >= 2 or num_ports > 10:
-            return 2
-        else:
-            return 1
+        Grundlage ist die Anzahl unsicherer Dienste, die via
+        SSL/VPN/Tunnel/Cert-Indikatoren aus Shodan bestimmt wird.
+        """
+        secure_indicators = getattr(self.config.weights, "secure_indicators", None) or [
+            "tls",
+            "ssl",
+            "https",
+            "wss",
+        ]
+
+        insecure_count = 0
+        for svc in services:
+            try:
+                if not is_service_secure(svc, secure_indicators):
+                    insecure_count += 1
+            except Exception:
+                insecure_count += 1
+
+        total_ports = len(services)
+
+        # Baseline: 1 + ceil(insecure/4)
+        # (konservativer für OSINT-Indikatoren)
+        base_level = 1 + math.ceil(insecure_count / 4)
+
+        # Small port-count boost to avoid under-rating hosts with many services
+        # (only when many services are also insecure)
+        port_boost = 1 if (total_ports >= 10 and insecure_count >= 7) else 0
+
+        level = base_level + port_boost
+
+        if level < 1:
+            level = 1
+        if level > 5:
+            level = 5
+
+        return int(level)
 
     def _determine_risk_level(
         self, critical_points: List[str], exposure_score: int
@@ -82,14 +106,7 @@ class EvaluationEngine:
                 for keyword in [
                     "rdp",
                     "vnc",
-                    "telnet ohne",
-                    "unverschlüsselt",
-                    "cve",
-                    "schwachstelle",
-                    "eol",
-                    "end-of-life",
-                    "kritische version",
-                    "kritisch",
+                    "telnet",
                 ]
             ):
                 return RiskLevel.CRITICAL

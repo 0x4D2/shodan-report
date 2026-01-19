@@ -4,6 +4,7 @@
 # ──────────────────────────────────────────────────────────────────────────────
 
 from reportlab.platypus import Paragraph, Spacer, Table, TableStyle
+import os
 from typing import List, Dict, Any, Optional
 from shodan_report.pdf.styles import Theme
 from reportlab.lib.units import mm
@@ -22,7 +23,7 @@ from shodan_report.pdf.helpers.management_helpers import (
     _build_service_flags,
     _build_service_summary,
 )
-from .data.cve_enricher import enrich_cves_with_local
+from .data.cve_enricher import enrich_cves
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -92,10 +93,40 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
     elements.append(Spacer(1, 8))
 
     # Exposure-Level mit Beschreibung
+    # Optional: adjust exposure based on critical CVEs (OSINT/NVD)
+    critical_cves_count = 0
+    try:
+        lookup_nvd = False
+        try:
+            if config is not None and isinstance(config, dict):
+                lookup_nvd = bool((config.get("nvd") or {}).get("enabled", False))
+        except Exception:
+            lookup_nvd = False
+        if os.environ.get("NVD_LIVE") == "1":
+            lookup_nvd = True
+
+        cve_ids = mdata.get("unique_cves", []) or []
+        if lookup_nvd and cve_ids:
+            enriched = enrich_cves(cve_ids, technical_json, lookup_nvd=True)
+            for ent in enriched:
+                try:
+                    cvss = ent.get("cvss")
+                    if cvss is not None and float(cvss) >= 9.0:
+                        critical_cves_count += 1
+                except Exception:
+                    continue
+    except Exception:
+        critical_cves_count = 0
+
+    if critical_cves_count >= 3:
+        exposure_score = max(exposure_score, 4)
+    elif critical_cves_count >= 1:
+        exposure_score = max(exposure_score, 3)
+
     exposure_description_map = {
         1: "sehr niedrig",
         2: "niedrig–mittel",
-        3: "mittel",
+        3: "erhöht",
         4: "hoch",
         5: "sehr hoch",
     }
@@ -161,7 +192,11 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
     elif risk_level == "medium":
         risk_text = "Strukturelle Risiken vorhanden; Härtung und erweitertes Monitoring empfohlen."
     else:  # low
-        risk_text = "Angriffsfläche überwiegend kontrolliert; regelmäßige Überprüfung empfohlen."
+        # If critical CVEs exist, avoid "überwiegend kontrolliert"
+        if critical_cves_count > 0:
+            risk_text = "Erhöhte Sicherheitsrisiken erkannt; zeitnahe Maßnahmen empfohlen."
+        else:
+            risk_text = "Angriffsfläche überwiegend kontrolliert; regelmäßige Überprüfung empfohlen."
 
     elements.append(Paragraph(risk_text, styles["normal"]))
     elements.append(Spacer(1, 12))
