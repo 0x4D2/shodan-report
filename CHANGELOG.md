@@ -19,6 +19,14 @@
    - `src/shodan_report/evaluation/evaluation_engine.py`: adjusted port-count boost to avoid inflated exposure
  - fix: conclusion alignment with critical CVEs
    - `src/shodan_report/pdf/sections/conclusion.py`: raise conclusion risk when CVSS ≥ 9 CVEs exist (OSINT/NVD)
+- feat: management summary clarity and emphasis
+  - `src/shodan_report/pdf/sections/management.py`: remove numeric counts on page 1, highlight short recommendation, add boxed status line
+  - `src/shodan_report/pdf/helpers/management_helpers.py`: align Top-3 wording for theoretical high risk without active exploitation
+- fix: trend section placement and wording
+  - `src/shodan_report/pdf/pdf_manager.py`: move Trend- & Vergleichsanalyse behind technical details
+  - `src/shodan_report/pdf/sections/trend.py`: clearer no-data message for management
+- test: update expectations for trend and management summary
+  - adjusted tests for new messaging and layout
 
 ## 2026-01-15
 
