@@ -1,17 +1,68 @@
-# Shodan Report — Automatisierte externe Sicherheitsanalyse (OSINT)
-**Status: MVP FUNKTIONIERT - Interne Testversion mit professionellem Layout**
----
-*Letzte Aktualisierung: 14.01.2026 — Teststatus: 145 passed, 6 failed. Bitte vor Release offene Tests beheben.*
-Kurzfassung:  
-Automatisierter Security Report Generator für externe Angriffsflächenanalyse. Erstellt professionelle monatliche Berichte basierend auf Shodan-Snapshots mit vollständiger Pipeline von der Datenerfassung bis zur revisionssicheren Archivierung.
+
+## Shodan Report — Kurzüberblick
+
+`shodan-report` erzeugt aus Shodan‑Snapshots reproduzierbare PDF‑Reports mit Executive Summary und technischem Anhang.
+
+Wichtige Links:
+
+- Detaillierte Entwickler‑ und Architektur‑Dokumentation: [docs/DETAILED_README.md](docs/DETAILED_README.md)
+- Beispiele & Demo: [examples/README.md](examples/README.md)
+
+Schnellstart (Kurz):
+
+1. Clone & install
+
+```powershell
+git clone <repo-url>
+cd shodan-report
+python -m venv .venv
+.venv\Scripts\activate
+pip install -e .
+```
+
+2. Set API key
+
+```powershell
+$env:SHODAN_API_KEY = "DEIN_API_KEY"
+```
+
+3. Run example
+
+```powershell
+shodan-report --customer "Testkunde" --ip "8.8.8.8" --month "2025-01"
+```
+
+Konfiguration: siehe `config/example.yaml` für ein minimal Beispiel.
+
+Bei tieferen Details zur Architektur, Evaluation, CVE‑Enrichment oder PDF‑Templates öffne bitte [docs/DETAILED_README.md](docs/DETAILED_README.md).
+
+- `NVD_LIVE=1` (Env): Erzwingt Live‑NVD‑Lookups (alternativ per Kundenconfig `nvd.enabled`).
+- `NVD_API_KEY` (optional): NVD API Key für höhere Raten/Limits; wird von `NvdClient` und `scripts/fetch_nvd_feeds.py` unterstützt.
+- `fetch_nvd_feeds.py --years 2026,2025` lädt NVD JSON in `.cache/nvd/` zur Offline‑Nutzung.
+
+Empfohlene Nutzung / Befehle:
+
+```powershell
+# Offline: NVD Jahresfeeds herunterladen (einmalig / regelmäßig)
+python scripts/fetch_nvd_feeds.py --years 2026,2025
+
+# Report mit NVD Lookup (Live‑API)
+setx NVD_LIVE 1
+setx NVD_API_KEY "DEIN_NVD_API_KEY"  # optional
+shodan-report --customer "Kunde" --ip "1.2.3.4" --month "2026-01"
+```
+
+Hinweise & Empfehlungen:
+- Performance & Ratenlimits: NVD Live‑API hat Rate‑Limits; für Batch‑Jobs empfiehlt sich das Vorladen der NVD‑Feeds oder Nutzung eines API‑Keys.
+- Cache & TTL: Standard‑TTL ist 7 Tage; bei Bedarf TTL oder Cache‑Pfad per Aufruf an `enrich_cves(..., cache_ttl=..., cache_path=...)` anpassen.
+- Konfigurierbarkeit: Scoring‑Schwellen (z. B. wann CVE→risk_score) sollten in `evaluation.config` ausgelagert werden — derzeit sind Schwellen in Code festcodiert (TODO).
+- Testbarkeit: Unit‑Tests mocken `NvdClient` und `CisaClient` (siehe `src/shodan_report/tests/`), live NVD‑Tests sind per Env Flag (`NVD_LIVE_TESTS=1`) deaktiviert, es gibt Dummy‑Skripte zum Demo‑Generieren.
+
+Sicherheits‑/Rechtsinfo:
+- NVD und CISA sind öffentliche Datenquellen; Angaben sind OSINT‑Indizien und sollten in Management‑Texten entsprechend als Hinweise und nicht als definitive Aussagen dargestellt werden.
 
 ---
 
-## WICHTIGER HINWEIS
-
-**AKTUELLER STATUS (14.01.2026):**
-- Kernfunktionen und PDF-Layout sind implementiert. Einige PDF-Abschnitte nutzen noch hartkodierte Platzhalter (Dynamisierung in Arbeit).
-- Teststatus: **145 passed, 6 failed** — Details zu den offenen Problemen weiter unten.
 
 
 ---
@@ -99,6 +150,56 @@ disclaimer:
     Dieser Bericht basiert auf öffentlich verfügbaren OSINT-Daten.
     Dient ausschließlich zu Informationszwecken. Vertraulich.
 ```
+
+---
+
+## WICHTIG: Hochprioritäre Konfiguration & Betriebshinweise
+
+Diese Abschnitte sind für Betrieb und sichere Nutzung des Tools relevant — bitte lesen und in Produktionsumgebungen entsprechend anpassen.
+
+- **Umgebungsvariablen (minimale Auswahl)**
+  - **`SHODAN_API_KEY`**: Pflicht — API Key für Shodan (aus .env oder Umgebung).
+  - **`NVD_API_KEY`**: Optional — API Key für NVD (höhere Raten/Quotas).
+  - **`NVD_LIVE`**: Setze `1`, um Live‑NVD‑Lookups zu erzwingen (überschreibt Kundenconfig `nvd.enabled`).
+  - **`NVD_LIVE_TESTS`** / **`NVD_LIVE`**: Wird in Tests/Debug‑Flows verwendet; nutze nur lokal/CI kontrolliert.
+
+- **Wichtiges Kunden‑YAML (Ergänzung / Empfehlung)**
+  - Ergänze in `config/customers/<name>.yaml` zumindest folgende Felder:
+
+```yaml
+report:
+  include_trend_analysis: true   # true/false
+  debug_mdata: false             # false in Prod: verhindert .mdata.json Sidecar
+
+nvd:
+  enabled: false                 # true für automatische NVD‑Lookups (oder setze NVD_LIVE=1)
+```
+
+- **Evaluation / Scoring (Kurzbeschreibung)**
+  - Eingang: `AssetSnapshot` (IP, Services, Banners, vulns).
+  - Engine: `EvaluationEngine.evaluate(snapshot)` → `EvaluationResult` mit Feldern:
+    - `risk` (Enum `RiskLevel`: CRITICAL/HIGH/MEDIUM/LOW)
+    - `exposure_score` (int 1–5)
+    - `critical_points` (List[str])
+    - `recommendations` (List[str])
+  - Wichtige Heuristiken:
+    - `_calculate_exposure_score` verwendet eine Kombination aus `risk_score` (Summen aus Service‑Evaluatoren) und Port‑Anzahl (Schwellen intern: 1–5).
+    - `_determine_risk_level` prüft `critical_points` auf Schlüsselwörter (z.B. `rdp`, `cve`, `unverschlüsselt`) und kann `CRITICAL` direkt setzen.
+  - Hinweis: Scoring‑Schwellen sind aktuell im Code festgelegt; für Anpassungen nutze `EvaluationConfig` bzw. wende Pull‑Request an.
+
+- **`evaluation_result_to_dict` (PDF‑Mapping)**
+  - Der Runner wandelt `EvaluationResult` in ein Dict mit folgenden erwarteten Feldern: `risk`, `risk_score`, `exposure_score`, `exposure_level` (z.B. `5/5`), `critical_points`, `critical_services`, `has_ssh/has_rdp/has_mysql`, Port‑Listen.
+  - Achtung: Im Code gibt es doppelte Zuweisungen von `risk_str` — das ist dokumentiert und sollte bei Template‑Änderungen geprüft werden.
+
+- **CVE / NVD / CISA (Betrieb & Cache)**
+  - Ablauf: `generate_pdf` ruft intern `prepare_management_data()` und optional `enrich_cves()` auf. `enrich_cves` baut zuerst lokale Zuordnungen (CVE→Ports/CPEs/CVSS) und kann danach NVD/CISA ergänzen.
+  - Konfig‑Priorität: `NVD_LIVE=1` (Env) überschreibt `nvd.enabled` in Kundenconfig.
+  - Cache‑Pfad & Offline: Standardcache liegt unter `.cache/shodan_report/cve_cache.json` und NVD‑Feeds unter `.cache/nvd/`. Nutze `scripts/fetch_nvd_feeds.py` zum Vorladen für Offline‑Betrieb.
+  - CISA KEV: Treffer werden markiert (`exploit_status = "public"`) und Quelle `cisa_kev` vermerkt.
+
+- **Privacy / Sidecar‑Daten**
+  - `generate_pdf` schreibt standardmäßig ein `.mdata.json` Sidecar neben dem PDF, wenn `debug_mdata` aktiv ist (default im Code war `True` — empfehlenswert: setze `report.debug_mdata: false` in Kundenconfig für Prod).
+  - Sidecar enthält eine stark gesäuberte Sicht auf Services (Banners werden getrimmt, lange Base64‑Sequenzen redigiert). Trotzdem: diese Dateien können sensible Inhalte enthalten — behandeln wie vertrauliche Artefakte oder deaktivieren.
 
 ---
 
@@ -292,6 +393,20 @@ Jeder Report enthält automatisch:
 > Dieser Bericht basiert auf öffentlich verfügbaren OSINT-Daten von Shodan.  
 > Er stellt keine vollständige Sicherheitsanalyse dar und ersetzt keinen Penetrationstest.  
 > Keine Garantie auf Vollständigkeit oder Richtigkeit. Dient ausschließlich zu Informationszwecken.
+
+---
+
+## Betriebs-Checklist (Kurz)
+
+Vor einem Produktionslauf bitte sicherstellen:
+
+- `SHODAN_API_KEY` ist gesetzt und gültig.
+- `report.debug_mdata: false` in der Kundenconfig (verhindert Erzeugung sensibler Sidecar‑Dateien `.mdata.json`).
+- `nvd.enabled` oder `NVD_LIVE` bewusst setzen (Live‑Lookups können Rate‑Limits verursachen).
+- Offline‑Betrieb: vorab `python scripts/fetch_nvd_feeds.py --years <JAHRE>` ausführen, damit `.cache/nvd/` verfügbar ist.
+- Logs/Monitoring: `generate_report_pipeline(..., verbose=True)` nur für Debug; in Produktion strukturierte Logs verwenden.
+
+Siehe auch `SECURITY.md` für Responsible Disclosure und Umgang mit sicherheitsrelevanten Meldungen.
 
 ---
 

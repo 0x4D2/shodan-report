@@ -42,7 +42,7 @@ def test_generate_management_text_variants(
     for phrase in expected_phrases:
         assert phrase in text
 
-    header_present = "Identifizierte kritische Punkte" in text
+    header_present = "Identifizierte Risikohinweise" in text
     assert header_present is header_expected
 
     if critical_points:
@@ -65,7 +65,7 @@ def test_many_critical_points_are_listed():
     )
     text = generate_management_text(BusinessRisk.CRITICAL, evaluation)
 
-    assert "Identifizierte kritische Punkte" in text
+    assert "Identifizierte Risikohinweise" in text
     found = sum(1 for pt in critical_points if f"- {pt}" in text)
     assert found == len(critical_points)
 
@@ -74,7 +74,7 @@ def test_handles_empty_critical_points():
     evaluation = Evaluation(ip="10.10.10.10", risk=RiskLevel.HIGH, critical_points=[])
     text = generate_management_text(BusinessRisk.CRITICAL, evaluation)
     assert "kritisch eingestuft" in text
-    assert "Identifizierte kritische Punkte" not in text
+    assert "Identifizierte Risikohinweise" not in text
 
 
 def test_critical_points_are_expanded_with_technical_json():
@@ -96,7 +96,7 @@ def test_critical_points_are_expanded_with_technical_json():
 
     text = generate_management_text(BusinessRisk.CRITICAL, evaluation, technical_json=technical_json)
 
-    assert "Identifizierte kritische Punkte (mit Details)" in text
+    assert "Identifizierte Risikohinweise (OSINT, mit Details)" in text
     assert "Port 22" in text
     assert "OpenSSH" in text
     assert "CVE-2020-14145" in text

@@ -1,13 +1,12 @@
 # scripts/run-jobs-direct.py
 import sys
 from pathlib import Path
+import os
 
-# Ensure local `src` is used so the script imports the workspace code,
-# not an installed package with the same name.
-root = Path(__file__).resolve().parents[1]
-src_dir = root / "src"
-if str(src_dir) not in sys.path:
-    sys.path.insert(0, str(src_dir))
+# By default prefer the installed package (editable install).
+# Set environment variable `USE_LOCAL_SRC=1` to force usage of the local `src/` directory
+# (useful during development). This prevents accidental usage of legacy local paths.
+print("INFO: Using installed package (ensure you ran 'pip install -e .')")
 
 
 from shodan_report.core.runner import generate_report_pipeline

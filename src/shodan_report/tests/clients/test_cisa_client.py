@@ -1,6 +1,6 @@
 import types
 
-from src.shodan_report.clients.cisa_client import CisaClient
+from shodan_report.clients.cisa_client import CisaClient
 
 
 class DummyResponse:
@@ -19,7 +19,7 @@ def test_fetch_kev_set_with_requests(monkeypatch):
 
     dummy = DummyResponse(sample)
 
-    import src.shodan_report.clients.cisa_client as mod
+    import shodan_report.clients.cisa_client as mod
     monkeypatch.setattr(mod, 'requests', types.SimpleNamespace(get=lambda url, headers, timeout: dummy))
     c = CisaClient()
     s = c.fetch_kev_set()

@@ -1,6 +1,6 @@
 import json
 
-from src.shodan_report.clients.nvd_client import NvdClient
+from shodan_report.clients.nvd_client import NvdClient
 
 
 def test_default_headers_include_api_key_when_provided():
@@ -21,3 +21,44 @@ def test_fetch_cve_json_uses_fetch_cve(monkeypatch):
     j = c.fetch_cve_json('CVE-2020-0001')
     assert isinstance(j, dict)
     assert j.get('result')
+
+
+def test_fetch_cve_json_normalizes_v2_payload(monkeypatch):
+    c = NvdClient()
+
+    sample = {
+        "vulnerabilities": [
+            {
+                "cve": {
+                    "id": "CVE-2024-9999",
+                    "descriptions": [{"lang": "en", "value": "Test summary"}],
+                    "configurations": [
+                        {
+                            "nodes": [
+                                {
+                                    "cpeMatch": [
+                                        {"criteria": "cpe:2.3:a:oracle:mysql:8.0.33:*:*:*:*:*:*:*"}
+                                    ]
+                                }
+                            ]
+                        }
+                    ],
+                },
+                "metrics": {
+                    "cvssMetricV31": [
+                        {"cvssData": {"baseScore": 7.5}}
+                    ]
+                },
+            }
+        ]
+    }
+
+    def fake_fetch(cve_id):
+        return 200, {}, json.dumps(sample)
+
+    monkeypatch.setattr(c, 'fetch_cve', fake_fetch)
+
+    j = c.fetch_cve_json('CVE-2024-9999')
+    assert isinstance(j, dict)
+    assert j.get('CVE_Items')
+    assert j.get('vulnerabilities') is not None

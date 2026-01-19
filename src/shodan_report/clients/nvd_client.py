@@ -51,6 +51,10 @@ class NvdClient:
 		except Exception as exc:  # pragma: no cover - defensive
 			raise ValueError(f"failed to parse CVE JSON: {exc}")
 
+		# If payload already matches legacy v1 shape, return it as-is
+		if isinstance(data, dict) and ("result" in data or "CVE_Items" in data):
+			return data
+
 		# Normalize into legacy shape for _extract_nvd_fields
 		try:
 			vulns = data.get("vulnerabilities") or []

@@ -1,3 +1,4 @@
+import pytest
 from pathlib import Path
 from shodan_report.pdf.pdf_generator import generate_pdf
 
@@ -37,7 +38,24 @@ def _many_short_lines_text(lines=200):
     return "\n".join([f"Kurzzeile {i}" for i in range(lines)])
 
 
-def test_generate_many_demo_variants(tmp_path):
+def test_generate_many_demo_variants(monkeypatch, tmp_path):
+    # Inject dummy NVD and CISA clients to avoid network calls during PDF generation
+    class DummyNvdClient:
+        def fetch_cve_json(self, cve_id):
+            return {}
+
+    class DummyCisaClient:
+        def fetch_kev_set(self):
+            return set()
+
+    monkeypatch.setattr(
+        'shodan_report.pdf.sections.data.cve_enricher.NvdClient',
+        lambda *a, **kw: DummyNvdClient(),
+    )
+    monkeypatch.setattr(
+        'shodan_report.pdf.sections.data.cve_enricher.CisaClient',
+        lambda *a, **kw: DummyCisaClient(),
+    )
     out = Path("reports") / "demo"
     out.mkdir(parents=True, exist_ok=True)
 

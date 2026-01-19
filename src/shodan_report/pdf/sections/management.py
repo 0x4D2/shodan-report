@@ -277,12 +277,12 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
         elements.append(Spacer(1, 2))
 
     # ──────────────────────────────────────────────────────────────────────────
-    # 7. KRITISCHE PUNKTE DETAILS (nur wenn kritisch/high UND vorhanden)
+    # 7. RISIKOHINWEISE (OSINT) DETAILS (nur wenn kritisch/high UND vorhanden)
     # ──────────────────────────────────────────────────────────────────────────
     if critical_points and risk_level in ["critical", "high"]:
         elements.append(Spacer(1, 12))
         elements.append(
-            Paragraph("<b>Details zu kritischen Punkten</b>", styles["normal"])
+            Paragraph("<b>Details zu Risikohinweisen (OSINT)</b>", styles["normal"])
         )
         elements.append(Spacer(1, 6))
 

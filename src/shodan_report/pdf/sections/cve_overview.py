@@ -570,7 +570,7 @@ def _create_detailed_cve_table(elements: List, styles: Dict, cve_data: List[Dict
                 ind_label = ind.get("label") or None
 
             if ind_label:
-                svc_lines = [str(ind_label), "<font size=8 color='#6b7280'>(OSINT Indiz)</font>"]
+                svc_lines = [str(ind_label), "<font size=8 color='#6b7280'>(OSINT-Indiz)</font>"]
                 service_cell = Paragraph("<br/>".join(svc_lines), styles["normal"])
             else:
                 display_label = service_label

@@ -22,7 +22,7 @@ def _sanitize_critical_point(point: str, max_length: int = 120) -> str:
     - Kürzt auf `max_length` Zeichen und fügt '...' hinzu.
     """
     if not point:
-        return "Unbekannter kritischer Punkt"
+        return "Unbekannter Hinweis (OSINT)"
 
     s = str(point).strip()
 
@@ -36,7 +36,7 @@ def _sanitize_critical_point(point: str, max_length: int = 120) -> str:
         # Normalisiere Port-Darstellungen (sämtliche Ziffern nach 'Port' voll erhalten)
         candidate = re.sub(r"(?i)Port\s*[:=]?\s*(\d+)", lambda mo: f"Port {mo.group(1)}", candidate)
         if len(candidate) <= max_length:
-            return f"Kritische Version: {candidate}"
+            return f"Auffällige Version (OSINT-Indiz): {candidate}"
 
     # Fallback: erste sinnvolle Phrase (bis Satzende oder 120 chars)
     # Entferne HTML-like chunks and headers
@@ -227,7 +227,7 @@ def generate_priority_insights(
     else:
         total_risk_points = insecure_count
 
-    insights.append(f"{total_risk_points} kritische Risikopunkte")
+    insights.append(f"{total_risk_points} Risikohinweise (OSINT)")
 
     # Structural risks insight (tests expect mention of 'strukturelle Risiken')
     if structural_risk or insecure_count > 0:

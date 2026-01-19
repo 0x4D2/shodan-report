@@ -72,11 +72,11 @@ class TestGeneratePriorityInsights:
         insights = generate_priority_insights(technical_json, mock_evaluation, "MEDIUM")
 
         # Erwartete Ausgabe:
-        # ['Keine kritischen Schwachstellen', '0 kritische Risikopunkte']
+        # ['Keine kritischen Schwachstellen', '0 Risikohinweise (OSINT)']
 
         assert insights == [
             "Keine kritischen Schwachstellen",
-            "0 kritische Risikopunkte",
+            "0 Risikohinweise (OSINT)",
         ]
 
     def test_with_open_ports(self, mock_evaluation, sample_service):
@@ -117,8 +117,8 @@ class TestGeneratePriorityInsights:
 
         insights = generate_priority_insights(technical_json, mock_evaluation, "MEDIUM")
 
-        # Sollte "2 kritische Risikopunkte" enthalten (2 unsichere Dienste + 0 critical points)
-        assert any("2 kritische Risikopunkte" in insight for insight in insights)
+        # Sollte "2 Risikohinweise (OSINT)" enthalten (2 unsichere Dienste + 0 critical points)
+        assert any("2 Risikohinweise (OSINT)" in insight for insight in insights)
 
     def test_with_critical_points(self, mock_evaluation):
         """Test mit kritischen Punkten in Evaluation."""
@@ -128,7 +128,7 @@ class TestGeneratePriorityInsights:
 
         insights = generate_priority_insights(technical_json, mock_evaluation, "MEDIUM")
 
-        assert any("2 kritische Risikopunkte" in insight for insight in insights)
+        assert any("2 Risikohinweise (OSINT)" in insight for insight in insights)
 
     def test_business_risk_high(self, mock_evaluation):
         """Test mit HIGH Business Risk."""

@@ -1,4 +1,5 @@
 import json
+import pytest
 from pathlib import Path
 from reportlab.platypus import Table
 
@@ -37,7 +38,25 @@ def _make_dense_snapshot(service_count=50, cves_per_service=3):
     }
 
 
-def test_generate_demo_pdfs(tmp_path):
+def test_generate_demo_pdfs(monkeypatch, tmp_path):
+    # Inject dummy NVD and CISA clients to avoid network calls during PDF generation
+    class DummyNvdClient:
+        def fetch_cve_json(self, cve_id):
+            return {}
+
+    class DummyCisaClient:
+        def fetch_kev_set(self):
+            return set()
+
+    monkeypatch.setattr(
+        'shodan_report.pdf.sections.data.cve_enricher.NvdClient',
+        lambda *a, **kw: DummyNvdClient(),
+    )
+    monkeypatch.setattr(
+        'shodan_report.pdf.sections.data.cve_enricher.CisaClient',
+        lambda *a, **kw: DummyCisaClient(),
+    )
+
     out_dir = tmp_path / "reports"
 
     # Sparse PDF

@@ -72,7 +72,7 @@ class TestVersionEvaluator:
         risk = evaluator.evaluate(service)
 
         assert risk.risk_score == 4  # Kritisch (<= 2.4.49)
-        assert "Kritische Version" in risk.message
+        assert "Auffällige Version" in risk.message
         assert risk.is_critical == True
 
     def test_evaluate_apache_current(self, evaluator):

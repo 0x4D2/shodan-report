@@ -185,7 +185,7 @@ class VersionEvaluator(ServiceEvaluator):
             message = f"EOL-Version: {service.product} {version}"
         elif is_critical_version:
             risk_score = 4
-            message = f"Kritische Version: {service.product} {version}"
+            message = f"Auffällige Version (OSINT-Indiz): {service.product} {version}"
         elif is_outdated:
             risk_score = 2
             message = f"Veraltete Version: {service.product} {version}"

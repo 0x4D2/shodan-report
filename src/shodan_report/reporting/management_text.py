@@ -85,7 +85,7 @@ def generate_management_text(
         services = _normalize_services_from_technical(technical_json)
         details_lines: List[str] = []
         if services:
-            details_lines.append("\n\nIdentifizierte kritische Punkte (mit Details):")
+            details_lines.append("\n\nIdentifizierte Risikohinweise (OSINT, mit Details):")
             for pt in critical_points:
                 details_lines.append(f"- {pt}")
                 matched = []
@@ -133,7 +133,7 @@ def generate_management_text(
             critical_points_text = "\n" + "\n".join(details_lines)
         else:
             # No services -> keep simple list
-            critical_points_text = "\n\nIdentifizierte kritische Punkte:\n" + "\n".join(f"- {pt}" for pt in critical_points)
+            critical_points_text = "\n\nIdentifizierte Risikohinweise (OSINT):\n" + "\n".join(f"- {pt}" for pt in critical_points)
 
     # If no critical points, prepare compact per-service hints text fragment
     service_hints_text = ""

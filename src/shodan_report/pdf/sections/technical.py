@@ -310,7 +310,7 @@ def _add_security_notes(
             pass
         severity = critical.get("severity", "medium")
 
-        severity_icon = "⚠️" if severity == "high" else "ℹ️"
+        severity_label = "Achtung" if severity == "high" else "Hinweis"
         elements.append(
-            Paragraph(f"{severity_icon} Port {port}: {reason}", styles["bullet"])
+            Paragraph(f"{severity_label}: Port {port}: {reason}", styles["bullet"])
         )
