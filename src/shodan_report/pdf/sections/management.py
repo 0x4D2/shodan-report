@@ -3,7 +3,7 @@
 # Generiert professionelle Management-Zusammenfassung im Security-Reporting-Stil
 # ──────────────────────────────────────────────────────────────────────────────
 
-from reportlab.platypus import Paragraph, Spacer, Table, TableStyle
+from reportlab.platypus import Paragraph, Spacer, Table, TableStyle, PageBreak
 import os
 from typing import List, Dict, Any, Optional
 from shodan_report.pdf.styles import Theme
@@ -22,6 +22,7 @@ from shodan_report.pdf.helpers.management_helpers import (
     _generate_fallback_recommendations,
     _build_service_flags,
     _build_service_summary,
+    _build_top_risks,
 )
 from .data.cve_enricher import enrich_cves
 
@@ -85,10 +86,13 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
     elements.append(keep_section([Paragraph("1. Management-Zusammenfassung", styles["heading1"]), Spacer(1, 12)]))
 
     # ──────────────────────────────────────────────────────────────────────────
-    # 3. GESAMTBEWERTUNG & EXPOSURE-LEVEL (PROFESSIONELL)
+    # 3. KERNAUSSAGE (SEITE 1)
     # ──────────────────────────────────────────────────────────────────────────
     elements.append(
-        Paragraph("Gesamtbewertung der externen Angriffsfläche", styles["normal"])
+        Paragraph(
+            "Aus externer Sicht ist die Angriffsfläche erhöht, primär durch öffentlich erreichbare Datenbank- und Administrationsdienste.",
+            styles["normal"],
+        )
     )
     elements.append(Spacer(1, 8))
 
@@ -135,6 +139,89 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
     # Ampel visualisierung
     ampel = build_horizontal_exposure_ampel(exposure_score, theme=theme)
 
+    # Top-3 Risiken (priorisiert) auf Seite 1
+    top_risks = _build_top_risks(technical_json, risk_level)
+    if top_risks:
+        heading = "Top-3 Beobachtungspunkte" if risk_level == "low" else "Top-3 Risiken (priorisiert)"
+        elements.append(Paragraph(f"<b>{heading}</b>", styles["normal"]))
+        elements.append(Spacer(1, 6))
+
+        for idx, risk in enumerate(top_risks, 1):
+            text = (
+                f"<b>{idx}. {risk['title']} ({risk['severity']})</b><br/>"
+                f"Ursache/Szenario: {risk['cause']} {risk['scenario']}<br/>"
+                f"Schaden: {risk['impact']}<br/>"
+                f"Empfehlung: {risk['recommendation']}"
+            )
+            risk_tbl = Table(
+                [[Paragraph(text, styles["normal"]) ]],
+                colWidths=[163 * mm],
+                style=TableStyle(
+                    [
+                        ("BACKGROUND", (0, 0), (-1, -1), HexColor("#f8fafc")),
+                        ("GRID", (0, 0), (-1, -1), 0.2, HexColor("#e5e7eb")),
+                        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                        ("TOPPADDING", (0, 0), (-1, -1), 6),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                    ]
+                ),
+            )
+            set_table_no_split(risk_tbl)
+            elements.append(risk_tbl)
+            elements.append(Spacer(1, 4))
+
+        elements.append(Spacer(1, 4))
+
+    status_text = "Aktuell keine Hinweise auf aktive Ausnutzung; kontinuierliche Beobachtung empfohlen."
+    status_tbl = Table(
+        [[Paragraph(status_text, styles["normal"]) ]],
+        colWidths=[163 * mm],
+        style=TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), HexColor("#f8fafc")),
+                ("GRID", (0, 0), (-1, -1), 0.2, HexColor("#e5e7eb")),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                ("TOPPADDING", (0, 0), (-1, -1), 6),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ]
+        ),
+    )
+    set_table_no_split(status_tbl)
+    elements.append(status_tbl)
+    elements.append(Spacer(1, 4))
+
+    recommendation_text = "<b>Kurzempfehlung:</b> Zugang zu Admin- und Datenbankdiensten einschränken; Webdienste härten."
+    recommendation_tbl = Table(
+        [[Paragraph(recommendation_text, styles["normal"]) ]],
+        colWidths=[163 * mm],
+        style=TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), HexColor("#fff7ed")),
+                ("GRID", (0, 0), (-1, -1), 0.3, HexColor("#fed7aa")),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                ("TOPPADDING", (0, 0), (-1, -1), 6),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ]
+        ),
+    )
+    set_table_no_split(recommendation_tbl)
+    elements.append(recommendation_tbl)
+    elements.append(Spacer(1, 8))
+
+    # Seite 1 bewusst fokussiert; Rest auf Folgeseiten
+    elements.append(PageBreak())
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # 4. GESAMTBEWERTUNG & EXPOSURE-LEVEL (DETAILS AB SEITE 2)
+    # ──────────────────────────────────────────────────────────────────────────
+    elements.append(
+        Paragraph("Gesamtbewertung der externen Angriffsfläche", styles["normal"])
+    )
+    elements.append(Spacer(1, 8))
+
     exp_tbl = Table(
         [
             [
@@ -170,19 +257,25 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
     per_service = mdata.get("per_service", [])
 
     # 4a. Erster Absatz: Knackige Fakten
-    intro_text = f"Auf Basis passiver OSINT-Daten wurden {total_ports} öffentlich erreichbare Dienste identifiziert."
+    intro_text = "Auf Basis passiver OSINT-Daten wurden öffentlich erreichbare Dienste identifiziert."
     elements.append(Paragraph(intro_text, styles["normal"]))
+    elements.append(Spacer(1, 4))
+
+    elements.append(
+        Paragraph(
+            "Einordnung: Externe Sicht; interne Sicherheitsmaßnahmen sind nicht beurteilbar.",
+            styles["normal"],
+        )
+    )
     elements.append(Spacer(1, 4))
 
     # 4b. Zweiter Absatz: CVE- und Risiko-Situation
     if cve_count == 0:
-        cve_text = "Keine kritisch ausnutzbaren, bekannten Schwachstellen festgestellt."
-        elements.append(Paragraph(cve_text, styles["normal"]))
-        elements.append(Spacer(1, 4))
+        cve_text = "Keine kritisch ausnutzbaren, bekannten Schwachstellen festgestellt. Details im technischen Anhang."
     else:
-        cve_text = f"Identifizierte Sicherheitslücken: {cve_count}. Weitere Details im Anhang."
-        elements.append(Paragraph(cve_text, styles["normal"]))
-        elements.append(Spacer(1, 4))
+        cve_text = "Bekannte Schwachstellen sind im technischen Anhang dokumentiert."
+    elements.append(Paragraph(cve_text, styles["normal"]))
+    elements.append(Spacer(1, 4))
 
     # 4c. Dritter Absatz: Risiko-Einschätzung und Handlungsempfehlung
     if risk_level == "critical":
@@ -200,6 +293,7 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
 
     elements.append(Paragraph(risk_text, styles["normal"]))
     elements.append(Spacer(1, 12))
+
     # Optional: kompakte Service-Tabelle für Management (Kurzüberblick)
     try:
         service_rows = _build_service_summary(technical_json)

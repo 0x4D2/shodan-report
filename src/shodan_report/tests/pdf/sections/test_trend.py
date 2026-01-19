@@ -60,11 +60,11 @@ class TestTrendSection:
         # Mindestens sollte etwas hinzugefügt worden sein
         assert len(mock_elements) > 0
 
-        # Suche nach "Keine historischen Daten" oder "Erste Analyse"
+        # Suche nach der neuen Trend-Hinweismeldung
         found = False
         for element in mock_elements:
             if isinstance(element, Paragraph) and hasattr(element, "text"):
-                if "historischen" in element.text or "Erste Analyse" in element.text:
+                if "Trend-Analyse aktuell nicht möglich" in element.text:
                     found = True
                     break
 

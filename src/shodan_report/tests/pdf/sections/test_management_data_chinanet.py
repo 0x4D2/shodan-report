@@ -42,10 +42,6 @@ def test_management_section_includes_cve_and_port_counts():
     with snap_path.open("r", encoding="utf-8") as fh:
         technical_json = json.load(fh)
 
-    # expected numbers
-    expected_ports = len(technical_json.get("open_ports", []) or [])
-    expected_cves = len(set(technical_json.get("vulns", []) or []))
-
     # prepare evaluation and styles
     evaluation = Evaluation(ip=technical_json.get("ip", ""), risk=RiskLevel.CRITICAL, critical_points=[])
     theme = create_theme("#1a365d", "#2d3748")
@@ -62,12 +58,12 @@ def test_management_section_includes_cve_and_port_counts():
 
     paragraph_texts = [str(e.getPlainText()) for e in elements if isinstance(e, Paragraph)]
 
-    # find intro and cve paragraphs
-    intro_found = any(f"{expected_ports} öffentlich erreichbare Dienste" in t for t in paragraph_texts)
-    cve_found = any(f"Identifizierte Sicherheitslücken: {expected_cves}" in t for t in paragraph_texts)
+    # find intro and cve paragraphs (no counts on page 1)
+    intro_found = any("öffentlich erreichbare Dienste identifiziert." in t for t in paragraph_texts)
+    cve_found = any("Bekannte Schwachstellen sind im technischen Anhang dokumentiert." in t for t in paragraph_texts)
 
-    assert intro_found, f"Intro paragraph with port count {expected_ports} not found"
-    assert cve_found, f"CVE paragraph with count {expected_cves} not found"
+    assert intro_found, "Intro paragraph without counts not found"
+    assert cve_found, "CVE summary without counts not found"
 
 
 def test_rendered_pdf_contains_expected_numbers(tmp_path):
@@ -78,9 +74,6 @@ def test_rendered_pdf_contains_expected_numbers(tmp_path):
         technical_json = json.load(fh)
 
     ip = technical_json.get("ip")
-    expected_ports = len(technical_json.get("open_ports", []) or [])
-    expected_cves = len(set(technical_json.get("vulns", []) or []))
-
     # create evaluation object for management text generation
     evaluation_obj = Evaluation(ip=ip, risk=RiskLevel.CRITICAL, critical_points=[])
     mgmt_text = generate_management_text(BusinessRisk.CRITICAL, evaluation_obj, technical_json=technical_json)
@@ -107,8 +100,8 @@ def test_rendered_pdf_contains_expected_numbers(tmp_path):
     reader = PdfReader(str(pdf_path))
     full_text = "\n".join(p.extract_text() or "" for p in reader.pages)
 
-    assert f"{expected_ports} öffentlich erreichbare Dienste identifiziert" in full_text
-    assert f"Identifizierte Sicherheitslücken: {expected_cves}" in full_text
+    assert "öffentlich erreichbare Dienste identifiziert." in full_text
+    assert "Bekannte Schwachstellen sind im technischen Anhang dokumentiert." in full_text
 
 
 def test_management_text_flags_and_critical_message():

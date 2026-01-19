@@ -91,11 +91,7 @@ def prepare_pdf_elements(
     # possible.
     create_management_section(elements=elements, styles=styles, management_text=management_text, technical_json=technical_json, evaluation=evaluation, business_risk=business_risk, config=config)
 
-    elements.append(_SectionMarker())
-    create_trend_section(elements=elements, styles=styles, trend_text=trend_text, compare_month=compare_month, trend_table=trend_table, legacy_mode=False, technical_json=technical_json, evaluation=evaluation)
-
-    # Section 3: Priorisierte Handlungsempfehlungen (directly after Trend)
-    # Keep Trend and Recommendations together — do not insert a marker here.
+    # Section 3: Priorisierte Handlungsempfehlungen (directly after Management)
     create_recommendations_section(elements=elements, styles=styles, business_risk=business_risk, technical_json=technical_json, evaluation=evaluation)
 
     elements.append(_SectionMarker())
@@ -103,6 +99,9 @@ def prepare_pdf_elements(
 
     elements.append(_SectionMarker())
     create_cve_overview_section(elements=elements, styles=styles, technical_json=technical_json, evaluation=evaluation, context=ctx)
+
+    elements.append(_SectionMarker())
+    create_trend_section(elements=elements, styles=styles, trend_text=trend_text, compare_month=compare_month, trend_table=trend_table, legacy_mode=False, technical_json=technical_json, evaluation=evaluation)
 
     elements.append(_SectionMarker())
     create_methodology_section(elements=elements, styles=styles)

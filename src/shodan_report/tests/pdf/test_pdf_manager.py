@@ -112,15 +112,11 @@ class TestPDFManager:
             config={},
         )
 
-        # Suche nach EINEM der möglichen Trend-Texte
+        # Suche nach der Trend-Hinweismeldung
         trend_elements = []
         for e in elements:
             if hasattr(e, "text"):
-                if (
-                    "Keine historischen Daten" in e.text
-                    or "Erste Analyse" in e.text
-                    or "Trend wird bei zukünftigen" in e.text
-                ):
+                if "Trend-Analyse aktuell nicht möglich" in e.text:
                     trend_elements.append(e)
 
         # Prüfe ob mindestens ein Element gefunden wurde

@@ -176,7 +176,7 @@ def _add_no_data_view(elements: List, styles: Dict, legacy_mode: bool = False) -
         # NEUER TEXT (besser formuliert)
         elements.append(
             Paragraph(
-                "<i>Erste Analyse – Trend wird bei zukünftigen Vergleichen sichtbar.</i>",
+                "<i>Trend-Analyse aktuell nicht möglich; zukünftige Berichte werden Entwicklungen der externen Angriffsfläche visualisieren.</i>",
                 styles["normal"],
             )
         )

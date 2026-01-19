@@ -780,6 +780,116 @@ def _build_service_flags(technical_json: Dict[str, Any]) -> List[str]:
     return out
 
 
+def _build_top_risks(technical_json: Dict[str, Any], risk_level: str = "low") -> List[Dict[str, str]]:
+    """
+    Liefert bis zu drei priorisierte Risiken mit Ursache, Szenario, Schaden und Empfehlung.
+    Externe Sicht, ohne interne Annahmen.
+    """
+    services = technical_json.get("services") or []
+    if not services and technical_json.get("open_ports"):
+        services = []
+        for p in technical_json.get("open_ports", []):
+            if isinstance(p, dict):
+                port = p.get("port")
+                product = (
+                    p.get("service", {}).get("product")
+                    if isinstance(p.get("service"), dict)
+                    else p.get("product")
+                )
+                version = (
+                    p.get("service", {}).get("version")
+                    if isinstance(p.get("service"), dict)
+                    else p.get("version")
+                )
+            else:
+                port = getattr(p, "port", None)
+                product = getattr(p, "product", None)
+                version = getattr(p, "version", None)
+            services.append({"port": port, "product": product, "version": version})
+
+    ports = {s.get("port") for s in services if isinstance(s, dict)}
+    products = " ".join(
+        [str(s.get("product") or "").lower() for s in services if isinstance(s, dict)]
+    )
+
+    has_db = bool(
+        ports.intersection({3306, 5432, 27017, 8123, 9000, 1433})
+        or any(k in products for k in ["mysql", "postgres", "postgresql", "mongodb", "clickhouse", "mssql", "redis"])
+    )
+    has_admin = bool(
+        ports.intersection({22, 3389, 5900, 23})
+        or any(k in products for k in ["ssh", "rdp", "vnc", "telnet"])
+    )
+    has_http = bool(ports.intersection({80, 8080, 8443, 8081}) or "http" in products)
+    has_mail = bool(ports.intersection({25, 110, 143, 587, 993, 995}))
+    has_ftp = 21 in ports
+
+    risks: List[Dict[str, str]] = []
+    low_profile = str(risk_level).lower() == "low"
+
+    if has_db:
+        risks.append(
+            {
+                "title": "Öffentlich erreichbare Datenbanken" if not low_profile else "Exponierte Datenbankdienste",
+                "severity": "hoch" if not low_profile else "niedrig–mittel",
+                "cause": "Hohes theoretisches Risiko bei unkontrolliertem Datenbankzugriff; aktuell keine Hinweise auf aktive Ausnutzung.",
+                "scenario": "Unbefugter Zugriff bei Fehlkonfiguration oder kompromittierten Zugangsdaten.",
+                "impact": "Datenabfluss, Manipulation, Compliance-Risiken.",
+                "recommendation": "Zugriff per VPN/Whitelist beschränken.",
+            }
+        )
+
+    if has_admin:
+        risks.append(
+            {
+                "title": "Exponierter Administrationszugang",
+                "severity": "mittel" if not low_profile else "niedrig–mittel",
+                "cause": "Admin-Zugänge (z.B. SSH/RDP/VNC/Telnet) sind öffentlich erreichbar.",
+                "scenario": "Brute-Force oder Credential-Stuffing mit anschließender Übernahme.",
+                "impact": "Kontoübernahme, Systemzugriff, Betriebsstörung.",
+                "recommendation": "MFA/Keys, Rate-Limits, Zugangsbeschränkung.",
+            }
+        )
+
+    if has_http:
+        risks.append(
+            {
+                "title": "Webdienste ohne Transporthärtung",
+                "severity": "mittel–hoch" if not low_profile else "niedrig",
+                "cause": "HTTP-Services ohne erkennbares HSTS/Banner-Härtung.",
+                "scenario": "MITM/Targeting durch öffentlich sichtbare Server-Details.",
+                "impact": "Sitzungsübernahme, erleichterte Angriffsplanung.",
+                "recommendation": "TLS-only, HSTS aktivieren, Banner reduzieren.",
+            }
+        )
+
+    if has_mail and len(risks) < 3:
+        risks.append(
+            {
+                "title": "Öffentlich erreichbare Maildienste",
+                "severity": "mittel" if not low_profile else "niedrig",
+                "cause": "Maildienste sind extern erreichbar.",
+                "scenario": "Credential-Angriffe oder Missbrauch als Einstiegspunkt.",
+                "impact": "Kontoübernahme, Datenabfluss, Reputationsschaden.",
+                "recommendation": "Strikte Authentifizierung und Zugangsbeschränkung.",
+            }
+        )
+
+    if has_ftp and len(risks) < 3:
+        risks.append(
+            {
+                "title": "FTP öffentlich erreichbar",
+                "severity": "mittel" if not low_profile else "niedrig",
+                "cause": "FTP ist ohne erkennbare Segmentierung exponiert.",
+                "scenario": "Passwortangriffe oder missbrauchte Zugangsdaten.",
+                "impact": "Datenabfluss, Manipulation.",
+                "recommendation": "Zugriff auf interne Netze/VPN beschränken.",
+            }
+        )
+
+    return risks[:3]
+
+
 def _build_service_summary(technical_json: Dict[str, Any]) -> List[tuple]:
     """
     Liefert strukturierte, kurze Zusammenfassungszeilen für die Tabelle:

@@ -73,7 +73,7 @@ class TestTrendIntegration:
             e
             for e in elements
             if hasattr(e, "text")
-            and ("Keine historischen Daten" in e.text or "Erste Analyse" in e.text)
+            and "Trend-Analyse aktuell nicht möglich" in e.text
         ]
 
         assert len(no_data_elements) >= 1, "Sollte 'keine Daten' Meldung enthalten"
