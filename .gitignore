@@ -6,6 +6,15 @@ snapshots/
 output/
 reports/
 *.egg-info/
+.venv/
+__pycache__/
+*.pyc
+.env
+# Generated snapshots and reports (keep out of source control)
+reports/
+snapshots/
+output/
+*.egg-info/
 .DS_Store
 archive/
 .pytest_cache/
@@ -16,3 +25,6 @@ archive/*
 jobs.txt
 jobs/*.txt
 assets/*.png
+# local caches
+.cache/
+.cache/*
