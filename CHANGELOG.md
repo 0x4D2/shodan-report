@@ -72,6 +72,12 @@
   - `src/shodan_report/pdf/helpers/management_helpers.py`: adjust Top-3 phrasing for low exposure and HSTS/TLS wording
 - fix: default logo width to 6 cm
   - `src/shodan_report/pdf/helpers/header_helpers.py`: set default `logo_width_cm` fallback to 6.0
+- fix: clean noisy technical appendix fields
+  - `src/shodan_report/pdf/sections/data/technical_data.py`: sanitize banner-derived product/version/server entries
+- fix: clean noisy management short details
+  - `src/shodan_report/pdf/helpers/management_helpers.py`: suppress banner garbage and infer services by port
+- fix: infer service names by port in technical appendix
+  - `src/shodan_report/pdf/sections/data/technical_data.py`: fallback to port-based service labels when banners are empty
 
 ## 2026-01-15
 

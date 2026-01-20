@@ -939,6 +939,12 @@ def _build_service_summary(technical_json: Dict[str, Any]) -> List[tuple]:
             s_val = str(v).strip()
             s_val = s_val.replace("\n", " ").replace("\r", " ")
             s_val = re.sub(r"\s+", " ", s_val)
+            # drop obvious garbage tokens
+            low = s_val.lower()
+            if low in {"-", "*", "ok", "+ok", "* ok", "http/1.1", "http/1.0", "http/2", "http/2.0"}:
+                return "-"
+            if "document.location" in low or "<script" in low or "error 400" in low or "trying" in low:
+                return "-"
             # redact long base64-like sequences
             if re.search(r"[A-Za-z0-9+/]{40,}=*", s_val):
                 return "[SSH-Key entfernt]"
@@ -973,6 +979,25 @@ def _build_service_summary(technical_json: Dict[str, Any]) -> List[tuple]:
         except Exception:
             return str(prod) if prod is not None else "-"
 
+    def _infer_service_from_port(port_num: Any) -> str:
+        try:
+            p = int(port_num)
+        except Exception:
+            return "-"
+        if p == 21:
+            return "FTP"
+        if p in (25, 587):
+            return "SMTP"
+        if p in (110, 995):
+            return "POP3"
+        if p in (143, 993):
+            return "IMAP"
+        if p in (80, 8080, 8081):
+            return "HTTP"
+        if p == 443:
+            return "HTTPS"
+        return "-"
+
     for s in services:
         try:
             ident = extract_service_identity(s)
@@ -982,6 +1007,10 @@ def _build_service_summary(technical_json: Dict[str, Any]) -> List[tuple]:
             # apply conservative sanitization for management summary
             prod = _normalize_product_local(prod)
             ver = _clean_display_field_local(ver, max_len=60)
+            if prod == "-" or not prod:
+                prod = _infer_service_from_port(port)
+            if prod and ver and prod.lower() == ver.lower():
+                ver = ""
             confidence = ident.get("confidence")
         except Exception:
             continue

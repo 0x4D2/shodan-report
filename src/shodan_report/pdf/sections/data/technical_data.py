@@ -94,6 +94,81 @@ def _normalize_product_local(prod: Any) -> str:
         return str(prod)
 
 
+def _looks_like_hostname(text: str) -> bool:
+    try:
+        t = str(text).strip()
+        if not t or len(t) < 3:
+            return False
+        if " " in t or "/" in t or "<" in t or ">" in t:
+            return False
+        # must contain a dot and end with a plausible TLD
+        if "." not in t:
+            return False
+        return bool(__import__("re").search(r"\.[A-Za-z]{2,}$", t))
+    except Exception:
+        return False
+
+
+def _is_garbage_token(text: str) -> bool:
+    try:
+        t = str(text).strip().lower()
+        if not t:
+            return True
+        if t in {"-", "*", "ok", "+ok", "* ok", "http/1.1", "http/1.0", "http/2", "http/2.0"}:
+            return True
+        if "document.location" in t or "<script" in t or "error 400" in t or "trying" in t:
+            return True
+        if "<html" in t or "<head" in t or "<body" in t:
+            return True
+        return False
+    except Exception:
+        return False
+
+
+def _infer_product_from_text(text: str, port: Optional[int]) -> str:
+    try:
+        t = str(text or "").lower()
+        if not t:
+            return ""
+        if "dovecot" in t and port in {110, 143, 993, 995}:
+            return "Dovecot"
+        if "postfix" in t and port in {25, 587}:
+            return "Postfix smtpd"
+        if "apache" in t and port in {80, 443, 8080, 8081}:
+            return "Apache httpd"
+        if "nginx" in t and port in {80, 443, 8080, 8081}:
+            return "nginx"
+        if "openssh" in t or "ssh-2.0" in t:
+            return "SSH"
+        if "ftp" in t and port == 21:
+            return "FTP"
+        if port in {80, 443, 8080, 8081}:
+            return "HTTP"
+        return ""
+    except Exception:
+        return ""
+
+
+def _infer_product_from_port(port: Optional[int]) -> str:
+    try:
+        p = int(port) if port is not None else None
+    except Exception:
+        return ""
+    if p == 21:
+        return "FTP"
+    if p in {25, 587}:
+        return "SMTP"
+    if p in {110, 995}:
+        return "POP3"
+    if p in {143, 993}:
+        return "IMAP"
+    if p in {80, 8080, 8081}:
+        return "HTTP"
+    if p == 443:
+        return "HTTPS"
+    return ""
+
+
 def prepare_technical_detail(technical_json: Dict[str, Any], evaluation: Any) -> Dict[str, Any]:
     """Prepare structured technical detail per service for rendering.
 
@@ -372,6 +447,57 @@ def prepare_technical_detail(technical_json: Dict[str, Any], evaluation: Any) ->
                         break
         except Exception:
             server = server or ""
+
+        # Cleanup noisy product/version/server fields from banner-like content
+        try:
+            prod_raw = str(product or "").strip()
+            ver_raw = str(version or "").strip()
+            banner_text = banner_orig if isinstance(banner_orig, str) else (str(banner or ""))
+
+            if _is_garbage_token(prod_raw):
+                if ver_raw and not _is_garbage_token(ver_raw):
+                    product, version = ver_raw, ""
+                    prod_raw, ver_raw = str(product), ""
+                else:
+                    product = ""
+                    prod_raw = ""
+
+            if not prod_raw:
+                inferred = _infer_product_from_text(ver_raw, port) or _infer_product_from_text(banner_text, port)
+                if inferred:
+                    product = inferred
+                    prod_raw = inferred
+
+            if not prod_raw:
+                inferred_port = _infer_product_from_port(port)
+                if inferred_port:
+                    product = inferred_port
+                    prod_raw = inferred_port
+
+            if prod_raw and "postfix" in prod_raw.lower():
+                if ver_raw and _looks_like_hostname(ver_raw):
+                    server = ver_raw
+                    version = ""
+                    ver_raw = ""
+                elif not server and banner_text:
+                    import re as _re
+
+                    mh = _re.search(r"\b([A-Za-z0-9._-]+\.[A-Za-z]{2,})\b", banner_text)
+                    if mh:
+                        server = mh.group(1)
+
+            if prod_raw and "dovecot" in prod_raw.lower() and _is_garbage_token(ver_raw):
+                version = ""
+                ver_raw = ""
+
+            if prod_raw and ver_raw and prod_raw.lower() == ver_raw.lower():
+                version = ""
+                ver_raw = ""
+
+            if ver_raw and _is_garbage_token(ver_raw):
+                version = ""
+        except Exception:
+            pass
 
         # heuristic risk: high if any high CVE or marked critical, medium if tls issues or some CVEs, else low
         is_critical_flag = False
