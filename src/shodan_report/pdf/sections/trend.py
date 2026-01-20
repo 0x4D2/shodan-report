@@ -273,6 +273,8 @@ def _derive_trend_table(technical_json: Dict[str, Any], evaluation: Optional[Dic
     def _count_high_risk_cves(tj: Dict[str, Any], ev: Optional[Dict[str, Any]]) -> int:
         cves = []
         cves.extend(tj.get("vulnerabilities") or [])
+        cves.extend(tj.get("cve_enriched") or [])
+        cves.extend(tj.get("cve_enriched_sample") or [])
         # per-service
         for s in tj.get("open_ports") or tj.get("services") or []:
             if isinstance(s, dict):
@@ -284,18 +286,29 @@ def _derive_trend_table(technical_json: Dict[str, Any], evaluation: Optional[Dic
         if ev:
             cves.extend(ev.get("cves") or [])
 
-        high = 0
-        for c in cves:
+        def _cve_id_cvss(item) -> tuple[str, float]:
             try:
-                if isinstance(c, dict):
-                    cvss = c.get("cvss", 0) or 0
-                else:
-                    cvss = getattr(c, "cvss", 0) or 0
-                if float(cvss) >= 7.0:
-                    high += 1
+                if isinstance(item, dict):
+                    cid = item.get("id") or item.get("cve") or item.get("name") or ""
+                    cvss = item.get("cvss", 0) or 0
+                    return str(cid), float(cvss)
+                cid = getattr(item, "id", None) or getattr(item, "cve", None) or getattr(item, "name", None)
+                cvss = getattr(item, "cvss", 0) or 0
+                if cid is None and isinstance(item, str):
+                    cid = item
+                return str(cid or ""), float(cvss)
             except Exception:
+                return "", 0.0
+
+        by_id: Dict[str, float] = {}
+        for c in cves:
+            cid, cvss = _cve_id_cvss(c)
+            if not cid:
                 continue
-        return high
+            if cid not in by_id or cvss > by_id[cid]:
+                by_id[cid] = cvss
+
+        return sum(1 for cvss in by_id.values() if cvss >= 9)
 
     def _count_tls_weaknesses(tj: Dict[str, Any]) -> int:
         # heuristics: top-level lists or per-service ssl_info with issues

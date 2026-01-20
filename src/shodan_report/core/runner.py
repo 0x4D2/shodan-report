@@ -18,6 +18,8 @@ from shodan_report.reporting.management_text import generate_management_text
 from shodan_report.reporting.trend import analyze_trend
 from shodan_report.reporting.technical_data import build_technical_data
 from shodan_report.pdf.pdf_generator import generate_pdf
+from shodan_report.pdf.sections.data.management_data import prepare_management_data
+from shodan_report.pdf.sections.data.cve_enricher import enrich_cves
 from shodan_report.archiver.report_archiver import ReportArchiver
 
 
@@ -150,6 +152,36 @@ def generate_report_pipeline(
 
         # Konvertiere EvaluationResult zu Dict für PDF
         evaluation_dict = evaluation_result_to_dict(evaluation_result)
+
+        # Enriched CVEs for trend/high-risk counts (current + previous)
+        try:
+            lookup_nvd = bool((config.get("nvd") or {}).get("enabled", False))
+            if os.environ.get("NVD_LIVE") == "1":
+                lookup_nvd = True
+
+            mdata_current = prepare_management_data(technical_json, evaluation_dict)
+            enriched_current = enrich_cves(
+                mdata_current.get("unique_cves", []),
+                technical_json,
+                lookup_nvd=lookup_nvd,
+            )
+            technical_json["cve_enriched"] = enriched_current
+
+            if prev_snapshot and technical_json.get("previous_metrics") is not None:
+                prev_eval = engine.evaluate(prev_snapshot)
+                prev_eval_dict = evaluation_result_to_dict(prev_eval)
+                prev_technical = build_technical_data(prev_snapshot, None)
+                mdata_prev = prepare_management_data(prev_technical, prev_eval_dict)
+                enriched_prev = enrich_cves(
+                    mdata_prev.get("unique_cves", []),
+                    prev_technical,
+                    lookup_nvd=lookup_nvd,
+                )
+                prev_high = sum(1 for e in enriched_prev if (e.get("cvss") or 0) >= 9.0)
+                technical_json["previous_metrics"]["Hochrisiko-CVEs"] = prev_high
+        except Exception:
+            # non-fatal: leave enriched data empty
+            pass
 
         # Füge in runner.py nach evaluation_result_to_dict() hinzu:
         print(f"\nEvaluation Dict nach Konvertierung:")

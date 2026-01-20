@@ -13,6 +13,8 @@ def serialize_service(service) -> dict:
         "port": service.port,
         "product": service.product or getattr(service, "banner", "unbekannt"),
         "version": service.version or getattr(service, "banner", "unbekannt"),
+        "ssl": getattr(service, "ssl_info", None),
+        "ssh": getattr(service, "ssh_info", None),
     }
 
 

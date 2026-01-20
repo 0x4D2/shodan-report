@@ -58,6 +58,47 @@ def test_derive_trend_table_basic():
     assert tt["Hochrisiko-CVEs"][1] >= 1
 
 
+def test_derive_trend_table_uses_enriched_cves_for_high_risk():
+    tech = {
+        "open_ports": [{"port": 443}],
+        "cve_enriched": [
+            {"id": "CVE-1", "cvss": 9.8},
+            {"id": "CVE-2", "cvss": 6.5},
+        ],
+        "previous_metrics": {
+            "Öffentliche Ports": 1,
+            "Kritische Services": 0,
+            "Hochrisiko-CVEs": 1,
+            "TLS-Schwächen": 0,
+        },
+    }
+
+    tt = trend_mod._derive_trend_table(tech, evaluation=None)
+
+    assert tt["Hochrisiko-CVEs"][1] == 1
+
+
+def test_derive_trend_table_dedupes_high_risk_cves():
+    tech = {
+        "open_ports": [{"port": 443}],
+        "cve_enriched": [
+            {"id": "CVE-CRIT", "cvss": 9.8},
+            {"id": "CVE-CRIT", "cvss": 9.1},
+        ],
+        "vulnerabilities": [{"id": "CVE-CRIT", "cvss": 9.8}],
+        "previous_metrics": {
+            "Öffentliche Ports": 1,
+            "Kritische Services": 0,
+            "Hochrisiko-CVEs": 1,
+            "TLS-Schwächen": 0,
+        },
+    }
+
+    tt = trend_mod._derive_trend_table(tech, evaluation=None)
+
+    assert tt["Hochrisiko-CVEs"][1] == 1
+
+
 def test_derive_trend_table_ratings_are_consistent():
     tech = {
         "open_ports": [{"port": 80}, {"port": 443}, {"port": 22}],

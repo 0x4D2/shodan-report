@@ -51,6 +51,22 @@
   - `src/shodan_report/tests/pdf/sections/test_trend_extra.py`: trend table derivation, ratings, and interpretation text
 - feat: dynamic trend interpretation
   - `src/shodan_report/pdf/sections/trend.py`: interpretation now reflects trend table changes automatically
+- fix: snapshot persistence keeps TLS/SSH info
+  - `src/shodan_report/persistence/snapshot_manager.py`: include `ssl`/`ssh` fields in snapshot services
+  - `src/shodan_report/tests/persistence/test_snapshot_manager.py`: coverage for SSL preservation
+- feat: include Shodan tags in report metadata
+  - `src/shodan_report/parsing/utils.py`: persist `tags` in snapshots
+  - `src/shodan_report/reporting/technical_data.py`: expose tags for reporting
+  - `src/shodan_report/pdf/sections/technical.py`: display Shodan tags under System-Informationen
+- fix: trend counts enriched high-risk CVEs
+  - `src/shodan_report/pdf/sections/trend.py`: include `cve_enriched` in high-risk count
+  - `src/shodan_report/core/runner.py`: populate previous high-risk counts from enriched CVEs
+  - `src/shodan_report/pdf/pdf_generator.py`: attach enriched CVEs before rendering
+- fix: deduplicate high-risk CVEs in trend
+  - `src/shodan_report/pdf/sections/trend.py`: count unique CVE IDs only
+  - `src/shodan_report/tests/pdf/sections/test_trend_extra.py`: add dedup coverage
+- feat: default logo fallback
+  - `src/shodan_report/pdf/helpers/header_helpers.py`: use MG Solutions logo when no logo is configured
 
 ## 2026-01-15
 

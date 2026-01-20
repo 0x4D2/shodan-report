@@ -15,6 +15,7 @@ def build_technical_data(
         "open_ports": [],
         "domains": getattr(snapshot, "domains", []),
         "hostnames": getattr(snapshot, "hostnames", []),
+        "tags": getattr(snapshot, "tags", []),
         "org": getattr(snapshot, "org", ""),
         "isp": getattr(snapshot, "isp", ""),
         "country": getattr(snapshot, "country", ""),

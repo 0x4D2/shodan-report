@@ -36,6 +36,18 @@ def generate_pdf(
     filename = f"{month}_{safe_ip}.pdf"
     pdf_path = customer_dir / filename
 
+    # Enrich CVEs early so trend table can use CVSS when available
+    try:
+        lookup_nvd = bool((config.get("nvd") or {}).get("enabled", False))
+        if os.environ.get("NVD_LIVE") == "1":
+            lookup_nvd = True
+        if isinstance(technical_json, dict) and not technical_json.get("cve_enriched"):
+            mdata = prepare_management_data(technical_json, evaluation)
+            enriched = enrich_cves(mdata.get("unique_cves", []), technical_json, lookup_nvd=lookup_nvd)
+            technical_json["cve_enriched"] = enriched
+    except Exception:
+        pass
+
     # Call `prepare_pdf_elements` with positional args to remain compatible with tests.
     if compare_month is None:
         elements = prepare_pdf_elements(
@@ -82,7 +94,9 @@ def generate_pdf(
             lookup_nvd = bool((config.get("nvd") or {}).get("enabled", False))
             if os.environ.get("NVD_LIVE") == "1":
                 lookup_nvd = True
-            enriched = enrich_cves(mdata.get("unique_cves", []), technical_json, lookup_nvd=lookup_nvd)
+            enriched = technical_json.get("cve_enriched") or enrich_cves(
+                mdata.get("unique_cves", []), technical_json, lookup_nvd=lookup_nvd
+            )
             # Build a compact `services` snapshot for sidecar; sanitize sensitive fields
             services_for_sidecar = []
             def _sanitize_sidecar_field(v, max_len=200):

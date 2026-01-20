@@ -14,6 +14,7 @@ class AssetSnapshot:
     os: Optional[str]
     city: str
     country: str
+    tags: List[str] = field(default_factory=list)
     services: List[Service] = field(default_factory=list)
     last_update: Optional[datetime] = None
     open_ports: List[int] = field(default_factory=list)

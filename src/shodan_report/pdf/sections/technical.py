@@ -273,6 +273,11 @@ def _extract_metadata_items(technical_json: Dict[str, Any]) -> List[str]:
     if asn:
         meta_items.append(f"Autonomous System: {asn}")
 
+    # Tags
+    tags = technical_json.get("tags", [])
+    if tags:
+        meta_items.append(f"Tags: {', '.join(tags)}")
+
     # Vulnerabilities
     vulnerabilities = technical_json.get("vulnerabilities", [])
     if vulnerabilities:

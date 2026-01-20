@@ -1,5 +1,5 @@
 from shodan_report.persistence import snapshot_manager
-from shodan_report.persistence.snapshot_manager import compare_snapshots
+from shodan_report.persistence.snapshot_manager import compare_snapshots, save_snapshot
 from shodan_report.models import AssetSnapshot, Service
 from datetime import datetime
 import json
@@ -121,3 +121,36 @@ def test_load_snapshot_reads_snapshot_format(tmp_path, monkeypatch):
     assert snapshot.country == "Germany"
     assert snapshot.open_ports == [22, 443]
     assert len(snapshot.services) == 2
+
+
+def test_save_snapshot_preserves_ssl_info(tmp_path, monkeypatch):
+    monkeypatch.setattr(snapshot_manager, "SNAPSHOT_DIR", tmp_path)
+
+    snapshot = AssetSnapshot(
+        ip="1.2.3.4",
+        hostnames=[],
+        domains=[],
+        org=None,
+        isp=None,
+        os=None,
+        city=None,
+        country=None,
+        services=[
+            Service(
+                port=8443,
+                transport="tcp",
+                product="HTTP",
+                version="1.1",
+                ssl_info={"cert": {"subject": {"CN": "example.local"}}},
+            )
+        ],
+        open_ports=[8443],
+        last_update=datetime(2026, 1, 20),
+    )
+
+    save_snapshot(snapshot, "Test Customer", "2026-01")
+    loaded = snapshot_manager.load_snapshot("Test Customer", "2026-01")
+
+    assert loaded is not None
+    assert len(loaded.services) == 1
+    assert loaded.services[0].ssl_info is not None

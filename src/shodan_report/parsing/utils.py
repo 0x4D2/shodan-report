@@ -225,6 +225,7 @@ def parse_shodan_host(data: Dict[str, Any]) -> AssetSnapshot:
         os=data.get("os"),
         city=city,
         country=country,
+        tags=data.get("tags", []) or [],
         services=services,
         open_ports=open_ports,
         last_update=last_update,
