@@ -842,11 +842,11 @@ def _build_top_risks(technical_json: Dict[str, Any], risk_level: str = "low") ->
     if has_admin:
         risks.append(
             {
-                "title": "Exponierter Administrationszugang",
+                "title": "Administrationszugang (beobachtungswürdig)" if low_profile else "Exponierter Administrationszugang",
                 "severity": "mittel" if not low_profile else "niedrig–mittel",
                 "cause": "Admin-Zugänge (z.B. SSH/RDP/VNC/Telnet) sind öffentlich erreichbar.",
-                "scenario": "Brute-Force oder Credential-Stuffing mit anschließender Übernahme.",
-                "impact": "Kontoübernahme, Systemzugriff, Betriebsstörung.",
+                "scenario": "Erhöhter Prüfaufwand für Authentifizierung und Zugriffsschutz.",
+                "impact": "Potenzielle Kontoübernahme oder Betriebsstörung bei schwachen Zugangsdaten.",
                 "recommendation": "MFA/Keys, Rate-Limits, Zugangsbeschränkung.",
             }
         )
@@ -854,11 +854,11 @@ def _build_top_risks(technical_json: Dict[str, Any], risk_level: str = "low") ->
     if has_http:
         risks.append(
             {
-                "title": "Webdienste ohne Transporthärtung",
+                "title": "Webdienste mit TLS/HTTP, begrenzte Zusatzhärtung" if low_profile else "Webdienste ohne Transporthärtung",
                 "severity": "mittel–hoch" if not low_profile else "niedrig",
-                "cause": "HTTP-Services ohne erkennbares HSTS/Banner-Härtung.",
-                "scenario": "MITM/Targeting durch öffentlich sichtbare Server-Details.",
-                "impact": "Sitzungsübernahme, erleichterte Angriffsplanung.",
+                "cause": "TLS aktiv (wo verfügbar), jedoch fehlendes HSTS und sichtbare Server-Banner.",
+                "scenario": "Gezieltes Targeting durch öffentlich sichtbare Server-Details.",
+                "impact": "Erleichterte Angriffsplanung; geringes Risiko für Sitzungsabgriffe.",
                 "recommendation": "TLS-only, HSTS aktivieren, Banner reduzieren.",
             }
         )
@@ -878,11 +878,11 @@ def _build_top_risks(technical_json: Dict[str, Any], risk_level: str = "low") ->
     if has_ftp and len(risks) < 3:
         risks.append(
             {
-                "title": "FTP öffentlich erreichbar",
+                "title": "FTP öffentlich erreichbar (Legacy-Risiko)",
                 "severity": "mittel" if not low_profile else "niedrig",
-                "cause": "FTP ist ohne erkennbare Segmentierung exponiert.",
-                "scenario": "Passwortangriffe oder missbrauchte Zugangsdaten.",
-                "impact": "Datenabfluss, Manipulation.",
+                "cause": "FTP ist als Bestandsdienst extern erreichbar.",
+                "scenario": "Erhöhter Schutzbedarf bei Zugangsdaten (Legacy-Protokoll).",
+                "impact": "Potenzieller Datenabfluss bei schwachen Zugangsdaten.",
                 "recommendation": "Zugriff auf interne Netze/VPN beschränken.",
             }
         )

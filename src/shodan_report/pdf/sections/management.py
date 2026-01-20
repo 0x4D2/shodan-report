@@ -88,12 +88,47 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
     # ──────────────────────────────────────────────────────────────────────────
     # 3. KERNAUSSAGE (SEITE 1)
     # ──────────────────────────────────────────────────────────────────────────
-    elements.append(
-        Paragraph(
-            "Aus externer Sicht ist die Angriffsfläche erhöht, primär durch öffentlich erreichbare Datenbank- und Administrationsdienste.",
-            styles["normal"],
+    # Build a short, accurate intro line based on observed services
+    try:
+        services = technical_json.get("services") or technical_json.get("open_ports") or []
+        ports = set()
+        products = []
+        for s in services:
+            if isinstance(s, dict):
+                ports.add(s.get("port"))
+                products.append(str(s.get("product") or "").lower())
+            else:
+                ports.add(getattr(s, "port", None))
+                products.append(str(getattr(s, "product", "")).lower())
+
+        prod_text = " ".join(products)
+        has_db = bool(
+            ports.intersection({3306, 5432, 27017, 8123, 9000, 1433})
+            or any(k in prod_text for k in ["mysql", "postgres", "postgresql", "mongodb", "clickhouse", "mssql", "redis"])
         )
-    )
+        has_admin = bool(
+            ports.intersection({22, 3389, 5900, 23})
+            or any(k in prod_text for k in ["ssh", "rdp", "vnc", "telnet"])
+        )
+        has_web = bool(ports.intersection({80, 443, 8080, 8443, 8081}) or "http" in prod_text)
+        has_file = bool(ports.intersection({21, 20, 139, 445}) or "ftp" in prod_text)
+
+        if has_db and has_admin:
+            intro_line = "Aus externer Sicht ist die Angriffsfläche erhöht, primär durch öffentlich erreichbare Datenbank- und Administrationsdienste."
+        elif has_admin and has_web and has_file:
+            intro_line = "Aus externer Sicht ist die Angriffsfläche erhöht, primär durch öffentlich erreichbare Administrations-, Web- und Dateidienste."
+        elif has_admin and has_web:
+            intro_line = "Aus externer Sicht ist die Angriffsfläche erhöht, primär durch öffentlich erreichbare Administrations- und Webdienste."
+        elif has_admin and has_file:
+            intro_line = "Aus externer Sicht ist die Angriffsfläche erhöht, primär durch öffentlich erreichbare Administrations- und Dateidienste."
+        elif has_db:
+            intro_line = "Aus externer Sicht ist die Angriffsfläche erhöht, primär durch öffentlich erreichbare Datenbankdienste."
+        else:
+            intro_line = "Aus externer Sicht ist die Angriffsfläche erhöht, primär durch öffentlich erreichbare Dienste."
+    except Exception:
+        intro_line = "Aus externer Sicht ist die Angriffsfläche erhöht, primär durch öffentlich erreichbare Dienste."
+
+    elements.append(Paragraph(intro_line, styles["normal"]))
     elements.append(Spacer(1, 8))
 
     # Exposure-Level mit Beschreibung
@@ -283,7 +318,7 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
     elif risk_level == "high":
         risk_text = "Erhöhte Sicherheitsrisiken erkannt; zeitnahe Maßnahmen empfohlen."
     elif risk_level == "medium":
-        risk_text = "Strukturelle Risiken vorhanden; Härtung und erweitertes Monitoring empfohlen."
+        risk_text = "Konfigurationsbedingte Angriffsfläche erkennbar; gezielte Härtung empfohlen."
     else:  # low
         # If critical CVEs exist, avoid "überwiegend kontrolliert"
         if critical_cves_count > 0:

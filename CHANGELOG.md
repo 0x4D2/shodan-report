@@ -67,6 +67,11 @@
   - `src/shodan_report/tests/pdf/sections/test_trend_extra.py`: add dedup coverage
 - feat: default logo fallback
   - `src/shodan_report/pdf/helpers/header_helpers.py`: use MG Solutions logo when no logo is configured
+- fix: soften management summary and Top-3 wording
+  - `src/shodan_report/pdf/sections/management.py`: dynamic intro based on observed services
+  - `src/shodan_report/pdf/helpers/management_helpers.py`: adjust Top-3 phrasing for low exposure and HSTS/TLS wording
+- fix: default logo width to 6 cm
+  - `src/shodan_report/pdf/helpers/header_helpers.py`: set default `logo_width_cm` fallback to 6.0
 
 ## 2026-01-15
 

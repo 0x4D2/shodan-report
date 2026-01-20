@@ -55,7 +55,7 @@ def add_logo_to_elements(elements: list, config: dict) -> None:
             if styling.get("logo_width") is not None:
                 logo_width_cm = styling.get("logo_width")
             else:
-                logo_width_cm = assets.get("logo_width_cm", 2.0)
+                logo_width_cm = assets.get("logo_width_cm", 6.0)
 
             logo_width = float(logo_width_cm) * cm
 
