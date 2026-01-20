@@ -99,13 +99,29 @@ def generate_report_pipeline(
             prev_snapshot = load_snapshot(customer_name, compare_month)
             if verbose and prev_snapshot:
                 print(f"Geladener Vergleichssnapshot für {compare_month}")
+        else:
+            # Auto-compare: use previous month if available
+            prev_month_match = re.match(r"^(\d{4})-(\d{2})$", str(month))
+            if prev_month_match:
+                year = int(prev_month_match.group(1))
+                mon = int(prev_month_match.group(2))
+                if mon == 1:
+                    year -= 1
+                    mon = 12
+                else:
+                    mon -= 1
+                auto_compare_month = f"{year:04d}-{mon:02d}"
+                prev_snapshot = load_snapshot(customer_name, auto_compare_month)
+                if prev_snapshot:
+                    compare_month = auto_compare_month
+                    if verbose:
+                        print(f"Auto-Vergleich mit {compare_month}")
 
         # 4. Trend analysieren
-        trend_text = (
-            analyze_trend(prev_snapshot, snapshot)
-            if prev_snapshot
-            else "Keine historischen Daten für Trendanalyse vorhanden."
-        )
+        if not include_trend:
+            trend_text = "Trendanalyse deaktiviert (Kundenkonfiguration)."
+        else:
+            trend_text = analyze_trend(prev_snapshot, snapshot) if prev_snapshot else ""
 
         engine = EvaluationEngine()
         evaluation_result = engine.evaluate(snapshot)  # ← EvaluationResult Objekt

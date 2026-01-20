@@ -6,7 +6,14 @@ import os
 # By default prefer the installed package (editable install).
 # Set environment variable `USE_LOCAL_SRC=1` to force usage of the local `src/` directory
 # (useful during development). This prevents accidental usage of legacy local paths.
-print("INFO: Using installed package (ensure you ran 'pip install -e .')")
+if os.getenv("USE_LOCAL_SRC") == "1":
+    repo_root = Path(__file__).resolve().parents[1]
+    src_path = repo_root / "src"
+    if str(src_path) not in sys.path:
+        sys.path.insert(0, str(src_path))
+    print("INFO: Using local src/ (USE_LOCAL_SRC=1)")
+else:
+    print("INFO: Using installed package (ensure you ran 'pip install -e .')")
 
 
 from shodan_report.core.runner import generate_report_pipeline
@@ -40,16 +47,24 @@ config_mapping = {
 
 for i, line in enumerate(jobs, 1):
     parts = line.split()
-    if len(parts) != 3:
+    if len(parts) < 3:
         print(f"[{i}] Invalid: {line}")
         continue
-    
-    customer, ip, month = parts
+
+    customer = " ".join(parts[:-2]).strip()
+    ip = parts[-2]
+    month = parts[-1]
+    if not customer:
+        print(f"[{i}] Invalid: {line}")
+        continue
     print(f"[{i}/{total}] {customer} - {ip} - {month}")
     
     config_path = None
+    normalized_customer = customer.replace(" ", "_")
     if customer in config_mapping:
         config_path = Path(config_mapping[customer])
+    elif normalized_customer in config_mapping:
+        config_path = Path(config_mapping[normalized_customer])
         if not config_path.exists():
             print(f"⚠️  Config nicht gefunden: {config_path}")
             config_path = None

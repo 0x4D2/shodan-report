@@ -75,6 +75,54 @@ def build_technical_data(
     if prev_snapshot:
         technical["trend"] = analyze_trend(prev_snapshot, snapshot)
 
+        # Provide previous metrics for PDF trend table
+        prev_open_ports = []
+        for service in prev_snapshot.services:
+            raw = getattr(service, "raw", None)
+            if raw is None:
+                parsed_data = ""
+                extra_info = ""
+            else:
+                parsed_data = raw.get("_parsed_data", "")
+                extra_info = raw.get("_extra_info", "")
+
+            prev_port_info = {
+                "port": service.port,
+                "transport": getattr(service, "transport", "tcp"),
+                "service": {
+                    "product": service.product or "Unbekannter Dienst",
+                    "version": service.version or "",
+                    "banner": parsed_data,
+                },
+                "vulnerabilities": getattr(service, "vulnerabilities", []) or [],
+                "extra_info": extra_info,
+                "is_ssl": bool(getattr(service, "ssl_info", None)),
+                "is_ssh": bool(getattr(service, "ssh_info", None)),
+            }
+            prev_port_info["service_type"] = _classify_service_type(service)
+            prev_open_ports.append(prev_port_info)
+
+        prev_critical = _identify_critical_services(prev_open_ports)
+
+        tls_ports = {443, 8443, 9443}
+        prev_tls_issues = 0
+        for s in prev_snapshot.services or []:
+            try:
+                port = getattr(s, "port", None)
+                ssl = getattr(s, "ssl_info", None)
+            except Exception:
+                port = None
+                ssl = None
+            if port in tls_ports and not ssl:
+                prev_tls_issues += 1
+
+        technical["previous_metrics"] = {
+            "Öffentliche Ports": len(prev_open_ports),
+            "Kritische Services": len(prev_critical),
+            "Hochrisiko-CVEs": 0,
+            "TLS-Schwächen": prev_tls_issues,
+        }
+
     return technical
 
 

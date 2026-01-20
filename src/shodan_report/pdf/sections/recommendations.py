@@ -40,8 +40,12 @@ def create_recommendations_section(elements: List, styles: Dict, *args, **kwargs
     # Priority 1
     elements.append(Paragraph("<b>Priorität 1 – Kritisch</b>", styles["normal"]))
     elements.append(Spacer(1, 6))
-    for item in buckets.get("priority1", []):
-        elements.append(Paragraph(f"• {item}", styles["bullet"]))
+    priority1_items = buckets.get("priority1", [])
+    if priority1_items:
+        for item in priority1_items:
+            elements.append(Paragraph(f"• {item}", styles["bullet"]))
+    else:
+        elements.append(Paragraph("(keine)", styles["bullet"]))
 
     elements.append(Spacer(1, 8))
 

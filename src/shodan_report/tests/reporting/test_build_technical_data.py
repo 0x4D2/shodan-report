@@ -100,6 +100,40 @@ def test_build_technical_data_without_previous_snapshot():
     print("Test passed: trend is None without previous snapshot")
 
 
+def test_build_technical_data_with_previous_metrics():
+    prev_services = [
+        Service(port=22, transport="tcp", product="SSH", version="8.0"),
+        Service(port=3306, transport="tcp", product="MySQL", version="8.0"),
+        Service(port=8443, transport="tcp", product="HTTP", version="1.1"),
+    ]
+    prev_snapshot = _make_snapshot(
+        ip="1.2.3.4",
+        ports=[22, 3306, 8443],
+        services=prev_services,
+        last_update=datetime(2025, 12, 15, 10, 0, 0),
+    )
+
+    curr_services = [
+        Service(port=22, transport="tcp", product="SSH", version="8.1"),
+        Service(port=3306, transport="tcp", product="MySQL", version="8.0"),
+    ]
+    snapshot = _make_snapshot(
+        ip="1.2.3.4",
+        ports=[22, 3306],
+        services=curr_services,
+        last_update=datetime(2026, 1, 20, 10, 0, 0),
+    )
+
+    technical = build_technical_data(snapshot, prev_snapshot)
+
+    assert technical.get("previous_metrics") is not None
+    prev_metrics = technical["previous_metrics"]
+    assert prev_metrics["Öffentliche Ports"] == 3
+    assert prev_metrics["Kritische Services"] == 2
+    assert prev_metrics["TLS-Schwächen"] == 1
+    assert prev_metrics["Hochrisiko-CVEs"] == 0
+
+
 def test_that_open_ports_are_not_empty():
     services = [
         Service(port=80, transport="tcp", product="HTTP"),

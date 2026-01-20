@@ -1,6 +1,8 @@
+from shodan_report.persistence import snapshot_manager
 from shodan_report.persistence.snapshot_manager import compare_snapshots
 from shodan_report.models import AssetSnapshot, Service
 from datetime import datetime
+import json
 
 
 def _make_snapshot(ip="1.2.3.4", ports=None, services=None):
@@ -81,3 +83,41 @@ def test_compare_snapshots_handles_none_and_duplicates():
     assert "unbekannt" not in changes["new_services"] or isinstance(
         changes["new_services"], list
     )
+
+
+def test_load_snapshot_reads_snapshot_format(tmp_path, monkeypatch):
+    monkeypatch.setattr(snapshot_manager, "SNAPSHOT_DIR", tmp_path)
+
+    customer_dir = tmp_path / "Test_Customer"
+    customer_dir.mkdir(parents=True, exist_ok=True)
+
+    payload = {
+        "ip": "1.2.3.4",
+        "hostnames": [],
+        "domains": [],
+        "org": "TestOrg",
+        "isp": "TestISP",
+        "os": None,
+        "city": "Berlin",
+        "country": "Germany",
+        "services": [
+            {"port": 22, "product": "OpenSSH", "version": "8.9"},
+            {"port": 443, "product": "HTTP", "version": "1.1"},
+        ],
+        "open_ports": [22, 443],
+        "last_update": "2026-01-20 13:46:02.707329+00:00",
+        "vulns": [],
+    }
+
+    path = customer_dir / "2026-01_1.2.3.4.json"
+    with path.open("w", encoding="utf-8") as fh:
+        json.dump(payload, fh)
+
+    snapshot = snapshot_manager.load_snapshot("Test Customer", "2026-01")
+
+    assert snapshot is not None
+    assert snapshot.ip == "1.2.3.4"
+    assert snapshot.city == "Berlin"
+    assert snapshot.country == "Germany"
+    assert snapshot.open_ports == [22, 443]
+    assert len(snapshot.services) == 2

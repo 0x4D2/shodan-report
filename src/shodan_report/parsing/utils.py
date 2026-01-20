@@ -187,6 +187,23 @@ def parse_shodan_host(data: Dict[str, Any]) -> AssetSnapshot:
         services.append(parse_service(entry, host_vulns=host_vulns))
 
     location = data.get("location", {})
+    city = location.get("city", "") or data.get("city", "")
+    country = location.get("country_name", "") or data.get("country", "")
+
+    # Allow snapshot-style fields (ip, open_ports, last_update)
+    ip = data.get("ip_str") or data.get("ip")
+    open_ports = data.get("ports") or data.get("open_ports") or []
+
+    last_update = datetime.now(timezone.utc)
+    raw_last_update = data.get("last_update")
+    if raw_last_update:
+        try:
+            if isinstance(raw_last_update, datetime):
+                last_update = raw_last_update
+            else:
+                last_update = datetime.fromisoformat(str(raw_last_update))
+        except Exception:
+            last_update = datetime.now(timezone.utc)
 
     domains = data.get("domains", [])  # Zuerst 'domains' versuchen
     if not domains and "domain" in data:
@@ -200,17 +217,17 @@ def parse_shodan_host(data: Dict[str, Any]) -> AssetSnapshot:
             domains = []
 
     return AssetSnapshot(
-        ip=data.get("ip_str"),
+        ip=ip,
         hostnames=data.get("hostnames", []),
         domains=domains,
         org=data.get("org", ""),
         isp=data.get("isp", ""),
         os=data.get("os"),
-        city=location.get("city", ""),
-        country=location.get("country_name", ""),
+        city=city,
+        country=country,
         services=services,
-        open_ports=data.get("ports", []),
-        last_update=datetime.now(timezone.utc),
+        open_ports=open_ports,
+        last_update=last_update,
         # Optionale Felder
         asn=data.get("asn"),
         latitude=location.get("latitude"),

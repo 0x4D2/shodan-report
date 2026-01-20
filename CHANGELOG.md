@@ -28,6 +28,30 @@
 - test: update expectations for trend and management summary
   - adjusted tests for new messaging and layout
 
+## 2026-01-20
+
+- fix: jobs parser supports customer names with spaces
+  - `scripts/run-jobs-direct.py`: parse customer name from remaining tokens and normalize for config mapping
+- feat: recommendations show "keins" when Priority 1 is empty
+  - `src/shodan_report/pdf/sections/recommendations.py`: add explicit placeholder for empty critical list
+- feat: auto-compare with previous month snapshot
+  - `src/shodan_report/core/runner.py`: when no compare month is provided, try previous month snapshot and build trend automatically
+- test: previous-metrics for trend table
+  - added coverage to ensure previous snapshot metrics populate trend comparison
+- fix: TLS weakness trend consistency
+  - `src/shodan_report/pdf/sections/trend.py`: count missing TLS info on HTTPS ports to match prior-month metrics
+- test: TLS weakness counting without ssl_info
+  - added coverage for TLS weakness heuristics
+- fix: snapshot JSON parsing completeness
+  - `src/shodan_report/parsing/utils.py`: support snapshot-style fields (`ip`, `open_ports`, `city`, `country`, `last_update`)
+- test: snapshot parsing and loading
+  - `src/shodan_report/tests/parsing/test_parse_shodan_host.py`: snapshot `services` list + top-level fields
+  - `src/shodan_report/tests/persistence/test_snapshot_manager.py`: `load_snapshot()` reads snapshot JSON cleanly
+- test: trend interpretation and rendering coverage
+  - `src/shodan_report/tests/pdf/sections/test_trend_extra.py`: trend table derivation, ratings, and interpretation text
+- feat: dynamic trend interpretation
+  - `src/shodan_report/pdf/sections/trend.py`: interpretation now reflects trend table changes automatically
+
 ## 2026-01-15
 
 - PDF: Neue CVE-Normalisierung und Zuordnung

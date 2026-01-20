@@ -59,6 +59,66 @@ def create_trend_section(elements: List, styles: Dict, *args, **kwargs) -> None:
         _add_no_data_view(elements, styles, legacy_mode)
 
 
+def _format_interpretation_label(category: str) -> str:
+    mapping = {
+        "Öffentliche Ports": "öffentliche Dienste/Ports",
+        "Kritische Services": "kritische Dienste",
+        "Hochrisiko-CVEs": "Schwachstellenlage",
+        "TLS-Schwächen": "Kryptokonfiguration",
+    }
+    return mapping.get(category, str(category))
+
+
+def _build_interpretation(trend_table: Optional[Dict[str, Any]]) -> str:
+    if not trend_table:
+        return "Die Angriffsfläche ist stabil."
+
+    worsening = []
+    improving = []
+    stable = []
+
+    for cat, vals in trend_table.items():
+        try:
+            prev = int(vals[0])
+            curr = int(vals[1])
+        except Exception:
+            stable.append(cat)
+            continue
+
+        if curr > prev:
+            worsening.append(cat)
+        elif curr < prev:
+            improving.append(cat)
+        else:
+            stable.append(cat)
+
+    def _join_labels(items):
+        labels = [_format_interpretation_label(i) for i in items]
+        if len(labels) == 1:
+            return labels[0]
+        return ", ".join(labels[:-1]) + " und " + labels[-1]
+
+    if worsening and not improving:
+        # special-case TLS-only wording
+        if len(worsening) == 1 and worsening[0] == "TLS-Schwächen":
+            return (
+                "Die Angriffsfläche ist stabil, zeigt jedoch eine leichte Verschlechterung "
+                "in der Kryptokonfiguration, was langfristig relevant werden kann."
+            )
+        return f"Die Angriffsfläche zeigt eine Verschlechterung bei {_join_labels(worsening)}."
+
+    if improving and not worsening:
+        return f"Die Angriffsfläche hat sich verbessert, insbesondere bei {_join_labels(improving)}."
+
+    if worsening and improving:
+        return (
+            "Die Angriffsfläche bleibt insgesamt stabil, zeigt jedoch Veränderungen: "
+            f"Verschlechterung bei {_join_labels(worsening)}, Verbesserung bei {_join_labels(improving)}."
+        )
+
+    return "Die Angriffsfläche ist stabil."
+
+
 def _add_comparison_view(
     elements: List,
     styles: Dict,
@@ -136,13 +196,12 @@ def _add_comparison_view(
 
         elements.append(Spacer(1, 12))
 
-    # Interpretation (konstantes Template unter der Tabelle)
+    # Interpretation (dynamisch basierend auf Trenddaten)
     elements.append(Paragraph("<b>Interpretation:</b>", styles["normal"]))
     elements.append(Spacer(1, 4))
     elements.append(
         Paragraph(
-            "Die Angriffsfläche ist stabil, zeigt jedoch eine leichte Verschlechterung "
-            "in der Kryptokonfiguration, was langfristig relevant werden kann.",
+            _build_interpretation(trend_table),
             styles["normal"],
         )
     )
@@ -246,15 +305,24 @@ def _derive_trend_table(technical_json: Dict[str, Any], evaluation: Optional[Dic
             try:
                 if isinstance(s, dict):
                     si = s.get("ssl_info") or {}
+                    port = s.get("port")
+                    is_ssl = bool(s.get("is_ssl"))
                     if si and (si.get("has_weak_cipher") or si.get("weaknesses") or si.get("issues")):
                         cnt += 1
                     if s.get("tls_weakness", False) or s.get("ssl_weakness", False):
                         cnt += 1
+                    # count missing TLS info on known TLS ports
+                    if port in {443, 8443, 9443} and not si and not is_ssl:
+                        cnt += 1
                 else:
                     si = getattr(s, "ssl_info", None)
+                    port = getattr(s, "port", None)
+                    is_ssl = bool(getattr(s, "is_ssl", False))
                     if si and (getattr(si, "has_weak_cipher", False) or getattr(si, "weaknesses", None)):
                         cnt += 1
                     if getattr(s, "tls_weakness", False) or getattr(s, "ssl_weakness", False):
+                        cnt += 1
+                    if port in {443, 8443, 9443} and not si and not is_ssl:
                         cnt += 1
             except Exception:
                 continue

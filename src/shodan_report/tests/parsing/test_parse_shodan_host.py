@@ -119,6 +119,33 @@ def test_parse_shodan_host_missing_fields():
     assert len(snapshot.services) == 1
 
 
+def test_parse_shodan_host_snapshot_services_list():
+    snapshot_data = {
+        "ip": "217.154.224.104",
+        "hostnames": ["example.local"],
+        "domains": ["example.local"],
+        "org": "TestOrg",
+        "isp": "TestISP",
+        "os": None,
+        "city": "Berlin",
+        "country": "Germany",
+        "open_ports": [22, 443],
+        "services": [
+            {"port": 22, "transport": "tcp", "product": "OpenSSH", "version": "8.9"},
+            {"port": 443, "transport": "tcp", "product": "HTTP", "version": "1.1"},
+        ],
+        "last_update": "2026-01-20 13:46:02.707329+00:00",
+    }
+
+    snapshot = parse_shodan_host(snapshot_data)
+
+    assert snapshot.ip == "217.154.224.104"
+    assert snapshot.city == "Berlin"
+    assert snapshot.country == "Germany"
+    assert snapshot.open_ports == [22, 443]
+    assert len(snapshot.services) == 2
+
+
 def test_parse_shodan_host_last_update_is_datetime():
     shodan_data = {"data": [{"port": 21, "transport": "tcp"}]}
     snapshot = parse_shodan_host(shodan_data)
