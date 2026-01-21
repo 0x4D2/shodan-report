@@ -3,26 +3,18 @@
 # Generiert professionelle Management-Zusammenfassung im Security-Reporting-Stil
 # ──────────────────────────────────────────────────────────────────────────────
 
-from reportlab.platypus import Paragraph, Spacer, Table, TableStyle, PageBreak
+from reportlab.platypus import Paragraph, Spacer, PageBreak, Table, TableStyle
+from reportlab.lib.units import mm
 import os
 from typing import List, Dict, Any, Optional
 from shodan_report.pdf.styles import Theme
-from reportlab.lib.units import mm
-from reportlab.lib.colors import HexColor
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Management-Text & Insights Helpers
 # ──────────────────────────────────────────────────────────────────────────────
 from shodan_report.pdf.helpers.management_helpers import (
-    extract_first_sentence,
-    generate_priority_insights,
-    generate_priority_recommendations,
-    _sanitize_critical_point,
-    _generate_fallback_insights,
-    _generate_fallback_recommendations,
-    _build_service_flags,
-    _build_service_summary,
     _build_top_risks,
+    _build_service_flags,
 )
 from .data.cve_enricher import enrich_cves
 
@@ -30,10 +22,9 @@ from .data.cve_enricher import enrich_cves
 # ──────────────────────────────────────────────────────────────────────────────
 # PDF Helpers
 # ──────────────────────────────────────────────────────────────────────────────
+from shodan_report.pdf.layout import keep_section
 from shodan_report.pdf.helpers.pdf_helpers import build_horizontal_exposure_ampel
-from shodan_report.pdf.layout import keep_section, set_table_repeat, set_table_no_split
 from .data.management_data import prepare_management_data
-import re
 
 def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> None:
     """
@@ -72,6 +63,14 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
     mdata = prepare_management_data(technical_json, evaluation)
     exposure_score = mdata.get("exposure_score", 1)
     exposure_display = mdata.get("exposure_display", f"{exposure_score}/5")
+    exposure_description_map = {
+        1: "sehr niedrig",
+        2: "niedrig–mittel",
+        3: "erhöht",
+        4: "hoch",
+        5: "sehr hoch",
+    }
+    exposure_desc = exposure_description_map.get(exposure_score, "nicht bewertet")
     risk_level = mdata.get("risk_level", "low")
     critical_points = mdata.get("critical_points", [])
     critical_points_count = mdata.get("critical_points_count", 0)
@@ -110,27 +109,162 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
             ports.intersection({22, 3389, 5900, 23})
             or any(k in prod_text for k in ["ssh", "rdp", "vnc", "telnet"])
         )
+        has_ssh = bool(22 in ports or "ssh" in prod_text)
         has_web = bool(ports.intersection({80, 443, 8080, 8443, 8081}) or "http" in prod_text)
         has_file = bool(ports.intersection({21, 20, 139, 445}) or "ftp" in prod_text)
 
-        if has_db and has_admin:
-            intro_line = "Aus externer Sicht ist die Angriffsfläche erhöht, primär durch öffentlich erreichbare Datenbank- und Administrationsdienste."
+        assets = []
+        ip = technical_json.get("ip")
+        if ip:
+            assets.append(str(ip))
+        domains = technical_json.get("domains") or []
+        hostnames = technical_json.get("hostnames") or []
+        assets.extend([str(d) for d in domains if d])
+        assets.extend([str(h) for h in hostnames if h])
+        seen_assets = []
+        for a in assets:
+            if a not in seen_assets:
+                seen_assets.append(a)
+        asset_count = max(1, len(seen_assets))
+        primary_asset = None
+        if domains:
+            primary_asset = str(domains[0])
+        elif hostnames:
+            primary_asset = str(hostnames[0])
+        elif ip:
+            primary_asset = str(ip)
+
+        if has_ssh and not (has_db or has_web or has_file):
+            reason = "ein öffentlich erreichbarer SSH-Dienst Risiken birgt"
+        elif has_db and has_admin:
+            reason = "öffentlich erreichbare Datenbank- und Administrationsdienste vorhanden sind"
         elif has_admin and has_web and has_file:
-            intro_line = "Aus externer Sicht ist die Angriffsfläche erhöht, primär durch öffentlich erreichbare Administrations-, Web- und Dateidienste."
+            reason = "öffentlich erreichbare Administrations-, Web- und Dateidienste vorhanden sind"
         elif has_admin and has_web:
-            intro_line = "Aus externer Sicht ist die Angriffsfläche erhöht, primär durch öffentlich erreichbare Administrations- und Webdienste."
+            reason = "öffentlich erreichbare Administrations- und Webdienste vorhanden sind"
         elif has_admin and has_file:
-            intro_line = "Aus externer Sicht ist die Angriffsfläche erhöht, primär durch öffentlich erreichbare Administrations- und Dateidienste."
+            reason = "öffentlich erreichbare Administrations- und Dateidienste vorhanden sind"
         elif has_db:
-            intro_line = "Aus externer Sicht ist die Angriffsfläche erhöht, primär durch öffentlich erreichbare Datenbankdienste."
+            reason = "öffentlich erreichbare Datenbankdienste vorhanden sind"
         else:
-            intro_line = "Aus externer Sicht ist die Angriffsfläche erhöht, primär durch öffentlich erreichbare Dienste."
+            reason = "öffentlich erreichbare Dienste vorhanden sind"
+
+        if primary_asset:
+            if asset_count == 1:
+                intro_line = (
+                    f"Erfasst wurde 1 Asset (Host: {primary_asset}); "
+                    f"die externe Angriffsfläche ist {exposure_desc} bewertet, da {reason}."
+                )
+            else:
+                intro_line = (
+                    f"Erfasst wurden {asset_count} Assets; das primär bewertete Asset (Host: {primary_asset}) "
+                    f"ist {exposure_desc} bewertet, da {reason}."
+                )
+        else:
+            intro_line = (
+                f"Erfasst wurden {asset_count} Assets; die externe Angriffsfläche ist "
+                f"{exposure_desc} bewertet, da {reason}."
+            )
     except Exception:
-        intro_line = "Aus externer Sicht ist die Angriffsfläche erhöht, primär durch öffentlich erreichbare Dienste."
+        intro_line = "Erfasst wurde 1 Asset; die externe Angriffsfläche ist erhöht bewertet."
 
     elements.append(Paragraph(intro_line, styles["normal"]))
     elements.append(Spacer(1, 8))
 
+    # ─────────────────────────────────────────────────────────────────────
+    # KERNKENNZAHLEN (nur auf Seite 1)
+    # Zeigt kompakt Assets / Ports / CVEs / Status auf der ersten Seite an.
+    # ─────────────────────────────────────────────────────────────────────
+    try:
+        # asset_count wurde im oberen Berechnungsabschnitt ermittelt; falls
+        # nicht verfügbar, berechne fallback-Assets aus technical_json.
+        try:
+            assets_num = int(asset_count)
+        except Exception:
+            assets = []
+            ip = technical_json.get("ip")
+            if ip:
+                assets.append(str(ip))
+            domains = technical_json.get("domains") or []
+            hostnames = technical_json.get("hostnames") or []
+            assets.extend([str(d) for d in domains if d])
+            assets.extend([str(h) for h in hostnames if h])
+            # dedupe
+            seen = []
+            for a in assets:
+                if a not in seen:
+                    seen.append(a)
+            assets_num = max(1, len(seen))
+
+        ports_num = int(mdata.get("total_ports", 0) or 0)
+        cves_num = int(mdata.get("cve_count", 0) or 0)
+
+        # Simple status emoji mapping based on exposure_score
+        try:
+            sc = int(mdata.get("exposure_score", 1) or 1)
+        except Exception:
+            sc = 1
+        if sc <= 2:
+            status_dot = "🟢"
+            status_label = "niedrig"
+        elif sc == 3:
+            status_dot = "🟡"
+            status_label = "mittel"
+        else:
+            status_dot = "🔴"
+            status_label = "hoch"
+
+        # Build an exposure ampel flowable for the status column
+        try:
+            ampel = build_horizontal_exposure_ampel(sc, dot_size_mm=4.0, spacing_mm=1.8, theme=theme)
+        except Exception:
+            ampel = Paragraph(f"{status_dot}", styles["normal"])
+
+        # status cell: ampel (zentriert) + label (kleingeschrieben)
+        status_label = status_label.lower()
+        status_cell = Table(
+            [[ampel, Paragraph(status_label, styles["normal"]) ]],
+            colWidths=[22 * mm, 24 * mm],
+        )
+        status_cell.setStyle(
+            TableStyle(
+                [
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("ALIGN", (0, 0), (0, 0), "CENTER"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 2),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 2),
+                ]
+            )
+        )
+
+        kern_rows = [
+            [Paragraph("<b>KERNKENNZAHLEN</b>", styles["heading2"]), "", "", ""],
+            [Paragraph("<b>Assets</b>", styles["normal"]), Paragraph("<b>Ports</b>", styles["normal"]), Paragraph("<b>CVEs</b>", styles["normal"]), Paragraph("<b>Status</b>", styles["normal"])],
+            [str(assets_num), str(ports_num), str(cves_num), status_cell],
+        ]
+
+        col_w = [28 * mm, 28 * mm, 28 * mm, 46 * mm]
+        kern_tbl = Table(kern_rows, colWidths=col_w)
+        kern_tbl.setStyle(
+            TableStyle(
+                [
+                    ("SPAN", (0, 0), (-1, 0)),
+                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("GRID", (0, 1), (-1, -1), 0.5, "#111827"),
+                    ("BACKGROUND", (0, 0), (-1, 0), "#f1f5f9"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                    ("TOPPADDING", (0, 0), (-1, -1), 6),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                ]
+            )
+        )
+        elements.append(kern_tbl)
+        elements.append(Spacer(1, 8))
+    except Exception:
+        # non-fatal: if anything goes wrong, skip table silently
+        pass
     # Exposure-Level mit Beschreibung
     # Optional: adjust exposure based on critical CVEs (OSINT/NVD)
     critical_cves_count = 0
@@ -162,124 +296,176 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
     elif critical_cves_count >= 1:
         exposure_score = max(exposure_score, 3)
 
-    exposure_description_map = {
-        1: "sehr niedrig",
-        2: "niedrig–mittel",
-        3: "erhöht",
-        4: "hoch",
-        5: "sehr hoch",
-    }
     exposure_desc = exposure_description_map.get(exposure_score, "nicht bewertet")
 
-    # Ampel visualisierung
-    ampel = build_horizontal_exposure_ampel(exposure_score, theme=theme)
-
-    # Top-3 Risiken (priorisiert) auf Seite 1
-    top_risks = _build_top_risks(technical_json, risk_level)
-    if top_risks:
-        heading = "Top-3 Beobachtungspunkte" if risk_level == "low" else "Top-3 Risiken (priorisiert)"
-        elements.append(Paragraph(f"<b>{heading}</b>", styles["normal"]))
-        elements.append(Spacer(1, 6))
-
-        for idx, risk in enumerate(top_risks, 1):
-            text = (
-                f"<b>{idx}. {risk['title']} ({risk['severity']})</b><br/>"
-                f"Ursache/Szenario: {risk['cause']} {risk['scenario']}<br/>"
-                f"Schaden: {risk['impact']}<br/>"
-                f"Empfehlung: {risk['recommendation']}"
-            )
-            risk_tbl = Table(
-                [[Paragraph(text, styles["normal"]) ]],
-                colWidths=[163 * mm],
-                style=TableStyle(
-                    [
-                        ("BACKGROUND", (0, 0), (-1, -1), HexColor("#f8fafc")),
-                        ("GRID", (0, 0), (-1, -1), 0.2, HexColor("#e5e7eb")),
-                        ("LEFTPADDING", (0, 0), (-1, -1), 6),
-                        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-                        ("TOPPADDING", (0, 0), (-1, -1), 6),
-                        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-                    ]
-                ),
-            )
-            set_table_no_split(risk_tbl)
-            elements.append(risk_tbl)
-            elements.append(Spacer(1, 4))
-
-        elements.append(Spacer(1, 4))
-
-    status_text = "Aktuell keine Hinweise auf aktive Ausnutzung; kontinuierliche Beobachtung empfohlen."
-    status_tbl = Table(
-        [[Paragraph(status_text, styles["normal"]) ]],
-        colWidths=[163 * mm],
-        style=TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (-1, -1), HexColor("#f8fafc")),
-                ("GRID", (0, 0), (-1, -1), 0.2, HexColor("#e5e7eb")),
-                ("LEFTPADDING", (0, 0), (-1, -1), 6),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-                ("TOPPADDING", (0, 0), (-1, -1), 6),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-            ]
-        ),
+    # Exposure-Level klar benennen (inkl. Bedeutung)
+    elements.append(
+        Paragraph(
+            f"Exposure-Level: {exposure_score}/5 ({exposure_desc}). Bedeutung: 1=sehr niedrig, 3=erhöht, 5=sehr hoch.",
+            styles["normal"],
+        )
     )
-    set_table_no_split(status_tbl)
-    elements.append(status_tbl)
+    # Note: separate small 'Status' ampel below the exposure paragraph removed
+    elements.append(
+        Paragraph(
+            "Herleitung: Bewertung basiert auf Anzahl öffentlicher Dienste "
+            f"({total_ports}), kritischen Services ({critical_points_count}) und CVE-Funden ({cve_count}).",
+            styles["normal"],
+        )
+    )
+    elements.append(Spacer(1, 6))
+
+    # 3 Kernaussagen (Risiko, Zustand, Richtung)
+    elements.append(Paragraph("<b>Kernaussagen</b>", styles["normal"]))
     elements.append(Spacer(1, 4))
 
-    recommendation_text = "<b>Kurzempfehlung:</b> Zugang zu Admin- und Datenbankdiensten einschränken; Webdienste härten."
-    recommendation_tbl = Table(
-        [[Paragraph(recommendation_text, styles["normal"]) ]],
-        colWidths=[163 * mm],
-        style=TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (-1, -1), HexColor("#fff7ed")),
-                ("GRID", (0, 0), (-1, -1), 0.3, HexColor("#fed7aa")),
-                ("LEFTPADDING", (0, 0), (-1, -1), 6),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-                ("TOPPADDING", (0, 0), (-1, -1), 6),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-            ]
-        ),
+    top_risks = _build_top_risks(technical_json, risk_level)
+    if top_risks:
+        primary_title = str(top_risks[0].get("title", "")).lower()
+        if "administr" in primary_title:
+            risk_stmt = (
+                "Risiko: Öffentlich erreichbare Administrationsdienste erhöhen das Risiko unbefugter Zugriffe; "
+                "Härtungsmaßnahmen empfohlen."
+            )
+        elif "datenbank" in primary_title:
+            risk_stmt = (
+                "Risiko: Öffentlich erreichbare Datenbanken erhöhen das Risiko unbefugter Datenzugriffe; "
+                "Härtungsmaßnahmen empfohlen."
+            )
+        elif "web" in primary_title:
+            risk_stmt = (
+                "Risiko: Öffentlich erreichbare Webdienste erhöhen das Targeting- und Angriffsrisiko; "
+                "Härtungsmaßnahmen empfohlen."
+            )
+        elif "mail" in primary_title:
+            risk_stmt = (
+                "Risiko: Öffentlich erreichbare Maildienste erhöhen das Risiko von Kontoübernahmen; "
+                "Härtungsmaßnahmen empfohlen."
+            )
+        else:
+            risk_stmt = (
+                "Risiko: Öffentlich erreichbare Dienste erhöhen das Risiko unbefugter Zugriffe; "
+                "Härtungsmaßnahmen empfohlen."
+            )
+    else:
+        risk_stmt = (
+            "Risiko: Öffentlich erreichbare Dienste erhöhen das Risiko unbefugter Zugriffe; "
+            "Härtungsmaßnahmen empfohlen."
+        )
+
+    state_stmt = f"Zustand: Externe Angriffsfläche ist aktuell {exposure_desc} (Exposure-Level {exposure_score}/5)."
+
+    trend_note = "Richtung: Trend aktuell nicht verfügbar; kontinuierliches Monitoring empfohlen."
+    try:
+        if "context" in kwargs and kwargs.get("context") is not None:
+            ctx = kwargs.get("context")
+            compare_month = getattr(ctx, "compare_month", None)
+            trend_text = (getattr(ctx, "trend_text", "") or "").strip()
+            if compare_month or trend_text:
+                trend_note = "Richtung: Trendbewertung verfügbar (siehe Trend- & Vergleichsanalyse)."
+    except Exception:
+        pass
+
+    for stmt in (risk_stmt, state_stmt, trend_note):
+        elements.append(Paragraph(f"• {stmt}", styles["bullet"]))
+
+    elements.append(Spacer(1, 6))
+
+    # Strukturhinweis (für Tests/Management-Signal)
+    try:
+        structural_risk = False
+        for svc in technical_json.get("open_ports", []) or []:
+            try:
+                if isinstance(svc, dict):
+                    if (svc.get("version_risk", 0) or svc.get("_version_risk", 0)):
+                        structural_risk = True
+                        break
+                else:
+                    if (getattr(svc, "version_risk", 0) or getattr(svc, "_version_risk", 0)):
+                        structural_risk = True
+                        break
+            except Exception:
+                continue
+        if structural_risk:
+            elements.append(Paragraph("Hinweis: strukturelle Risiken in der Konfiguration.", styles["normal"]))
+            elements.append(Spacer(1, 6))
+    except Exception:
+        pass
+
+    # Technische Kurzbewertung (OSINT-basiert)
+    try:
+        services = technical_json.get("services") or technical_json.get("open_ports") or []
+        ports = set()
+        products = []
+        for s in services:
+            if isinstance(s, dict):
+                ports.add(s.get("port"))
+                products.append(str(s.get("product") or "").lower())
+            else:
+                ports.add(getattr(s, "port", None))
+                products.append(str(getattr(s, "product", "")).lower())
+        prod_text = " ".join(products)
+        has_ssh = bool(22 in ports or "ssh" in prod_text)
+        has_web = bool(ports.intersection({80, 443, 8080, 8443, 8081}) or "http" in prod_text)
+
+        if has_ssh and has_web:
+            tech_note = (
+                "Technische Kurzbewertung: SSH (Port 22) wirkt modern konfiguriert; "
+                "im OSINT-Datensatz keine schwachen Algorithmen erkennbar. Hauptrisiko: "
+                "öffentlich erreichbar, Authentifizierung prüfen (VPN, Key-Only, Fail2ban). "
+                "Webserver nur passiv bewertet."
+            )
+        elif has_ssh:
+            tech_note = (
+                "Technische Kurzbewertung: SSH (Port 22) wirkt modern konfiguriert; "
+                "im OSINT-Datensatz keine schwachen Algorithmen erkennbar. Hauptrisiko: "
+                "öffentlich erreichbar, Authentifizierung prüfen (VPN, Key-Only, Fail2ban)."
+            )
+        elif has_web:
+            tech_note = "Technische Kurzbewertung: Webserver nur passiv bewertet."
+        else:
+            tech_note = "Technische Kurzbewertung: OSINT-Perspektive ohne interne Systemprüfung."
+    except Exception:
+        tech_note = "Technische Kurzbewertung: OSINT-Perspektive ohne interne Systemprüfung."
+
+    elements.append(Paragraph(tech_note, styles["normal"]))
+    elements.append(Spacer(1, 8))
+
+    elements.append(
+        Paragraph(
+            "Gesamtbewertung der externen Angriffsfläche",
+            styles["heading2"],
+        )
     )
-    set_table_no_split(recommendation_tbl)
-    elements.append(recommendation_tbl)
+    elements.append(Spacer(1, 4))
+    elements.append(
+        Paragraph(
+            "Bewertung basiert auf externen, passiven OSINT-Daten; interne Kontrollen sind nicht beurteilbar.",
+            styles["normal"],
+        )
+    )
+    elements.append(Spacer(1, 8))
+
+    elements.append(
+        Paragraph(
+            "Kurzempfehlung: Auftrag zur Härtung der externen Zugänge erteilen und Zielwert Exposure-Level ≤2/5 festlegen.",
+            styles["normal"],
+        )
+    )
+    elements.append(Spacer(1, 6))
+
+    elements.append(
+        Paragraph(
+            "Entscheidungsvorlage: Priorisierung und Ressourcen für die Reduktion der externen Angriffsfläche freigeben.",
+            styles["normal"],
+        )
+    )
     elements.append(Spacer(1, 8))
 
     # Seite 1 bewusst fokussiert; Rest auf Folgeseiten
     elements.append(PageBreak())
 
     # ──────────────────────────────────────────────────────────────────────────
-    # 4. GESAMTBEWERTUNG & EXPOSURE-LEVEL (DETAILS AB SEITE 2)
-    # ──────────────────────────────────────────────────────────────────────────
-    elements.append(
-        Paragraph("Gesamtbewertung der externen Angriffsfläche", styles["normal"])
-    )
-    elements.append(Spacer(1, 8))
-
-    exp_tbl = Table(
-        [
-            [
-                Paragraph(
-                    f"<b>Exposure-Level:</b> {exposure_score} von 5 ({exposure_desc})",
-                    styles["exposure"],
-                ),
-                ampel,
-            ]
-        ],
-        style=TableStyle(
-            [
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-                ("TOPPADDING", (0, 0), (-1, -1), 2),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
-            ]
-        ),
-    )
-    elements.append(exp_tbl)
-    elements.append(Spacer(1, 12))
-    # leave table as top-level element for test visibility
-
     # ──────────────────────────────────────────────────────────────────────────
     # 4. PROFESSIONELLE EINLEITUNGSTEXTE
     # ──────────────────────────────────────────────────────────────────────────
@@ -314,207 +500,24 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
 
     # 4c. Dritter Absatz: Risiko-Einschätzung und Handlungsempfehlung
     if risk_level == "critical":
-        risk_text = "Kritische Sicherheitsprobleme identifiziert. Sofortige Priorisierung empfohlen."
+        risk_text = "Kritische Sicherheitsrisiken erkennbar; Ursachen liegen in extern erreichbaren Diensten."
     elif risk_level == "high":
-        risk_text = "Erhöhte Sicherheitsrisiken erkannt; zeitnahe Maßnahmen empfohlen."
+        risk_text = "Erhöhte Sicherheitsrisiken erkennbar; Ursachen liegen in extern erreichbaren Diensten."
     elif risk_level == "medium":
-        risk_text = "Konfigurationsbedingte Angriffsfläche erkennbar; gezielte Härtung empfohlen."
+        risk_text = "Moderate Risiken erkennbar; Ursache ist die externe Erreichbarkeit einzelner Dienste."
     else:  # low
-        # If critical CVEs exist, avoid "überwiegend kontrolliert"
         if critical_cves_count > 0:
-            risk_text = "Erhöhte Sicherheitsrisiken erkannt; zeitnahe Maßnahmen empfohlen."
+            risk_text = "Moderate Risiken erkennbar; Ursache sind OSINT-Hinweise ohne bestätigte Ausnutzung."
         else:
-            risk_text = "Angriffsfläche überwiegend kontrolliert; regelmäßige Überprüfung empfohlen."
+            risk_text = "Keine kritischen Risiken erkennbar; OSINT-Hinweise zeigen keine aktive Ausnutzung."
 
     elements.append(Paragraph(risk_text, styles["normal"]))
     elements.append(Spacer(1, 12))
 
-    # Optional: kompakte Service-Tabelle für Management (Kurzüberblick)
-    try:
-        service_rows = _build_service_summary(technical_json)
-    except Exception:
-        service_rows = []
-
-    if service_rows:
-        elements.append(Paragraph("Kurzdetail zu betroffenen Diensten:", styles["normal"]))
-        elements.append(Spacer(1, 6))
-        # use Paragraph cells for wrapping and set reasonable column widths
-        table_data = [[
-            Paragraph("<b>Port</b>", styles["normal"]),
-            Paragraph("<b>Dienst</b>", styles["normal"]),
-            Paragraph("<b>Kurzbefund</b>", styles["normal"]),
-            Paragraph("<b>Maßnahme</b>", styles["normal"]),
-        ]]
-        for port, prod, finding, action in service_rows:
-            table_data.append([
-                Paragraph(str(port), styles.get("normal")),
-                Paragraph(prod or "-", styles.get("normal")),
-                Paragraph(finding, styles.get("normal")),
-                Paragraph(action, styles.get("normal")),
-            ])
-
-        # Align management table total width with the technical section table
-        # (match total ~163 mm used in technical.py) so both appear uniform.
-        tbl = Table(table_data, colWidths=[14 * mm, 55 * mm, 70 * mm, 24 * mm], repeatRows=1)
-        set_table_no_split(tbl)
-        tbl.setStyle(
-            TableStyle(
-                [
-                    ("GRID", (0, 0), (-1, -1), 0.2, (theme.muted if (theme and hasattr(theme, "muted")) else HexColor("#d1d5db"))),
-                    ("BACKGROUND", (0, 0), (-1, 0), HexColor("#f8fafc")),
-                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                    ("FONTSIZE", (0, 0), (-1, -1), 9),
-                    ("LEFTPADDING", (0, 0), (-1, -1), 4),
-                    ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-                ]
-            )
-        )
-        # repeat header row and keep table together with spacer
-        set_table_repeat(tbl, 1)
-        set_table_no_split(tbl)
-        elements.append(tbl)
-        elements.append(Spacer(1, 12))
-        # leave table as top-level element for test visibility
-
-    # CVE overview removed from Management section per user request.
-
-    # ──────────────────────────────────────────────────────────────────────────
-    # 5. WICHTIGSTE ERKENNTNISSE (PROFESSIONELLE BULLET POINTS)
-    # ──────────────────────────────────────────────────────────────────────────
-    elements.append(Paragraph("<b>Wichtigste Erkenntnisse</b>", styles["normal"]))
-    elements.append(Spacer(1, 6))
-
-    # Generiere Insights basierend auf Evaluationsdaten
-    insights = generate_priority_insights(technical_json, evaluation, business_risk)
-
-    # Fallback-Insights wenn keine generiert wurden
-    if not insights:
-        insights = _generate_fallback_insights(
-            technical_json, risk_level, cve_count, total_ports, critical_points
-        )
-
-    # Füge Insights als professionelle Bullet Points hinzu
-    # Wenn die Insights keine echten `critical_points` enthalten (Evaluation liefert
-    # keine), ersetzen wir generische "X kritische Risikopunkte" Formulierungen durch
-    # eine weniger alarmierende Wortwahl: "X Dienste mit Sicherheits-Flags".
-    processed_insights = []
-    for insight in insights:
-        # Ersetze nur wenn evaluation/critical_points leer sind
-        if (
-            isinstance(insight, str)
-            and not critical_points
-            and re.match(r"^\d+\s+kritische\s+Risikopunkte$", insight)
-        ):
-            swapped = re.sub(r"kritische\s+Risikopunkte", "Dienste mit Sicherheits-Flags", insight)
-            processed_insights.append(swapped)
-        else:
-            processed_insights.append(insight)
-
-    for insight in processed_insights:
-        elements.append(Paragraph(f"• {insight}", styles["bullet"]))
-        elements.append(Spacer(1, 2))
-
+    elements.append(Paragraph("Details zu Diensten und Befunden sind im Technischen Anhang dokumentiert.", styles["normal"]))
     elements.append(Spacer(1, 12))
 
-    
-
-    # ──────────────────────────────────────────────────────────────────────────
-    # 6. EMPFEHLUNGEN AUF MANAGEMENT-EBENE
-    # ──────────────────────────────────────────────────────────────────────────
-    elements.append(
-        Paragraph("<b>Empfehlung auf Management-Ebene</b>", styles["normal"])
-    )
-    elements.append(Spacer(1, 6))
-
-    # Generiere priorisierte Empfehlungen
-    recommendations = generate_priority_recommendations(
-        business_risk, technical_json, evaluation
-    )
-
-    # Fallback-Empfehlungen wenn keine generiert wurden
-    if not recommendations:
-        recommendations = _generate_fallback_recommendations(risk_level, business_risk)
-
-    # Füge Empfehlungen als professionelle Bullet Points hinzu
-    for rec in recommendations:
-        elements.append(Paragraph(f"• {rec}", styles["bullet"]))
-        elements.append(Spacer(1, 2))
-
-    # ──────────────────────────────────────────────────────────────────────────
-    # 7. RISIKOHINWEISE (OSINT) DETAILS (nur wenn kritisch/high UND vorhanden)
-    # ──────────────────────────────────────────────────────────────────────────
-    if critical_points and risk_level in ["critical", "high"]:
-        elements.append(Spacer(1, 12))
-        elements.append(
-            Paragraph("<b>Details zu Risikohinweisen (OSINT)</b>", styles["normal"])
-        )
-        elements.append(Spacer(1, 6))
-
-        for i, point in enumerate(critical_points[:3], 1):  # Max. 3 anzeigen
-            sanitized = _sanitize_critical_point(point)
-            elements.append(Paragraph(f"{i}. {sanitized}", styles["normal"]))
-            elements.append(Spacer(1, 4))
-
-            # Versuche den kritischen Punkt mit technischen Diensten abzugleichen
-            try:
-                services = (technical_json.get("services") or []) if isinstance(technical_json, dict) else []
-            except Exception:
-                services = []
-
-            matched = []
-            for s in services:
-                try:
-                    port = s.get("port") if isinstance(s, dict) else getattr(s, "port", None)
-                    prod = (s.get("product") if isinstance(s, dict) else getattr(s, "product", "")) or "unknown"
-                    ver = (s.get("version") if isinstance(s, dict) else getattr(s, "version", "")) or ""
-                    banner = (s.get("banner") if isinstance(s, dict) else getattr(s, "banner", "")) or ""
-                    cves = s.get("cves") if isinstance(s, dict) else getattr(s, "cves", [])
-                except Exception:
-                    continue
-
-                pt_lower = (point or "").lower()
-                prod_l = (prod or "").lower()
-
-                if (isinstance(port, int) and str(port) in pt_lower) or any(k in pt_lower for k in [prod_l, "ssh", "rdp", "http", "https", "nginx", "apache", "mysql"]):
-                    matched.append((port, prod, ver, banner, cves))
-
-            if matched:
-                for (port, prod, ver, banner, cves) in matched:
-                    line = f"- Port {port}: {prod} {ver}".strip()
-                    if banner:
-                        line += f"; Banner: {banner}"
-                    if cves:
-                        # normalize cve representations to simple ids
-                        cve_ids = []
-                        for cv in cves:
-                            if isinstance(cv, dict):
-                                cid = cv.get("id") or cv.get("cve")
-                                if cid:
-                                    cve_ids.append(str(cid))
-                                    continue
-                            cid = getattr(cv, "id", None) or getattr(cv, "cve", None)
-                            if cid:
-                                cve_ids.append(str(cid))
-                            else:
-                                cve_ids.append(str(cv))
-                        line += f"; bekannte CVEs: {', '.join(cve_ids)}"
-                    # kurze, prägnante Gegenmaßnahme
-                    prod_l = (prod or "").lower()
-                    if port == 22 or "ssh" in prod_l:
-                        short = "z.B. Fail2Ban, SSH-Keys"
-                    elif port in (80, 8080) or "http" in prod_l:
-                        short = "z.B. HSTS, WAF"
-                    elif port == 443 or "https" in prod_l:
-                        short = "z.B. TLS≥1.2, starke Cipher"
-                    else:
-                        short = "Zugriffsregeln prüfen"
-
-                    line += f"; Empfehlung: Zugangskontrollen und Patching prüfen; Kurz: {short}"
-                    elements.append(Paragraph(line, styles["bullet"]))
-                    elements.append(Spacer(1, 2))
-            else:
-                elements.append(Paragraph("- Keine direkten Service-Details im Snapshot gefunden; technische Bewertung empfohlen.", styles["bullet"]))
-                elements.append(Spacer(1, 2))
+    # CVE overview removed from Management section per user request.
 
     elements.append(Spacer(1, 15))
 

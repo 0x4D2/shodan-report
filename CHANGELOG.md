@@ -19,14 +19,56 @@
    - `src/shodan_report/evaluation/evaluation_engine.py`: adjusted port-count boost to avoid inflated exposure
  - fix: conclusion alignment with critical CVEs
    - `src/shodan_report/pdf/sections/conclusion.py`: raise conclusion risk when CVSS ≥ 9 CVEs exist (OSINT/NVD)
-- feat: management summary clarity and emphasis
-  - `src/shodan_report/pdf/sections/management.py`: remove numeric counts on page 1, highlight short recommendation, add boxed status line
-  - `src/shodan_report/pdf/helpers/management_helpers.py`: align Top-3 wording for theoretical high risk without active exploitation
-- fix: trend section placement and wording
-  - `src/shodan_report/pdf/pdf_manager.py`: move Trend- & Vergleichsanalyse behind technical details
-  - `src/shodan_report/pdf/sections/trend.py`: clearer no-data message for management
-- test: update expectations for trend and management summary
-  - adjusted tests for new messaging and layout
+
+  ## 2026-01-21
+
+  - feat: management summary clarity and emphasis
+    - `src/shodan_report/pdf/sections/management.py`: remove numeric counts on page 1, highlight short recommendation, add boxed status line
+    - `src/shodan_report/pdf/helpers/management_helpers.py`: align Top-3 wording for theoretical high risk without active exploitation
+  - fix: trend section placement and wording
+    - `src/shodan_report/pdf/pdf_manager.py`: move Trend- & Vergleichsanalyse behind technical details
+    - `src/shodan_report/pdf/sections/trend.py`: clearer no-data message for management
+  - test: update expectations for trend and management summary
+    - adjusted tests for new messaging and layout
+  - fix: management wording and recommendations clarity
+    - `src/shodan_report/pdf/sections/management.py`: smooth kernaussagen wording and standardize OSINT-Hinweise spelling
+    - `src/shodan_report/pdf/sections/data/recommendations_data.py`: refine SSH recommendation wording
+  - fix: trend/conclusion alignment for TLS improvements
+    - `src/shodan_report/pdf/sections/trend.py`: align TLS-only interpretation text
+    - `src/shodan_report/reporting/trend.py`: ensure TLS-only improvements are surfaced in trend interpretation
+    - `src/shodan_report/pdf/sections/conclusion.py`: align conclusion direction with TLS-only improvements
+  - feat: CVE overview no-risk note
+    - `src/shodan_report/pdf/sections/cve_overview.py`: add short no-immediate-risk note when no critical CVEs are found
+  - feat: management summary specificity
+    - `src/shodan_report/pdf/sections/management.py`: include asset count/host context and explain exposure composition
+  - feat: first-page summary table and header polish
+    - `src/shodan_report/pdf/sections/management.py`: add compact `KERNKENNZAHLEN` table on page 1 (Assets / Ports / CVEs / Status)
+    - `src/shodan_report/pdf/sections/management.py`: center exposure-ampel in status cell, lowercase status label
+    - `src/shodan_report/pdf/sections/header.py`: move and style the report title to header: "Analyse der externen Angriffsfläche"
+  - test: local test run
+    - Ran `pytest`: 568 passed, 0 failed
+  - feat: technical appendix enrichment
+    - `src/shodan_report/reporting/technical_data.py`: include SSH/SSL detail payloads
+    - `src/shodan_report/pdf/sections/data/technical_data.py`: extract SSH/HTTP indicators when OSINT provides them
+    - `src/shodan_report/pdf/sections/technical.py`: render SSH auth/cipher and HTTP HSTS/redirect/methods hints
+  - fix: recommendations and conclusion wording
+    - `src/shodan_report/pdf/sections/data/recommendations_data.py`: expand SSH guidance and TLS check
+    - `src/shodan_report/pdf/sections/conclusion.py`: concise state + recommendation only
+  - fix: trend interpretation phrasing
+    - `src/shodan_report/pdf/sections/trend.py`: updated TLS improvement interpretation and in-text reference to critical services
+    - `src/shodan_report/reporting/trend.py`: aligned interpretation for TLS improvements
+  - feat: management and technical refinements
+    - `src/shodan_report/pdf/sections/management.py`: add OSINT technical bottom-line and updated trend sentence
+    - `src/shodan_report/pdf/sections/technical.py`: limit SSH/HTTP lists and surface TLS cipher hints
+    - `src/shodan_report/pdf/sections/data/technical_data.py`: extract TLS cipher names when available
+    - `src/shodan_report/pdf/sections/cve_overview.py`: clarify CVE scope note
+  - feat: webserver analysis and visuals
+    - `src/shodan_report/pdf/sections/technical.py`: add TLS protocol safety, certificate details, and HTTP security headers
+    - `src/shodan_report/pdf/sections/data/technical_data.py`: extract TLS certificate metadata and HTTP header indicators
+    - `src/shodan_report/pdf/sections/management.py`: add exposure traffic-light indicator
+    - `src/shodan_report/pdf/sections/trend.py`: add exposure-level trend chart and rename management services label
+    - `src/shodan_report/core/runner.py`: expose previous exposure score for trend chart
+    - `src/shodan_report/pdf/sections/data/recommendations_data.py`: add optional webserver hardening recommendations
 
 ## 2026-01-20
 
@@ -78,6 +120,22 @@
   - `src/shodan_report/pdf/helpers/management_helpers.py`: suppress banner garbage and infer services by port
 - fix: infer service names by port in technical appendix
   - `src/shodan_report/pdf/sections/data/technical_data.py`: fallback to port-based service labels when banners are empty
+- feat: align report with consultant checklist
+  - `src/shodan_report/pdf/sections/management.py`: concise management summary without tables or technical details
+  - `src/shodan_report/pdf/sections/technical.py`: facts-only appendix with OSINT source note
+  - `src/shodan_report/pdf/sections/recommendations.py`: explain empty priorities and mark optional optimizations
+  - `src/shodan_report/pdf/sections/conclusion.py`: single-paragraph conclusion (state, direction, recommendation)
+- fix: polish report consistency and numbering
+  - `src/shodan_report/pdf/sections/management.py`: simplify kernaussage wording and avoid duplicate exposure text
+  - `src/shodan_report/pdf/sections/technical.py`: renumber appendix section
+  - `src/shodan_report/pdf/sections/cve_overview.py`: renumber heading and simplify no-CVE text
+  - `src/shodan_report/pdf/sections/trend.py`: renumber trend section
+  - `src/shodan_report/pdf/sections/recommendations.py`: renumber recommendations section
+  - `src/shodan_report/pdf/sections/footer.py`: remove tool branding line
+- fix: sharpen trend interpretation and conclusion language
+  - `src/shodan_report/pdf/sections/trend.py`: add TLS-improvement explanation and clarify critical services
+  - `src/shodan_report/pdf/sections/conclusion.py`: smoother single-line conclusion
+  - `src/shodan_report/pdf/sections/methodology.py`: add moment-in-time note
 
 ## 2026-01-15
 
