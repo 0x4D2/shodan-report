@@ -1,5 +1,15 @@
 from typing import Any, Dict, List
 
+try:
+    from ..data.management_data import prepare_management_data
+except Exception:
+    prepare_management_data = None
+
+try:
+    from .cve_enricher import enrich_cves
+except Exception:
+    enrich_cves = None
+
 
 def _iter_services(technical_json: Any):
     if isinstance(technical_json, dict):
@@ -60,7 +70,62 @@ def prepare_recommendations_data(technical_json: Dict[str, Any], evaluation: Any
             continue
 
     if critical_count:
+        # initial detection (cvss >= 7)
         priority1.append(f"Kritische CVE(s) mit CVSS ≥7 identifiziert: {critical_count}")
+
+    # Additionally, include CVEs discovered via management data / unique_cves
+    try:
+        management_cves = []
+        if prepare_management_data:
+            mdata = prepare_management_data(technical_json or {}, evaluation or {})
+            management_cves = mdata.get("unique_cves", []) or []
+        # Fallback: if evaluation contains enriched CVE objects, extract ids
+        if not management_cves and isinstance(evaluation, dict):
+            # try common fallback field names
+            management_cves = evaluation.get("unique_cves") or evaluation.get("cve_ids") or []
+        management_cves = [str(x).strip() for x in (management_cves or []) if x]
+
+        if management_cves:
+            # Enrich locally to get cvss values where possible (no NVD lookup)
+            enriched = []
+            if enrich_cves:
+                try:
+                    enriched = enrich_cves(management_cves, technical_json or {}, lookup_nvd=False)
+                except Exception:
+                    enriched = []
+
+            # Count high (7<=cvss<9) and critical (cvss>=9)
+            seen_ids = set()
+            high_count = 0
+            critical_count_9 = 0
+            for ent in (enriched or []):
+                try:
+                    cid = (ent.get("id") or ent.get("cve") or ent.get("name")) if isinstance(ent, dict) else None
+                    if not cid:
+                        continue
+                    cid = str(cid).strip()
+                    if cid in seen_ids:
+                        continue
+                    seen_ids.add(cid)
+                    cvss = ent.get("cvss") if isinstance(ent, dict) else None
+                    if cvss is None:
+                        continue
+                    score = float(cvss)
+                    if score >= 9.0:
+                        critical_count_9 += 1
+                    elif score >= 7.0:
+                        high_count += 1
+                except Exception:
+                    continue
+
+            # If we found any high/critical via management data, ensure a priority1 summary is added
+            if critical_count_9 or high_count:
+                priority1.append(
+                    f"Kritische und hohe CVEs patchen ({critical_count_9} kritisch, {high_count} hoch identifiziert) – siehe CVE-Übersicht im Anhang."
+                )
+    except Exception:
+        # Non-fatal: do not block recommendations if enrichment/prep fails
+        pass
 
     # TLS weaknesses
     tls_issues = 0
