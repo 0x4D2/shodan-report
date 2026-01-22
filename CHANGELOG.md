@@ -20,8 +20,14 @@
  - fix: conclusion alignment with critical CVEs
    - `src/shodan_report/pdf/sections/conclusion.py`: raise conclusion risk when CVSS ≥ 9 CVEs exist (OSINT/NVD)
 
+## 23.01.2026
 
- ## 22.01.2026
+- fix: Recommendations now include CVEs from generated `.mdata.json`
+  - `src/shodan_report/pdf/sections/data/recommendations_data.py`: aggregate `cve_enriched`/`unique_cves_sample` from `.mdata.json` and count CVSS so Priority‑1 reflects high/critical CVEs shown in the CVE-Übersicht.
+  - meta field `critical_cves` now aggregates detections from multiple sources so the renderer shows a correct "keine Priorität-1" placeholder only when appropriate.
+  - wording: `src/shodan_report/pdf/sections/management.py`: add RDP-specific management wording and a focused technical short note when RDP (Port 3389) is the primary/only exposed service.
+
+## 22.01.2026
 
 - Aktualisiert `src/shodan_report/pdf/sections/management.py`
   - Trend-Anzeige verbessert: Wenn keine Historie verfügbar ist, wird nun der Grund genannt und eine konkrete Lösung vorgeschlagen (regelmäßige Scans, Aufbewahrung, Owner/Alerting). Bei vorhandener Trendbewertung wird eine Beispiel-Lösung für Alerting/Reporting gezeigt.
