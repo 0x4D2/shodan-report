@@ -95,9 +95,11 @@ shodan-report --customer "Testkunde" --ip "8.8.8.8" --month "2025-01" --verbose
 shodan-report --customer "Testkunde" --ip "8.8.8.8" --month "2025-01" --compare "2024-12"
 ```
 
+Hinweis: Wenn kein `--compare` angegeben ist, wird automatisch der vorherige Monat verwendet (falls Snapshot vorhanden).
+
 ---
 
-## PROFESSIONELLER REPORT-AUFBAU (7 Abschnitte)
+## PROFESSIONELLER REPORT-AUFBAU (9 Abschnitte)
 
 Jeder Report enthält automatisch:
 
@@ -216,6 +218,11 @@ Kunde3 172.16.0.1 2025-01 --config config/customers/kunde3.yaml
 python scripts/run-jobs-direct.py
 ```
 
+Lokale Änderungen direkt testen (ohne installierte Version):
+```powershell
+$env:USE_LOCAL_SRC=1; python scripts/run-jobs-direct.py
+```
+
 ### PowerShell Script
 ```powershell
 python -m shodan_report --customer "Enterprise AG" --ip "203.0.113.10" --month "2025-01" --quiet
@@ -329,13 +336,7 @@ archive/
 
 ## TESTSTATUS (AKTUELL)
 
-- Gesamt: **145 passed, 6 failed** (Stand: 14.01.2026)
-- Bekannte Probleme (Kurzüberblick):
-  - ImportError beim Laden einiger PDF-/Evaluation-Helper → Importpfade prüfen
-  - Management-Text: Aufzählungen werden bei vielen Punkten abgeschnitten (nur 10 gelistet)
-  - CVE-Konvertierung: Default-CVSS-Werte werden aktuell nicht wie erwartet gesetzt
-
-Tipp: Tests lokal ausführen mit `pytest -q` oder `pytest tests/<file>`
+Tipp: Tests lokal ausführen mit `pytest -q` oder `pytest tests/<file>` und das Ergebnis als Status notieren.
 
 
 ---
@@ -367,11 +368,11 @@ Shodan API → AssetSnapshot → Evaluation → Reporting → PDF → Archiv
 - [x] AssetSnapshot Model & Daten-Normalisierung
 - [x] Regelbasierte Evaluation & Risiko-Priorisierung
 - [x] Management-Text Generierung
-- [x] Professionelles PDF-Layout (7 Abschnitte)
+- [x] Professionelles PDF-Layout (9 Abschnitte)
 - [x] Revisionssichere Archivierung (SHA256, Versionierung)
 - [x] Vollständige CLI mit allen Parametern
 - [x] Batch-Verarbeitung mit `jobs.txt`
-- [x] 82/82 Tests bestanden
+- [x] Tests vorhanden
 
 ### IN ARBEIT
 - [~] PDF-Inhalte dynamisieren (einige Sections noch statisch)
@@ -438,4 +439,4 @@ Bei Fragen oder Problemen: Issues im Repository öffnen.
 MIT License - Siehe `LICENSE` Datei.
 
 ---
-*Letzte Aktualisierung: 09.01.2024 - MVP funktional, PDF-Layout komplett, Inhalte werden dynamisiert*
+*Letzte Aktualisierung: 20.01.2026 - MVP funktional, PDF-Layout komplett, Inhalte werden dynamisiert*

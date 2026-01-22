@@ -65,3 +65,20 @@ def test_enrich_cves_uses_nvd_and_cisa(monkeypatch):
     bar = next(r for r in res if r['id'] == 'CVE-2023-BAR')
     # Not in CISA -> exploit_status unknown or default
     assert bar['exploit_status'] in (None, 'unknown', '') or isinstance(bar['exploit_status'], str)
+
+
+def test_enrich_cves_marks_cisa_public_for_ousif_top_cve(monkeypatch):
+    # Use a top CVE observed in Ousif data as a regression target
+    cves = ["CVE-2017-8923"]
+    technical_json = {}
+
+    import shodan_report.pdf.sections.data.cve_enricher as mod
+
+    monkeypatch.setattr(mod, 'NvdClient', lambda: DummyNvd())
+    monkeypatch.setattr(mod, 'CisaClient', lambda: DummyCisa(kev={"CVE-2017-8923"}))
+
+    res = enrich_cves(cves, technical_json, lookup_nvd=True)
+    assert len(res) == 1
+    entry = res[0]
+    assert entry['id'] == "CVE-2017-8923"
+    assert entry['exploit_status'] == 'public'

@@ -31,7 +31,7 @@ def create_header_section(
     # ─────────────────────────────────────────────
     elements.append(
         Paragraph(
-            f"<b>SICHERHEITSREPORT</b><br/>{customer_name}",
+            f"<i>Analyse der externen Angriffsfläche</i><br/>{customer_name}",
             styles["title"].clone(
                 "title_theme", textColor=theme.primary  # Theme Farbe nutzen
             ),

@@ -30,10 +30,3 @@ def create_footer_section(elements: List, styles: Dict) -> None:
     """
 
     elements.append(Paragraph(disclaimer_text, styles.get("disclaimer") or styles.get("normal")))
-    elements.append(Spacer(1, 6))
-    elements.append(
-        Paragraph(
-            f"Erstellt mit Shodan Report Generator • {datetime.now().strftime('%d.%m.%Y')}",
-            styles.get("footer") or styles.get("normal"),
-        )
-    )

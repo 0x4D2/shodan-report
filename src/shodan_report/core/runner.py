@@ -153,6 +153,16 @@ def generate_report_pipeline(
         # Konvertiere EvaluationResult zu Dict für PDF
         evaluation_dict = evaluation_result_to_dict(evaluation_result)
 
+        # Expose previous exposure score for trend chart (if available)
+        try:
+            if prev_snapshot:
+                prev_eval = engine.evaluate(prev_snapshot)
+                prev_eval_dict = evaluation_result_to_dict(prev_eval)
+                technical_json["previous_exposure_score"] = prev_eval_dict.get("exposure_score")
+        except Exception:
+            pass
+
+
         # Enriched CVEs for trend/high-risk counts (current + previous)
         try:
             lookup_nvd = bool((config.get("nvd") or {}).get("enabled", False))

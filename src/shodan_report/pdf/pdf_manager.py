@@ -89,7 +89,7 @@ def prepare_pdf_elements(
     # Do NOT insert a section marker between header and management — keep
     # header and the management summary together on the same page when
     # possible.
-    create_management_section(elements=elements, styles=styles, management_text=management_text, technical_json=technical_json, evaluation=evaluation, business_risk=business_risk, config=config)
+    create_management_section(elements=elements, styles=styles, management_text=management_text, technical_json=technical_json, evaluation=evaluation, business_risk=business_risk, config=config, context=ctx)
 
     # Section 3: Priorisierte Handlungsempfehlungen (directly after Management)
     create_recommendations_section(elements=elements, styles=styles, business_risk=business_risk, technical_json=technical_json, evaluation=evaluation)

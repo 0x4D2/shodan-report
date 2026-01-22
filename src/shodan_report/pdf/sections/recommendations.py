@@ -32,7 +32,7 @@ def create_recommendations_section(elements: List, styles: Dict, *args, **kwargs
         evaluation: Evaluation Ergebnisse
     """
     # keep header and following spacing together (avoid orphan heading)
-    elements.append(keep_section([Paragraph("<b>3. Priorisierte Handlungsempfehlungen</b>", styles["heading1"]), Spacer(1, 12)]))
+    elements.append(keep_section([Paragraph("<b>2. Priorisierte Handlungsempfehlungen</b>", styles["heading1"]), Spacer(1, 12)]))
 
     # use prepared data for deterministic buckets
     buckets = prepare_recommendations_data(technical_json, evaluation, business_risk)
@@ -45,7 +45,14 @@ def create_recommendations_section(elements: List, styles: Dict, *args, **kwargs
         for item in priority1_items:
             elements.append(Paragraph(f"• {item}", styles["bullet"]))
     else:
-        elements.append(Paragraph("(keine)", styles["bullet"]))
+        meta = buckets.get("meta", {}) or {}
+        crit = meta.get("critical_cves", 0)
+        tls_issues = meta.get("tls_issues", 0)
+        if crit == 0 and tls_issues == 0:
+            reason = "Keine Priorität-1-Maßnahmen aus OSINT ableitbar (keine kritischen CVEs/keine TLS-Schwachstellen in den Daten)."
+        else:
+            reason = "Keine Priorität-1-Maßnahmen aus OSINT ableitbar."
+        elements.append(Paragraph(reason, styles["bullet"]))
 
     elements.append(Spacer(1, 8))
 
@@ -60,7 +67,7 @@ def create_recommendations_section(elements: List, styles: Dict, *args, **kwargs
 
     # Priority 3
     if buckets.get("priority3"):
-        elements.append(Paragraph("<b>Priorität 3 – Optional</b>", styles["normal"]))
+        elements.append(Paragraph("<b>Priorität 3 – Optional (Optimierung)</b>", styles["normal"]))
         elements.append(Spacer(1, 6))
         for item in buckets.get("priority3", []):
             elements.append(Paragraph(f"• {item}", styles["bullet"]))

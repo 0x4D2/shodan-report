@@ -59,6 +59,20 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
         business_risk = kwargs.get("business_risk", "")
         config = kwargs.get("config", {}) or {}
 
+    # Accept legacy trend args when `context` is not provided
+    compare_month = None
+    trend_text = ""
+    try:
+        if "context" in kwargs and kwargs.get("context") is not None:
+            compare_month = getattr(ctx, "compare_month", None)
+            trend_text = (getattr(ctx, "trend_text", "") or "").strip()
+        else:
+            compare_month = kwargs.get("compare_month", None)
+            trend_text = (kwargs.get("trend_text", "") or "").strip()
+    except Exception:
+        compare_month = None
+        trend_text = ""
+
     # Extract canonical management data (keeps renderer thin and testable)
     mdata = prepare_management_data(technical_json, evaluation)
     exposure_score = mdata.get("exposure_score", 1)
@@ -153,12 +167,12 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
             if asset_count == 1:
                 intro_line = (
                     f"Erfasst wurde 1 Asset (Host: {primary_asset}); "
-                    f"die externe Angriffsfläche ist {exposure_desc} bewertet, da {reason}."
+                    f"die externe Angriffsfläche ist auf {exposure_display} bewertet, da {reason}."
                 )
             else:
                 intro_line = (
                     f"Erfasst wurden {asset_count} Assets; das primär bewertete Asset (Host: {primary_asset}) "
-                    f"ist {exposure_desc} bewertet, da {reason}."
+                    f"ist auf {exposure_display} bewertet, da {reason}."
                 )
         else:
             intro_line = (
@@ -220,17 +234,18 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
         except Exception:
             ampel = Paragraph(f"{status_dot}", styles["normal"])
 
-        # status cell: ampel (zentriert) + label (kleingeschrieben)
-        status_label = status_label.lower()
-        status_cell = Table(
-            [[ampel, Paragraph(status_label, styles["normal"]) ]],
-            colWidths=[22 * mm, 24 * mm],
-        )
+        # status cell: ampel (zentriert) with smaller label in parentheses below
+        # Do not display textual status labels (niedrig/mittel/hoch) in the table
+        label_display = ""
+        rows = [[ampel]]
+        if label_display:
+            rows.append([Paragraph(label_display, styles["normal"])])
+        status_cell = Table(rows, colWidths=[46 * mm])
         status_cell.setStyle(
             TableStyle(
                 [
                     ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                    ("ALIGN", (0, 0), (0, 0), "CENTER"),
+                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
                     ("LEFTPADDING", (0, 0), (-1, -1), 2),
                     ("RIGHTPADDING", (0, 0), (-1, -1), 2),
                 ]
@@ -301,7 +316,7 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
     # Exposure-Level klar benennen (inkl. Bedeutung)
     elements.append(
         Paragraph(
-            f"Exposure-Level: {exposure_score}/5 ({exposure_desc}). Bedeutung: 1=sehr niedrig, 3=erhöht, 5=sehr hoch.",
+            f"<b>Exposure-Level: {exposure_display}.</b>",
             styles["normal"],
         )
     )
@@ -353,16 +368,20 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
             "Härtungsmaßnahmen empfohlen."
         )
 
-    state_stmt = f"Zustand: Externe Angriffsfläche ist aktuell {exposure_desc} (Exposure-Level {exposure_score}/5)."
+    state_stmt = f"Zustand: Externe Angriffsfläche: Exposure-Level {exposure_display}."
 
-    trend_note = "Richtung: Trend aktuell nicht verfügbar; kontinuierliches Monitoring empfohlen."
+    trend_note = (
+        "Richtung: Trend aktuell nicht verfügbar (zu wenige historische Messungen); "
+        "Lösung: regelmäßige Scans (z. B. monatlich) und längere Aufbewahrung der Ergebnisse einführen, "
+        "damit Trendanalysen möglich werden."
+    )
     try:
-        if "context" in kwargs and kwargs.get("context") is not None:
-            ctx = kwargs.get("context")
-            compare_month = getattr(ctx, "compare_month", None)
-            trend_text = (getattr(ctx, "trend_text", "") or "").strip()
-            if compare_month or trend_text:
-                trend_note = "Richtung: Trendbewertung verfügbar (siehe Trend- & Vergleichsanalyse)."
+        if compare_month or trend_text:
+            trend_note = (
+                "Richtung: Trendbewertung verfügbar (siehe Trend- & Vergleichsanalyse). "
+                "Beispiel-Lösung: regelmäßige, automatisierte Scans und Alerting einrichten, "
+                "Trendberichte monatlich erstellen und einen Verantwortlichen (Owner) benennen."
+            )
     except Exception:
         pass
 
@@ -460,7 +479,9 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
             styles["normal"],
         )
     )
-    elements.append(Spacer(1, 8))
+    elements.append(Spacer(1, 6))
+
+    # Fazit on management page removed per user request (detailed recommendations remain later)
 
     # Seite 1 bewusst fokussiert; Rest auf Folgeseiten
     elements.append(PageBreak())

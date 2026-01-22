@@ -4,10 +4,10 @@ Enthält Logik für Trend-Vergleiche und historische Analysen.
 """
 
 from typing import List, Dict, Optional, Any, Tuple
-from reportlab.platypus import Paragraph
 from reportlab.platypus import Spacer, Paragraph, Table, TableStyle
 from reportlab.lib.units import mm
 from reportlab.lib.colors import HexColor
+from reportlab.graphics.shapes import Drawing, Line, Circle, String
 from shodan_report.pdf.layout import keep_section, set_table_repeat, set_table_no_split
 
 
@@ -18,6 +18,7 @@ def create_trend_section(elements: List, styles: Dict, *args, **kwargs) -> None:
     legacy_mode = kwargs.get("legacy_mode", False)
     trend_table = kwargs.get("trend_table", None)
     technical_json = kwargs.get("technical_json", None)
+    evaluation = kwargs.get("evaluation", None)
     evaluation = kwargs.get("evaluation", None)
     theme = kwargs.get("theme", None)
 
@@ -41,7 +42,7 @@ def create_trend_section(elements: List, styles: Dict, *args, **kwargs) -> None:
     elements.append(Spacer(1, 12))
     heading_style = styles.get("heading1", styles.get("heading2"))
     # protect header and first spacing from being split
-    elements.append(keep_section([Paragraph("<b>2. Trend- & Vergleichsanalyse</b>", heading_style), Spacer(1, 8)]))
+    elements.append(keep_section([Paragraph("<b>5. Trend- & Vergleichsanalyse</b>", heading_style), Spacer(1, 8)]))
 
     if compare_month:
         # MIT VERGLEICH zu einem Vormonat
@@ -49,7 +50,15 @@ def create_trend_section(elements: List, styles: Dict, *args, **kwargs) -> None:
             # Versuche Trenddaten aus Snapshot/Evaluation abzuleiten
             trend_table = _derive_trend_table(technical_json or {}, evaluation)
         _add_comparison_view(
-            elements, styles, trend_text, compare_month, trend_table, legacy_mode
+            elements,
+            styles,
+            trend_text,
+            compare_month,
+            trend_table,
+            legacy_mode,
+            theme,
+            technical_json,
+            evaluation,
         )
     elif trend_text:
         # OHNE VERGLEICH, aber mit Trend-Text
@@ -62,11 +71,17 @@ def create_trend_section(elements: List, styles: Dict, *args, **kwargs) -> None:
 def _format_interpretation_label(category: str) -> str:
     mapping = {
         "Öffentliche Ports": "öffentliche Dienste/Ports",
-        "Kritische Services": "kritische Dienste",
+        "Kritische Services": "öffentliche Managementdienste",
         "Hochrisiko-CVEs": "Schwachstellenlage",
         "TLS-Schwächen": "Kryptokonfiguration",
     }
     return mapping.get(category, str(category))
+
+
+def _display_category_label(category: str) -> str:
+    if category == "Kritische Services":
+        return "Öffentliche Managementdienste"
+    return str(category)
 
 
 def _build_interpretation(trend_table: Optional[Dict[str, Any]]) -> str:
@@ -108,6 +123,17 @@ def _build_interpretation(trend_table: Optional[Dict[str, Any]]) -> str:
         return f"Die Angriffsfläche zeigt eine Verschlechterung bei {_join_labels(worsening)}."
 
     if improving and not worsening:
+        # special-case TLS-only improvement with stable ports
+        if len(improving) == 1 and improving[0] == "TLS-Schwächen":
+            try:
+                ports_vals = trend_table.get("Öffentliche Ports")
+                if ports_vals and int(ports_vals[0]) == int(ports_vals[1]):
+                    return (
+                        "TLS-Schwächen wurden behoben; keine Zunahme bei öffentlichen Managementdiensten "
+                        "(Management-/Administrationsdienste); Gesamtstruktur unverändert."
+                    )
+            except Exception:
+                pass
         return f"Die Angriffsfläche hat sich verbessert, insbesondere bei {_join_labels(improving)}."
 
     if worsening and improving:
@@ -127,6 +153,8 @@ def _add_comparison_view(
     trend_table: Optional[Dict[str, Any]] = None,
     legacy_mode: bool = False,
     theme: Optional[Any] = None,
+    technical_json: Optional[Dict[str, Any]] = None,
+    evaluation: Optional[Dict[str, Any]] = None,
 ) -> None:
     """Füge Trend-Ansicht MIT Monatsvergleich hinzu."""
     # Avoid appending '-Analyse' if the provided compare_month already contains that
@@ -149,7 +177,12 @@ def _add_comparison_view(
             prev = vals[0]
             curr = vals[1]
             rating = vals[2]
-            row = [Paragraph(str(cat), styles["normal"]), Paragraph(str(prev), styles["normal"]), Paragraph(str(curr), styles["normal"]), Paragraph(str(rating), styles["normal"])]
+            row = [
+                Paragraph(_display_category_label(cat), styles["normal"]),
+                Paragraph(str(prev), styles["normal"]),
+                Paragraph(str(curr), styles["normal"]),
+                Paragraph(str(rating), styles["normal"]),
+            ]
             table_data.append(row)
 
         # (removed compatibility paragraph; tests now assert Table presence directly)
@@ -178,7 +211,16 @@ def _add_comparison_view(
             )
         )
         elements.append(tbl)
-        elements.append(Spacer(1, 12))
+        elements.append(Spacer(1, 8))
+
+        if "Kritische Services" in trend_table:
+            elements.append(
+                Paragraph(
+                    "Hinweis: Öffentliche Managementdienste = öffentlich erreichbare Management- oder Administrationsdienste.",
+                    styles["normal"],
+                )
+            )
+            elements.append(Spacer(1, 8))
 
     else:
         # Fallback: einfache Text-Table wie bisher
@@ -186,7 +228,7 @@ def _add_comparison_view(
             "<b>Kategorie          Vormonat  Aktuell  Bewertung</b>",
             "─────────────────────────────────────────────────────",
             "Öffentl. Ports           5        5    unverändert",
-            "Krit. Services           1        1    stabil",
+            "Mgmt.-Dienste            1        1    stabil",
             "Hochrisiko-CVEs          0        0    stabil",
             "TLS-Schwächen            1        2    leicht verschlechtert",
         ]
@@ -194,7 +236,74 @@ def _add_comparison_view(
         for line in table_lines:
             elements.append(Paragraph(line, styles["normal"]))
 
-        elements.append(Spacer(1, 12))
+        elements.append(Spacer(1, 8))
+
+    # Optional: Exposure-Level Trenddiagramm (Vormonat vs. Aktuell)
+    try:
+        prev_exposure = None
+        curr_exposure = None
+        if isinstance(technical_json, dict):
+            prev_exposure = technical_json.get("previous_exposure_score")
+        if isinstance(evaluation, dict):
+            curr_exposure = evaluation.get("exposure_score")
+
+        if prev_exposure is not None and curr_exposure is not None:
+            elements.append(
+                Paragraph("<b>Exposure-Level Verlauf (Vormonat vs. Aktuell)</b>", styles["normal"])
+            )
+            elements.append(Spacer(1, 4))
+            elements.append(_build_exposure_trend_chart(prev_exposure, curr_exposure, compare_month, theme))
+            elements.append(Spacer(1, 8))
+    except Exception:
+        pass
+
+    # Interpretation (dynamisch basierend auf Trenddaten)
+    elements.append(Paragraph("<b>Interpretation:</b>", styles["normal"]))
+    elements.append(Spacer(1, 4))
+    elements.append(
+        Paragraph(
+            _build_interpretation(trend_table),
+            styles["normal"],
+        )
+    )
+
+
+def _build_exposure_trend_chart(
+    prev_score: int,
+    curr_score: int,
+    compare_month: str,
+    theme: Optional[Any] = None,
+) -> Drawing:
+    width = 70 * mm
+    height = 24 * mm
+    padding_x = 6 * mm
+    padding_y = 4 * mm
+
+    def _y(val: int) -> float:
+        val = max(1, min(5, int(val)))
+        return padding_y + (val - 1) * ((height - 2 * padding_y) / 4)
+
+    line_color = HexColor("#9ca3af")
+    point_color = getattr(theme, "primary", HexColor("#1f2937")) if theme else HexColor("#1f2937")
+
+    d = Drawing(width, height)
+    x1 = padding_x
+    x2 = width - padding_x
+    y1 = _y(prev_score)
+    y2 = _y(curr_score)
+
+    d.add(Line(x1, y1, x2, y2, strokeColor=line_color, strokeWidth=1))
+    d.add(Circle(x1, y1, 1.6 * mm, fillColor=point_color, strokeColor=point_color))
+    d.add(Circle(x2, y2, 1.6 * mm, fillColor=point_color, strokeColor=point_color))
+
+    d.add(String(x1, 1.5 * mm, compare_month or "Vormonat", fontSize=7))
+    d.add(String(x2 - 12 * mm, 1.5 * mm, "Aktuell", fontSize=7))
+    d.add(String(x1 - 3 * mm, y1 + 2 * mm, str(prev_score), fontSize=7))
+    d.add(String(x2 + 2 * mm, y2 + 2 * mm, str(curr_score), fontSize=7))
+
+    return d
+
+
 
     # Interpretation (dynamisch basierend auf Trenddaten)
     elements.append(Paragraph("<b>Interpretation:</b>", styles["normal"]))

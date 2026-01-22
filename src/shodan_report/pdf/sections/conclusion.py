@@ -76,54 +76,40 @@ def create_conclusion_section(
         effective_level = "MEDIUM"
 
     if effective_level == "CRITICAL":
-        conclusion_text = f"""
-        Die externe Angriffsfläche der {customer_name} weist kritische Risiken auf, 
-        die unmittelbare Maßnahmen erfordern. Es besteht akuter Handlungsbedarf, 
-        um die identifizierten Schwachstellen zu adressieren und die Sicherheitslage 
-        zu stabilisieren.
-        """
-        follow_up = "Eine sofortige Nachverfolgung und Priorisierung der kritischen Punkte wird dringend empfohlen."
-
+        state = "kritisch"
+        rec = "sofort priorisierte Maßnahmen"
     elif effective_level == "HIGH":
-        conclusion_text = f"""
-        Die externe Angriffsfläche der {customer_name} zeigt erhöhte Risiken, 
-        die zeitnahe Maßnahmen erfordern. Eine strukturierte Abarbeitung der 
-        identifizierten Punkte ist empfehlenswert.
-        """
-        follow_up = "Die priorisierte Umsetzung der empfohlenen Maßnahmen wird innerhalb der nächsten 30-60 Tage empfohlen."
-
+        state = "erhöht"
+        rec = "zeitnahe Maßnahmen"
     elif effective_level == "MEDIUM":
-        conclusion_text = f"""
-        Die externe Angriffsfläche der {customer_name} ist derzeit kontrollierbar, 
-        zeigt jedoch strukturelle Schwachstellen, die bei fehlender Härtung 
-        oder zukünftigen Sicherheitslücken zu einem erhöhten Risiko führen können.
-        """
-        follow_up = "Eine geplante Umsetzung der empfohlenen Maßnahmen innerhalb der nächsten 30-90 Tage wird empfohlen."
+        state = "moderat"
+        rec = "geplante Maßnahmen"
+    else:
+        state = "kontrolliert"
+        rec = "kontinuierliche Überwachung"
 
-    else:  # LOW
-        conclusion_text = f"""
-        Die externe Angriffsfläche der {customer_name} ist überschaubar und 
-        aktuell gut kontrolliert. Die identifizierten Punkte stellen kein 
-        unmittelbares Sicherheitsrisiko dar.
-        """
-        follow_up = "Die kontinuierliche Beobachtung der externen Angriffsfläche wird als präventive Maßnahme empfohlen."
+    conclusion_text = (
+        f"Die externe Angriffsfläche ist {state}; empfohlen wird {rec}."
+    )
 
-    # Füge Fazit-Text hinzu
     elements.append(Paragraph(conclusion_text, styles["normal"]))
     elements.append(Spacer(1, 8))
 
-    # Allgemeine Empfehlung
-    general_text = """
-    Der größte Mehrwert ergibt sich aus der kontinuierlichen Beobachtung der 
-    externen Angriffsfläche, um neue Exposures oder Schwachstellen frühzeitig 
-    zu erkennen und proaktiv zu adressieren.
-    """
+    # Erweiterte, management-orientierte Handlungsempfehlungen (kurz)
+    elements.append(Paragraph("Empfohlene nächste Schritte:", styles.get("heading2") or styles["normal"]))
+    elements.append(Spacer(1, 6))
+    try:
+        elements.append(Paragraph("• Kurzfristig (innerhalb 30 Tagen): Priorisieren und patchen kritischer CVEs; nicht benötigte Management-/Datenbankdienste abschalten oder per Firewall einschränken; Backups prüfen.", styles["bullet"]))
+        elements.append(Paragraph("• Mittelfristig (30–90 Tage): Zugriffshärtung (MFA, SSH Key-Only, VPN/Jumphost), Netzwerksegmentierung und Rollenbasierte Zugriffskontrollen implementieren.", styles["bullet"]))
+        elements.append(Paragraph("• Laufend: regelmäßige automatisierte Scans, Trendreports, Alerting sowie Benennung eines Owners für Remediation und Reporting.", styles["bullet"]))
+    except Exception:
+        # Fallback: single-line recommendation if bullet style missing
+        elements.append(Paragraph("Empfohlene Schritte: kurzfristige Patches und Zugriffsbeschränkungen; mittelfristig Zugriffshärtung; laufendes Monitoring.", styles["normal"]))
 
-    elements.append(Paragraph(general_text, styles["normal"]))
     elements.append(Spacer(1, 8))
-    elements.append(Paragraph(follow_up, styles["normal"]))
 
-    # optional: call-to-action removed per request
+    # Verweis auf detaillierte Maßnahmen
+    elements.append(Paragraph("Details und priorisierte Maßnahmen finden sich im Abschnitt 'Priorisierte Handlungsempfehlungen'.", styles["normal"]))
 
 
 def _extract_risk_level(business_risk) -> str:

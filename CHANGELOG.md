@@ -20,6 +20,16 @@
  - fix: conclusion alignment with critical CVEs
    - `src/shodan_report/pdf/sections/conclusion.py`: raise conclusion risk when CVSS ≥ 9 CVEs exist (OSINT/NVD)
 
+
+ ## 22.01.2026
+
+- Aktualisiert `src/shodan_report/pdf/sections/management.py`
+  - Trend-Anzeige verbessert: Wenn keine Historie verfügbar ist, wird nun der Grund genannt und eine konkrete Lösung vorgeschlagen (regelmäßige Scans, Aufbewahrung, Owner/Alerting). Bei vorhandener Trendbewertung wird eine Beispiel-Lösung für Alerting/Reporting gezeigt.
+  - `Exposure-Level` hervorgehoben (fett) und Legende klar getrennt.
+  - `KERNKENNZAHLEN`-Tabelle: 'niedrig' Label entfernt; Status-Ampel bleibt, Label nur für andere Stufen, kleiner in Klammern unterhalb der Ampel.
+  - `Fazit` erweitert: konkrete Maßnahmen (Sofortmaßnahmen, Patching, Zugriffshärtung, Monitoring) und vorgeschlagener Zeitplan (High-Risk innerhalb 30 Tagen).
+  - test: smoke-run via `scripts/run-jobs-direct.py` — 7/7 successful; generated PDFs placed under `reports/` (example: `reports/Honeypot/2026-01_135.125.206.130.pdf`).
+
   ## 2026-01-21
 
   - feat: management summary clarity and emphasis

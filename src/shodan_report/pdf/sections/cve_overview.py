@@ -53,7 +53,7 @@ def create_cve_overview_section(
     # Weniger Abstand für kompaktes Design
     elements.append(Spacer(1, 8))
     heading_style = styles.get("heading1", styles.get("heading2"))
-    elements.append(keep_section([Paragraph("5. CVE-ÜBERSICHT", heading_style), Spacer(1, 8)]))
+    elements.append(keep_section([Paragraph("4. CVE-ÜBERSICHT", heading_style), Spacer(1, 8)]))
 
     # Extrahiere CVE-Daten
     cve_data = _extract_cve_data(technical_json)
@@ -61,7 +61,10 @@ def create_cve_overview_section(
     if not cve_data:
         # Minimal "Keine CVEs" Darstellung
         elements.append(
-            Paragraph("✓ Keine kritischen CVEs identifiziert", styles["normal"])
+            Paragraph(
+                "Keine kritischen CVEs identifiziert – kein unmittelbares Risiko für den Betrieb (nur erkannte Services).",
+                styles["normal"],
+            )
         )
         return
 

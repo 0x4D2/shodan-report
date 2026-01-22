@@ -32,7 +32,8 @@ def build_technical_data(
     if hasattr(snapshot, "longitude") and snapshot.longitude:
         technical["longitude"] = snapshot.longitude
 
-    # Open Ports mit VOLLSTÄNDIGEN Informationen
+    # Open Ports (kompakt) + Services (mit Detailfeldern)
+    technical["services"] = []
     for service in snapshot.services:
         # Daten aus dem erweiterten raw-Dict extrahieren
 
@@ -63,6 +64,11 @@ def build_technical_data(
         port_info["service_type"] = _classify_service_type(service)
 
         technical["open_ports"].append(port_info)
+        # Detailed view (for technical appendix)
+        detail_info = dict(port_info)
+        detail_info["ssl_info"] = getattr(service, "ssl_info", None)
+        detail_info["ssh_info"] = getattr(service, "ssh_info", None)
+        technical["services"].append(detail_info)
 
     # Kritische Services identifizieren (für spätere Analyse)
     technical["critical_services"] = _identify_critical_services(

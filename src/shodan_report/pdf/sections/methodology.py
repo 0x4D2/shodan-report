@@ -20,6 +20,7 @@ def create_methodology_section(elements: List[Any], styles: Dict[str, Any], *arg
 
     bullets = [
         "Ausschließlich passive OSINT-Daten (keine aktiven Scans)",
+        "Die Analyse stellt eine Momentaufnahme zum angegebenen Zeitpunkt dar",
         "Keine Garantie auf Vollständigkeit",
         "Keine Aussage über interne Systeme oder nicht öffentlich erreichbare Dienste",
         "Keine Simulation realer Angriffe",

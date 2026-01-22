@@ -30,7 +30,16 @@ def _iter_services(technical_json: Any):
 
 def _extract_tls_info(svc: Any) -> Dict[str, Optional[Any]]:
     if not svc:
-        return {"protocols": [], "weak_ciphers": False, "cert_expiry": None}
+        return {
+            "protocols": [],
+            "weak_ciphers": False,
+            "cert_expiry": None,
+            "ciphers": [],
+            "cert_issuer": None,
+            "cert_subject": None,
+            "cert_self_signed": None,
+            "cert_valid_from": None,
+        }
 
     if isinstance(svc, dict):
         si = svc.get("ssl_info") or {}
@@ -40,13 +49,134 @@ def _extract_tls_info(svc: Any) -> Dict[str, Optional[Any]]:
     protocols = si.get("protocols") or si.get("supported_protocols") or []
     weak = bool(si.get("has_weak_cipher") or si.get("weaknesses") or si.get("issues"))
     cert_expiry = None
+    cert_subject = None
+    cert_issuer = None
+    cert_self_signed = None
+    cert_valid_from = None
     # try common fields
     cert = si.get("cert") if isinstance(si, dict) else None
     if cert and isinstance(cert, dict):
         cert_expiry = cert.get("not_after") or cert.get("valid_to")
+        cert_valid_from = cert.get("not_before") or cert.get("valid_from")
+        cert_subject = cert.get("subject") or cert.get("subject_cn") or cert.get("subject_dn")
+        cert_issuer = cert.get("issuer") or cert.get("issuer_cn") or cert.get("issuer_dn")
+        cert_self_signed = cert.get("self_signed")
+        if cert_self_signed is None and cert_subject and cert_issuer:
+            cert_self_signed = str(cert_subject) == str(cert_issuer)
     cert_expiry = cert_expiry or si.get("cert_expiry") or svc.get("cert_expiry") if isinstance(svc, dict) else cert_expiry
 
-    return {"protocols": protocols or [], "weak_ciphers": weak, "cert_expiry": cert_expiry}
+    ciphers = []
+    try:
+        if isinstance(si, dict):
+            cipher = si.get("cipher") or si.get("ciphers") or {}
+            if isinstance(cipher, dict):
+                name = cipher.get("name") or cipher.get("cipher")
+                if name:
+                    ciphers.append(str(name))
+            elif isinstance(cipher, list):
+                for c in cipher:
+                    if isinstance(c, dict):
+                        name = c.get("name") or c.get("cipher")
+                        if name:
+                            ciphers.append(str(name))
+                    else:
+                        ciphers.append(str(c))
+    except Exception:
+        ciphers = []
+
+    return {
+        "protocols": protocols or [],
+        "weak_ciphers": weak,
+        "cert_expiry": cert_expiry,
+        "ciphers": ciphers,
+        "cert_issuer": cert_issuer,
+        "cert_subject": cert_subject,
+        "cert_self_signed": cert_self_signed,
+        "cert_valid_from": cert_valid_from,
+    }
+
+
+def _extract_ssh_info(svc: Any) -> Dict[str, Any]:
+    if not svc:
+        return {}
+    ssh = {}
+    if isinstance(svc, dict):
+        ssh = svc.get("ssh_info") or svc.get("ssh") or {}
+    else:
+        ssh = getattr(svc, "ssh_info", None) or getattr(svc, "ssh", None) or {}
+
+    if not isinstance(ssh, dict) or not ssh:
+        return {}
+
+    auth = ssh.get("auth") or ssh.get("authentication") or []
+    cipher = ssh.get("cipher") or {}
+    if not isinstance(cipher, dict):
+        cipher = {}
+    kex = cipher.get("kex") or ssh.get("kex") or []
+    enc = cipher.get("enc") or cipher.get("encryption") or []
+    mac = cipher.get("mac") or ssh.get("mac") or []
+    # Normalize dict-shaped payloads from some scanners
+    if isinstance(kex, dict):
+        kex = kex.get("kex_algorithms") or kex.get("server_host_key_algorithms") or []
+    if isinstance(enc, dict):
+        enc = enc.get("encryption_algorithms") or enc.get("ciphers") or []
+    if isinstance(mac, dict):
+        mac = mac.get("mac_algorithms") or mac.get("macs") or []
+    version = ssh.get("version") or ssh.get("software") or ssh.get("product")
+
+    return {
+        "auth": [str(a) for a in auth] if isinstance(auth, (list, tuple)) else [str(auth)],
+        "kex": [str(k) for k in kex] if isinstance(kex, (list, tuple)) else [str(kex)],
+        "ciphers": [str(c) for c in enc] if isinstance(enc, (list, tuple)) else [str(enc)],
+        "macs": [str(m) for m in mac] if isinstance(mac, (list, tuple)) else [str(mac)],
+        "version": str(version) if version else "",
+    }
+
+
+def _extract_http_indicators(banner_text: Any, extra_text: Any = None) -> Dict[str, Any]:
+    try:
+        text = " ".join([str(banner_text or ""), str(extra_text or "")])
+        if not text.strip():
+            return {}
+        low = text.lower()
+        hsts = "strict-transport-security" in low
+
+        redirect_https = False
+        if "location:" in low:
+            import re as _re
+
+            if _re.search(r"location:\s*https://", low):
+                redirect_https = True
+        if "http/1.1 301" in low or "http/1.1 302" in low:
+            if "https" in low:
+                redirect_https = True
+
+        methods = []
+        try:
+            import re as _re
+
+            m = _re.search(r"allow:\s*([A-Z,\s]+)", text, flags=_re.IGNORECASE)
+            if m:
+                methods = [m.strip() for m in m.group(1).split(",") if m.strip()]
+        except Exception:
+            methods = []
+
+        indicators = {}
+        if hsts:
+            indicators["hsts"] = True
+        if redirect_https:
+            indicators["redirect_https"] = True
+        if methods:
+            indicators["methods"] = methods
+        if "x-frame-options" in low:
+            indicators["x_frame_options"] = True
+        if "content-security-policy" in low:
+            indicators["csp"] = True
+        if "x-content-type-options" in low:
+            indicators["x_content_type_options"] = True
+        return indicators
+    except Exception:
+        return {}
 
 
 def _clean_display_field_local(v: Any, max_len: int = 80) -> str:
@@ -191,7 +321,8 @@ def prepare_technical_detail(technical_json: Dict[str, Any], evaluation: Any) ->
             port = s.get("port")
             product = s.get("product") or s.get("service") or ""
             version = s.get("version") or ""
-            banner = s.get("banner") or s.get("extra_info") or ""
+            extra_info = s.get("extra_info") or ""
+            banner = s.get("banner") or extra_info or ""
             # normalize nested product/service dicts
             if isinstance(product, dict):
                 product = product.get("product") or product.get("name") or product.get("service") or ""
@@ -204,6 +335,7 @@ def prepare_technical_detail(technical_json: Dict[str, Any], evaluation: Any) ->
             product = getattr(s, "product", "")
             version = getattr(s, "version", "")
             banner = getattr(s, "banner", "")
+            extra_info = getattr(s, "extra_info", None)
             if isinstance(product, dict):
                 product = product.get("product") or product.get("name") or ""
             if isinstance(version, dict):
@@ -257,6 +389,8 @@ def prepare_technical_detail(technical_json: Dict[str, Any], evaluation: Any) ->
         total_high += high_count
 
         tls = _extract_tls_info(s)
+        ssh_info = _extract_ssh_info(s)
+        http_info = _extract_http_indicators(banner, extra_info if isinstance(s, dict) else None)
 
         # If version missing, try multiple heuristics to extract it:
         # 1) nested dicts under common keys ('service','product','extra','meta')
@@ -302,6 +436,10 @@ def prepare_technical_detail(technical_json: Dict[str, Any], evaluation: Any) ->
                         version = m.group(1)
             except Exception:
                 pass
+
+        if not version and isinstance(banner, str) and banner:
+            if banner.strip().startswith("1.1") or "HTTP/1.1" in banner:
+                version = "1.1"
 
         # Preserve original banner for extraction and sidecar forensic use
         banner_orig = banner
@@ -456,8 +594,13 @@ def prepare_technical_detail(technical_json: Dict[str, Any], evaluation: Any) ->
 
             if _is_garbage_token(prod_raw):
                 if ver_raw and not _is_garbage_token(ver_raw):
-                    product, version = ver_raw, ""
-                    prod_raw, ver_raw = str(product), ""
+                    # keep HTTP version tokens as version, not product
+                    if ver_raw in {"1.0", "1.1", "2.0"} or "HTTP/1.1" in banner_text or "HTTP/2" in banner_text:
+                        product = product or _infer_product_from_port(port) or "HTTP"
+                        prod_raw = str(product)
+                    else:
+                        product, version = ver_raw, ""
+                        prod_raw, ver_raw = str(product), ""
                 else:
                     product = ""
                     prod_raw = ""
@@ -536,6 +679,8 @@ def prepare_technical_detail(technical_json: Dict[str, Any], evaluation: Any) ->
                 "cve_count": cve_count,
                 "high_cvss": high_count,
                 "tls": tls,
+                "ssh": ssh_info,
+                "http": http_info,
                 "top_vuln": top_vuln,
             }
         )

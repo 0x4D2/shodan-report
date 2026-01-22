@@ -72,9 +72,10 @@ def analyze_trend(prev_snapshot: AssetSnapshot, current_snapshot: AssetSnapshot)
     # Compare snapshots for explicit new/removed ports and services
     diffs = compare_snapshots(prev_snapshot, current_snapshot)
 
-    # If there are no diffs at all, return a short message expected by callers/tests
+    # If there are no diffs at all and no metric changes, return a short message expected by callers/tests
     if not any(diffs.get(k) for k in ("new_ports", "removed_ports", "new_services", "removed_services")):
-        return "Keine signifikanten Veränderungen im Vergleich zum vorherigen Snapshot."
+        if prev_ports == curr_ports and prev_crit == curr_crit and prev_cves == curr_cves and prev_tls == curr_tls:
+            return "Keine signifikanten Veränderungen im Vergleich zum vorherigen Snapshot."
 
     # Build compact table lines (tab-separated so PDF renderer can keep compact)
     header = "Veränderung zur Vormonatsanalyse\n\nKategorie\tVormonat\tAktuell\tBewertung\n"
@@ -106,6 +107,11 @@ def analyze_trend(prev_snapshot: AssetSnapshot, current_snapshot: AssetSnapshot)
     if curr_tls > prev_tls:
         interp = (
             "\nInterpretation: Die Angriffsfläche ist stabil; leichte Verschlechterung in der Kryptokonfiguration."
+        )
+    elif curr_tls < prev_tls and prev_ports == curr_ports and prev_crit == curr_crit and prev_cves == curr_cves:
+        interp = (
+            "\nInterpretation: TLS-Schwächen wurden behoben; keine Zunahme bei öffentlichen Managementdiensten "
+            "(Management-/Administrationsdienste); Gesamtstruktur unverändert."
         )
     elif curr_cves > prev_cves:
         interp = "\nInterpretation: Anzahl hochriskanter Schwachstellen gestiegen; Patches empfohlen."

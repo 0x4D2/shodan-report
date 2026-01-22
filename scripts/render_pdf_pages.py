@@ -1,9 +1,9 @@
 import sys
 from pathlib import Path
 
-PDF_PATH = Path("reports/demo/CHINANET_DEMO/CHINANET_DEMO/2026-01_111.170.152.60.pdf")
+PDF_PATH = Path("reports/CHINANET/2026-01_111.170.152.60.pdf")
 OUT_DIR = PDF_PATH.parent / "pages_png"
-MAX_PAGES = 3
+MAX_PAGES = 10
 
 try:
     import fitz

@@ -87,18 +87,27 @@ def prepare_recommendations_data(technical_json: Dict[str, Any], evaluation: Any
     mg_ports = {22: "SSH", 3389: "RDP", 5900: "VNC", 3306: "MySQL", 5432: "Postgres", 23: "Telnet", 21: "FTP"}
     found_mg = set()
     dns_on_53 = False
+    has_tls_service = False
+    has_web_service = False
     for s in _iter_services(technical_json):
         port = None
         prod = None
+        ssl_info = None
         if isinstance(s, dict):
             port = s.get("port")
             prod = s.get("product")
+            ssl_info = s.get("ssl_info") or s.get("ssl")
         else:
             port = getattr(s, "port", None)
             prod = getattr(s, "product", None)
+            ssl_info = getattr(s, "ssl_info", None)
 
         if port == 53:
             dns_on_53 = True
+        if port in {443, 8443, 9443} or ssl_info:
+            has_tls_service = True
+        if port in {80, 443, 8080, 8443, 8081}:
+            has_web_service = True
         if port in mg_ports:
             found_mg.add(mg_ports.get(port))
         # heuristics: product names indicating DB/ssh
@@ -110,7 +119,15 @@ def prepare_recommendations_data(technical_json: Dict[str, Any], evaluation: Any
                 found_mg.add("DB")
 
     for svc in sorted(found_mg):
-        priority2.append(f"Überprüfen: erreichbarer Managementdienst: {svc}")
+        if svc == "SSH":
+            priority2.append(
+                "SSH (Port 22) sollte nicht öffentlich erreichbar sein. Empfohlen: "
+                "1) Zugriff über VPN einschränken, 2) Passwort-Authentifizierung deaktivieren, "
+                "nur Schlüssel, 3) Fail2ban oder ähnliche Schutzmechanismen einsetzen. "
+                "Empfohlen für: Systemadministration / IT-Security-Team."
+            )
+        else:
+            priority2.append(f"Überprüfen: erreichbarer Managementdienst: {svc}")
 
     if dns_on_53:
         priority2.append("Prüfen: DNS-Server erreichbar (Port 53) – rekursive Anfragen prüfen")
@@ -137,6 +154,12 @@ def prepare_recommendations_data(technical_json: Dict[str, Any], evaluation: Any
         "Regelmäßige Überprüfung neu auftretender Dienste",
         "Rotation und Überwachung von TLS-Zertifikaten",
     ])
+
+    if has_tls_service:
+        priority3.append("TLS-Zertifikate: Gültigkeit und Cipher-Suite regelmäßig prüfen")
+    if has_web_service:
+        priority3.append("Webserver: HTTP→HTTPS-Redirect konfigurieren und HSTS aktivieren")
+        priority3.append("Webserver: Security-Header (X-Frame-Options, CSP) implementieren")
 
     return {
         "priority1": priority1,
