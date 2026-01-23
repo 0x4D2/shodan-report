@@ -1,6 +1,8 @@
-from shodan_report.persistence.snapshot_manager import compare_snapshots
+from shodan_report.persistence import snapshot_manager
+from shodan_report.persistence.snapshot_manager import compare_snapshots, save_snapshot
 from shodan_report.models import AssetSnapshot, Service
 from datetime import datetime
+import json
 
 
 def _make_snapshot(ip="1.2.3.4", ports=None, services=None):
@@ -20,8 +22,12 @@ def _make_snapshot(ip="1.2.3.4", ports=None, services=None):
 
 
 def test_compare_snapshots_no_changes():
-    s1 = _make_snapshot(ports=[22], services=[Service(port=22, transport="tcp", product="ssh")])
-    s2 = _make_snapshot(ports=[22], services=[Service(port=22, transport="tcp", product="ssh")])
+    s1 = _make_snapshot(
+        ports=[22], services=[Service(port=22, transport="tcp", product="ssh")]
+    )
+    s2 = _make_snapshot(
+        ports=[22], services=[Service(port=22, transport="tcp", product="ssh")]
+    )
 
     changes = compare_snapshots(s1, s2)
     assert changes["new_ports"] == []
@@ -33,11 +39,17 @@ def test_compare_snapshots_no_changes():
 def test_compare_snapshots_ports_and_services():
     prev = _make_snapshot(
         ports=[22, 80],
-        services=[Service(port=22, transport="tcp", product="ssh"), Service(port=21, transport="tcp", product="ftp")],
+        services=[
+            Service(port=22, transport="tcp", product="ssh"),
+            Service(port=21, transport="tcp", product="ftp"),
+        ],
     )
     curr = _make_snapshot(
         ports=[22, 443],
-        services=[Service(port=22, transport="tcp", product="ssh"), Service(port=443, transport="tcp", product="https")],
+        services=[
+            Service(port=22, transport="tcp", product="ssh"),
+            Service(port=443, transport="tcp", product="https"),
+        ],
     )
 
     changes = compare_snapshots(prev, curr)
@@ -50,16 +62,95 @@ def test_compare_snapshots_ports_and_services():
 def test_compare_snapshots_handles_none_and_duplicates():
     prev = _make_snapshot(
         ports=[1000, 2000],
-        services=[Service(port=1, transport="tcp", product=None), Service(port=2, transport="tcp", product="a")],
+        services=[
+            Service(port=1, transport="tcp", product=None),
+            Service(port=2, transport="tcp", product="a"),
+        ],
     )
     curr = _make_snapshot(
         ports=[2000, 3000, 1000],
-        services=[Service(port=2, transport="tcp", product="a"), Service(port=3, transport="tcp", product=None), Service(port=4, transport="tcp", product="a")],
+        services=[
+            Service(port=2, transport="tcp", product="a"),
+            Service(port=3, transport="tcp", product=None),
+            Service(port=4, transport="tcp", product="a"),
+        ],
     )
 
     changes = compare_snapshots(prev, curr)
     assert changes["new_ports"] == [3000]
     assert changes["removed_ports"] == []
 
+    assert "unbekannt" not in changes["new_services"] or isinstance(
+        changes["new_services"], list
+    )
 
-    assert "unbekannt" not in changes["new_services"] or isinstance(changes["new_services"], list)
+
+def test_load_snapshot_reads_snapshot_format(tmp_path, monkeypatch):
+    monkeypatch.setattr(snapshot_manager, "SNAPSHOT_DIR", tmp_path)
+
+    customer_dir = tmp_path / "Test_Customer"
+    customer_dir.mkdir(parents=True, exist_ok=True)
+
+    payload = {
+        "ip": "1.2.3.4",
+        "hostnames": [],
+        "domains": [],
+        "org": "TestOrg",
+        "isp": "TestISP",
+        "os": None,
+        "city": "Berlin",
+        "country": "Germany",
+        "services": [
+            {"port": 22, "product": "OpenSSH", "version": "8.9"},
+            {"port": 443, "product": "HTTP", "version": "1.1"},
+        ],
+        "open_ports": [22, 443],
+        "last_update": "2026-01-20 13:46:02.707329+00:00",
+        "vulns": [],
+    }
+
+    path = customer_dir / "2026-01_1.2.3.4.json"
+    with path.open("w", encoding="utf-8") as fh:
+        json.dump(payload, fh)
+
+    snapshot = snapshot_manager.load_snapshot("Test Customer", "2026-01")
+
+    assert snapshot is not None
+    assert snapshot.ip == "1.2.3.4"
+    assert snapshot.city == "Berlin"
+    assert snapshot.country == "Germany"
+    assert snapshot.open_ports == [22, 443]
+    assert len(snapshot.services) == 2
+
+
+def test_save_snapshot_preserves_ssl_info(tmp_path, monkeypatch):
+    monkeypatch.setattr(snapshot_manager, "SNAPSHOT_DIR", tmp_path)
+
+    snapshot = AssetSnapshot(
+        ip="1.2.3.4",
+        hostnames=[],
+        domains=[],
+        org=None,
+        isp=None,
+        os=None,
+        city=None,
+        country=None,
+        services=[
+            Service(
+                port=8443,
+                transport="tcp",
+                product="HTTP",
+                version="1.1",
+                ssl_info={"cert": {"subject": {"CN": "example.local"}}},
+            )
+        ],
+        open_ports=[8443],
+        last_update=datetime(2026, 1, 20),
+    )
+
+    save_snapshot(snapshot, "Test Customer", "2026-01")
+    loaded = snapshot_manager.load_snapshot("Test Customer", "2026-01")
+
+    assert loaded is not None
+    assert len(loaded.services) == 1
+    assert loaded.services[0].ssl_info is not None

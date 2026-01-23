@@ -3,6 +3,7 @@ import pytest
 from shodan_report.models import Service
 from shodan_report.pdf.helpers.evaluation_helpers import is_service_secure
 
+
 class TestIsServiceSecure:
 
     @pytest.fixture
@@ -19,7 +20,7 @@ class TestIsServiceSecure:
             vpn_protected=True,
             tunneled=True,
             cert_required=True,
-            raw={}
+            raw={},
         )
         # Service mit SSL sollte IMMER sicher sein, egal was in secure_indicators steht
         assert is_service_secure(service, default_secure_indicators) is True
@@ -33,7 +34,7 @@ class TestIsServiceSecure:
             vpn_protected=False,
             tunneled=False,
             cert_required=False,
-            raw={}
+            raw={},
         )
         # HTTP ohne SSL ist unsicher
         assert is_service_secure(service, default_secure_indicators) is False
@@ -47,7 +48,7 @@ class TestIsServiceSecure:
             vpn_protected=False,
             tunneled=False,
             cert_required=False,
-            raw={}
+            raw={},
         )
         # Service MIT SSL sollte sicher sein (Zeile 1 in is_service_secure prüft ssl_info)
         # Also: SSL vorhanden → sollte True zurückgeben
@@ -63,7 +64,7 @@ class TestIsServiceSecure:
             vpn_protected=False,
             tunneled=False,
             cert_required=False,
-            raw={}
+            raw={},
         )
         # SSH ist in secure_indicators enthalten, aber wird in der Admin-Dienste-Logik separat behandelt
         # Admin-Dienste brauchen VPN/Tunnel/Cert
@@ -79,7 +80,7 @@ class TestIsServiceSecure:
             vpn_protected=True,
             tunneled=False,
             cert_required=False,
-            raw={}
+            raw={},
         )
         assert is_service_secure(service, default_secure_indicators) is True
 
@@ -93,7 +94,7 @@ class TestIsServiceSecure:
             vpn_protected=False,
             tunneled=False,
             cert_required=False,
-            raw={}
+            raw={},
         )
         assert is_service_secure(service, default_secure_indicators) is False
 
@@ -107,7 +108,7 @@ class TestIsServiceSecure:
             vpn_protected=False,
             tunneled=False,
             cert_required=False,
-            raw={}
+            raw={},
         )
         # "tls" ist in default_secure_indicators enthalten
         assert is_service_secure(service, default_secure_indicators) is True
@@ -120,12 +121,12 @@ class TestIsServiceSecure:
             product="nginx",
             ssl_info=None,  # KEIN SSL!
             vpn_protected=False,
-            tunneled=False, 
+            tunneled=False,
             cert_required=False,
-            raw={}
+            raw={},
         )
         service._version_risk = 1
-        
+
         assert is_service_secure(service, default_secure_indicators) is False
 
     def test_encrypted_service(self, default_secure_indicators):
@@ -138,8 +139,8 @@ class TestIsServiceSecure:
             vpn_protected=False,
             tunneled=False,
             cert_required=False,
-            raw={}
+            raw={},
         )
         service.is_encrypted = True  # Setze das Attribut
-        
+
         assert is_service_secure(service, default_secure_indicators) is True

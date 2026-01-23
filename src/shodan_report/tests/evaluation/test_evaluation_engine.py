@@ -7,6 +7,7 @@ from shodan_report.evaluation.models import EvaluationResult, ServiceRisk
 from shodan_report.models import AssetSnapshot, Service
 from shodan_report.evaluation.risk_level import RiskLevel
 
+
 # Dummy Config für Tests
 @dataclass
 class DummyWeights:
@@ -14,9 +15,11 @@ class DummyWeights:
     secure_indicators: list
     vulnerable_indicators: dict
 
+
 @dataclass
 class DummyConfig:
     weights: DummyWeights
+
 
 def make_dummy_config():
     return DummyConfig(
@@ -24,12 +27,13 @@ def make_dummy_config():
             high_risk_services={
                 "rdp_unencrypted": 100,
                 "vnc_unencrypted": 100,
-                "telnet": 100
+                "telnet": 100,
             },
             secure_indicators=["ssl", "https"],
-            vulnerable_indicators={"old": 5}
+            vulnerable_indicators={"old": 5},
         )
     )
+
 
 # Test Engine mit Dummy-Config
 class TestEvaluationEngine(EvaluationEngine):
@@ -54,8 +58,9 @@ class TestEvaluationEngine(EvaluationEngine):
             critical_points=critical_points,
             recommendations=[],
             total_services=len(snapshot.services),
-            insecure_services=insecure_count
+            insecure_services=insecure_count,
         )
+
 
 # Beispiel-Test
 def test_evaluation_engine_critical_and_exposure():
@@ -70,18 +75,22 @@ def test_evaluation_engine_critical_and_exposure():
         country="Germany",
         services=[
             Service(port=3389, transport="tcp", product="RDP"),
-            Service(port=22, transport="tcp", product="OpenSSH", ssl_info={"cert": "dummy"}),
-            Service(port=23, transport="tcp", product="Telnet")
+            Service(
+                port=22, transport="tcp", product="OpenSSH", ssl_info={"cert": "dummy"}
+            ),
+            Service(port=23, transport="tcp", product="Telnet"),
         ],
         last_update=None,
-        open_ports=[22, 23, 3389]
+        open_ports=[22, 23, 3389],
     )
 
     engine = TestEvaluationEngine()
     result: EvaluationResult = engine.evaluate(snapshot)
 
     assert result.insecure_services == 2  # RDP + Telnet sind kritisch
-    assert "RDP öffentlich erreichbar ohne Verschlüsselung" in " ".join(result.critical_points)
+    assert "RDP öffentlich erreichbar ohne Verschlüsselung" in " ".join(
+        result.critical_points
+    )
     assert "Telnet (unverschlüsselt)" in " ".join(result.critical_points)
     assert result.total_services == 3
     assert result.risk == RiskLevel.HIGH

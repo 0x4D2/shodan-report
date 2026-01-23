@@ -1,0 +1,33 @@
+# Beispiel Kundenkonfiguration für shodan-report
+
+customer:
+  name: "Beispiel GmbH"
+  slug: "beispiel_gmbh"  # optional: wird für Dateipfade genutzt
+  language: "de"
+
+styling:
+  primary_color: "#1a365d"
+  secondary_color: "#2d3748"
+  logo_path: "assets/logo.png"  # relativ zum Repo
+
+report:
+  include_trend_analysis: true   # true/false
+  debug_mdata: false             # false empfohlen in Produktion (verhindert .mdata.json Sidecar)
+  keep_sidecar: false            # falls true: behalte .mdata.json neben PDF
+
+nvd:
+  enabled: false                 # true = NVD-Lookups aktiv
+  cache_ttl_days: 7              # Standard TTL für CVE Cache
+
+archive:
+  enabled: true
+  archive_dir: "archive"
+  versioning: true
+
+logging:
+  level: "INFO"  # DEBUG / INFO / WARNING / ERROR
+
+# Hinweise:
+# - NVD_LIVE=1 (Env) überschreibt nvd.enabled in dieser Datei.
+# - Setze report.debug_mdata: false für Produktionsläufe, damit Sidecar-Dateien
+#   mit potentiell sensitiven Bannern nicht erzeugt werden.

@@ -11,26 +11,22 @@ from reportlab.platypus import Spacer, Paragraph
 def create_footer_section(elements: List, styles: Dict) -> None:
     """
     Erstelle Footer-Section mit Disclaimer und Metadaten.
-    
+
     Args:
         elements: Liste der PDF-Elemente
         styles: Dictionary mit PDF-Styles
     """
     elements.append(Spacer(1, 24))
-    
-    # Disclaimer Text
+
+    # Disclaimer Text (user-provided wording, timestamped)
     disclaimer_text = f"""
     <font size='8'><b>HINWEIS ZUR VERWENDUNG:</b></font><br/>
-    Dieser Bericht basiert auf öffentlich verfügbaren Informationen (OSINT) von Shodan.
-    Er stellt keine vollständige Sicherheitsanalyse dar und ersetzt keinen Penetrationstest.
-    Keine Garantie auf Vollständigkeit oder Richtigkeit. Dient ausschließlich zu Informationszwecken.
+    Dieser Bericht basiert auf öffentlich verfügbaren Informationen (OSINT) von Shodan. Er stellt keine vollständige Sicherheitsanalyse<br/>
+    dar und ersetzt keinen Penetrationstest. Keine Garantie auf Vollständigkeit oder Richtigkeit. Dient ausschließlich zu<br/>
+    Informationszwecken.
+
     <br/><br/>
     <i>Vertraulich. Stand: {datetime.now().strftime('%d.%m.%Y %H:%M')}</i>
     """
-    
-    elements.append(Paragraph(disclaimer_text, styles['disclaimer']))
-    elements.append(Spacer(1, 6))
-    elements.append(Paragraph(
-        f"Erstellt mit Shodan Report Generator • {datetime.now().strftime('%d.%m.%Y')}", 
-        styles['footer']
-    ))
+
+    elements.append(Paragraph(disclaimer_text, styles.get("disclaimer") or styles.get("normal")))

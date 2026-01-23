@@ -1,112 +1,332 @@
-from reportlab.platypus import Paragraph, Spacer
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
+import re
+from reportlab.platypus import Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.units import mm
+from reportlab.lib.colors import HexColor
+from shodan_report.pdf.layout import keep_section, set_table_repeat, set_table_no_split
+from shodan_report.pdf.sections.data.technical_data import prepare_technical_detail
 
 
-def create_technical_section(
-    elements: List,
-    styles: Dict,
-    technical_json: Dict[str, Any],
-    config: Dict[str, Any] = None
-) -> None:
+def _clean_display_field(v: Optional[str], max_len: int = 80) -> str:
+    if not v:
+        return "-"
+    s = str(v).strip()
+    s = s.replace("\n", " ").replace("\r", " ")
+    s = re.sub(r"\s+", " ", s)
+    # redact long base64-like sequences (SSH keys)
+    if re.search(r"[A-Za-z0-9+/]{40,}=*", s):
+        return "[SSH-Key entfernt]"
+    # remove leading numeric FTP/SMTP codes (e.g., '220 ')
+    s = re.sub(r"^[0-9]{3}\s+", "", s)
+    if len(s) > max_len:
+        return s[: max_len - 3] + "..."
+    return s
 
-    config = config or {}
-    
-    # 1. Überschrift
+
+def _normalize_product(prod: Optional[str]) -> str:
+    if not prod:
+        return "-"
+    p = str(prod).strip()
+    low = p.lower()
+    if "ssh-2.0" in low or "openssh" in low or "mod_sftp" in low or low.strip() == "ssh":
+        if "mod_sftp" in low:
+            return "SSH (mod_sftp)"
+        return "SSH"
+    # otherwise clean and truncate
+    return _clean_display_field(p, max_len=60)
+
+
+def _limit_list(items: List[str], max_items: int = 4) -> str:
+    if not items:
+        return ""
+    trimmed = items[:max_items]
+    suffix = " …" if len(items) > max_items else ""
+    return ", ".join(trimmed) + suffix
+
+
+def _find_insecure_tls(protocols: List[str]) -> List[str]:
+    insecure = []
+    for p in protocols or []:
+        pl = str(p).lower().replace(" ", "")
+        if "tls1.0" in pl or "tlsv1" in pl or "tlsv1.0" in pl:
+            insecure.append("TLS 1.0")
+        if "tls1.1" in pl or "tlsv1.1" in pl:
+            insecure.append("TLS 1.1")
+    # dedupe while preserving order
+    out = []
+    for item in insecure:
+        if item not in out:
+            out.append(item)
+    return out
+
+
+def create_technical_section(elements: List, styles: Dict, *args, **kwargs) -> None:
+    # Support DI call: create_technical_section(elements, styles, context=ctx)
+    technical_json = kwargs.get("technical_json", {})
+    evaluation = kwargs.get("evaluation", None)
+    if "context" in kwargs and kwargs.get("context") is not None:
+        ctx = kwargs.get("context")
+        technical_json = getattr(ctx, "technical_json", technical_json)
+        evaluation = getattr(ctx, "evaluation", evaluation)
+
     elements.append(Spacer(1, 12))
-    elements.append(Paragraph("<b>Technischer Anhang</b>", styles['heading2']))
-    elements.append(Spacer(1, 6))
-    
-    open_ports = technical_json.get("open_ports", [])
-    
-    if not open_ports:
-        elements.append(Paragraph("Keine offenen Ports identifiziert.", styles['normal']))
+    heading_style = styles.get("heading1", styles.get("heading2"))
+    # keep legacy header text so existing tests that look for "Technischer Anhang" still match
+    elements.append(keep_section([Paragraph("<b>3. Technischer Anhang — Technische Detailanalyse (Auszug)</b>", heading_style), Spacer(1, 8)]))
+    elements.append(Paragraph("Quelle: Shodan (OSINT, passive Datenerhebung).", styles["normal"]))
+    elements.append(Spacer(1, 8))
+
+    if not technical_json:
+        elements.append(Paragraph("Keine technischen Details verfügbar.", styles["normal"]))
         return
-    
-    # 2. Port-Informationen
-    _add_port_information(elements, styles, open_ports)
-    
+
+    data = prepare_technical_detail(technical_json or {}, evaluation)
+    services = data.get("services", [])
+
+    if not services:
+        elements.append(Paragraph("Keine offenen Ports identifiziert.", styles["normal"]))
+        return
+
+    # Table: Port | Dienst | Version | Server
+    header = [
+        Paragraph("<b>Port</b>", styles["normal"]),
+        Paragraph("<b>Dienst</b>", styles["normal"]),
+        Paragraph("<b>Version</b>", styles["normal"]),
+        Paragraph("<b>Server</b>", styles["normal"]),
+    ]
+    table_data = [header]
+    seen_rows = set()
+    for s in services:
+        port_txt = str(s.get("port") or "-")
+        prod_raw = s.get("product") or ""
+        prod = _normalize_product(prod_raw)
+        ver_raw = s.get("version") or ""
+        ver = _clean_display_field(ver_raw, max_len=60)
+        server = _clean_display_field(s.get("server") or "-", max_len=40)
+
+        # enforce single-line version (no newlines) and truncate to fit
+        if isinstance(ver, str):
+            ver = ver.replace("\n", " ").replace("\r", " ").strip()
+            if len(ver) > 60:
+                ver = ver[:57] + "..."
+
+        # Deduplicate identical rows (port, product, server)
+        key = (str(s.get("port")), str(prod), str(server))
+        if key in seen_rows:
+            continue
+        seen_rows.add(key)
+
+        table_data.append([
+            Paragraph(port_txt, styles["normal"]),
+            Paragraph(prod, styles["normal"]),
+            Paragraph(ver, styles["normal"]),
+            Paragraph(server, styles["normal"]),
+        ])
+
+    # Constrain total width to typical text area (~150-160 mm)
+    # Adjust column widths to avoid overflowing page margins
+    tbl = Table(table_data, colWidths=[18 * mm, 60 * mm, 45 * mm, 40 * mm])
+    set_table_repeat(tbl, 1)
+    set_table_no_split(tbl)
+    border_color = HexColor("#e5e7eb")
+    header_bg = HexColor("#f8fafc")
+    tbl.setStyle(
+        TableStyle(
+            [
+                ("GRID", (0, 0), (-1, -1), 0.3, border_color),
+                ("BACKGROUND", (0, 0), (-1, 0), header_bg),
+                ("TEXTCOLOR", (0, 0), (-1, 0), HexColor("#111827")),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("FONTSIZE", (0, 0), (-1, -1), 9),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+            ]
+        )
+    )
+    elements.append(tbl)
+    elements.append(Spacer(1, 8))
+
+    # Add per-service details (TLS / CVE / Banner)
+    top_vulns_count = 0
+    try:
+        if isinstance(technical_json, dict):
+            top_vulns_count = len(technical_json.get("vulns") or technical_json.get("vulnerabilities") or [])
+    except Exception:
+        top_vulns_count = 0
+    for s in services:
+        details = []
+        tls = s.get("tls", {}) or {}
+        if tls.get("protocols"):
+            details.append(f"TLS-Protokolle: {', '.join(tls.get('protocols'))}")
+            insecure_tls = _find_insecure_tls(tls.get("protocols") or [])
+            if insecure_tls:
+                details.append(f"Unsichere TLS-Versionen: {', '.join(insecure_tls)}")
+        if tls.get("weak_ciphers"):
+            details.append("Schwache Cipher/Konfiguration identifiziert")
+        if tls.get("cert_expiry"):
+            details.append(f"Zertifikat gültig bis: {tls.get('cert_expiry')}")
+        if tls.get("cert_valid_from"):
+            details.append(f"Zertifikat gültig ab: {tls.get('cert_valid_from')}")
+        if tls.get("cert_issuer"):
+            details.append(f"Zertifikat-Aussteller: {tls.get('cert_issuer')}")
+        if tls.get("cert_self_signed") is True:
+            details.append("Zertifikat: selbstsigniert")
+        if tls.get("ciphers"):
+            tls_ciphers = _limit_list(tls.get("ciphers") or [], max_items=4)
+            if tls_ciphers:
+                details.append(f"TLS-Cipher (Auszug): {tls_ciphers}")
+        ssh = s.get("ssh", {}) or {}
+        if ssh.get("version"):
+            details.append(f"SSH-Software: {ssh.get('version')}")
+        if ssh.get("auth"):
+            auth_txt = _limit_list(ssh.get("auth") or [], max_items=3)
+            if auth_txt:
+                details.append(f"SSH-Authentifizierung: {auth_txt}")
+        if ssh.get("kex"):
+            kex_txt = _limit_list(ssh.get("kex") or [], max_items=3)
+            if kex_txt:
+                details.append(f"SSH-KEX: {kex_txt}")
+        if ssh.get("ciphers"):
+            cipher_txt = _limit_list(ssh.get("ciphers") or [], max_items=3)
+            if cipher_txt:
+                details.append(f"SSH-Cipher: {cipher_txt}")
+        if ssh.get("macs"):
+            mac_txt = _limit_list(ssh.get("macs") or [], max_items=3)
+            if mac_txt:
+                details.append(f"SSH-MACs: {mac_txt}")
+        http = s.get("http", {}) or {}
+        if http.get("hsts"):
+            details.append("HSTS: aktiviert")
+        if http.get("redirect_https"):
+            details.append("HTTP→HTTPS-Redirect: erkennbar")
+        if http.get("x_frame_options"):
+            details.append("Security Header: X-Frame-Options")
+        if http.get("csp"):
+            details.append("Security Header: Content-Security-Policy")
+        if http.get("x_content_type_options"):
+            details.append("Security Header: X-Content-Type-Options")
+        if http.get("methods"):
+            methods_txt = _limit_list(http.get("methods") or [], max_items=6)
+            if methods_txt:
+                details.append(f"Erlaubte HTTP-Methoden: {methods_txt}")
+            try:
+                unsafe = [m for m in (http.get("methods") or []) if m.upper() in {"PUT", "DELETE", "TRACE"}]
+                if unsafe:
+                    details.append(f"Unsichere HTTP-Methoden: {', '.join(unsafe)}")
+            except Exception:
+                pass
+        # Only show per-service CVE count when service has its own vulnerability list
+        # Avoid repeating the host-level total for every service.
+        svc_cve_count = s.get("cve_count") or 0
+        if svc_cve_count and svc_cve_count != top_vulns_count:
+            details.append(f"Bekannte Schwachstellen: {svc_cve_count} (hoch: {s.get('high_cvss')})")
+        if s.get("banner"):
+            b = s.get("banner")
+            if isinstance(b, str) and len(b) > 0:
+                short = b.replace('\n', ' ').strip()
+                if len(short) > 140:
+                    short = short[:137] + "..."
+                details.append(f"Banner: {short}")
+
+        # Recompute display product/version per-service to avoid using loop-scoped vars
+        prod_raw = s.get("product") or ""
+        prod = _normalize_product(prod_raw)
+        ver_raw = s.get("version") or ""
+        ver = _clean_display_field(ver_raw, max_len=60)
+
+        if details:
+            header_line = f"Port {s.get('port')}: {prod} ({ver})"
+            elements.append(Spacer(1, 6))
+            elements.append(Paragraph(f"<b>{header_line}</b>", styles["normal"]))
+            for d in details:
+                elements.append(Paragraph(f"• {d}", styles["bullet"]))
+
     # 3. System-Metadaten
     _add_system_metadata(elements, styles, technical_json)
-    
-    # 4. Sicherheitshinweise
-    _add_security_notes(elements, styles, technical_json)
+
+    # 4. Sicherheitshinweise entfernt (Technischer Anhang enthält nur Fakten)
 
 
 def _add_port_information(elements: List, styles: Dict, open_ports: List[Dict]) -> None:
-    elements.append(Paragraph("<b>Öffentlich erreichbare Dienste:</b>", styles['normal']))
+    elements.append(
+        Paragraph("<b>Öffentlich erreichbare Dienste:</b>", styles["normal"])
+    )
     elements.append(Spacer(1, 4))
-    
+
     seen_ports = set()
     for port_info in open_ports:
-        port = port_info.get('port', '?')
-        transport = port_info.get('transport', 'tcp').upper()
-        
+        port = port_info.get("port", "?")
+        transport = port_info.get("transport", "tcp").upper()
+
         port_key = f"{port}/{transport}"
         if port_key in seen_ports:
             continue
         seen_ports.add(port_key)
-        
-        service = port_info.get('service', {})
-        product = service.get('product', 'Unbekannter Dienst')
-        version = service.get('version', '')
-        banner = service.get('banner', '')
-        extra_info = port_info.get('extra_info', '')
-        
-        port_text = _build_port_text(port, transport, product, version, banner, extra_info)
-        elements.append(Paragraph(f"• {port_text}", styles['bullet']))
+
+        service = port_info.get("service", {})
+        product = service.get("product", "Unbekannter Dienst")
+        version = service.get("version", "")
+        banner = service.get("banner", "")
+        extra_info = port_info.get("extra_info", "")
+
+        port_text = _build_port_text(
+            port, transport, product, version, banner, extra_info
+        )
+        elements.append(Paragraph(f"• {port_text}", styles["bullet"]))
 
 
 def _build_port_text(
-    port: int,
-    transport: str,
-    product: str,
-    version: str,
-    banner: str,
-    extra_info: str
+    port: int, transport: str, product: str, version: str, banner: str, extra_info: str
 ) -> str:
     port_text_parts = [f"<b>Port {port}/{transport}:</b> {product}"]
-    
+
     # Version hinzufügen
     if version and version.strip():
-        clean_version = version.strip().replace('\n', ' ').replace('\r', '')
+        clean_version = version.strip().replace("\n", " ").replace("\r", "")
         if len(clean_version) < 40:
             port_text_parts.append(f"({clean_version})")
-    
+
     # Extra-Informationen
     if extra_info:
         port_text_parts.append(f"<i>{extra_info}</i>")
-    
+
     # Banner-Vorschau
     if banner and len(banner.strip()) > 0:
-        clean_banner = banner.strip().replace('\n', ' ').replace('\r', '')
-        if len(clean_banner) < 80 and not any(x in clean_banner.lower() for x in ['<', '>', '{', '}']):
+        clean_banner = banner.strip().replace("\n", " ").replace("\r", "")
+        if len(clean_banner) < 80 and not any(
+            x in clean_banner.lower() for x in ["<", ">", "{", "}"]
+        ):
             port_text_parts.append(f"»{clean_banner}«")
-    
-    return ' '.join(port_text_parts)
+
+    return " ".join(port_text_parts)
 
 
-def _add_system_metadata(elements: List, styles: Dict, technical_json: Dict[str, Any]) -> None:
+def _add_system_metadata(
+    elements: List, styles: Dict, technical_json: Dict[str, Any]
+) -> None:
     elements.append(Spacer(1, 12))
-    elements.append(Paragraph("<b>System-Informationen:</b>", styles['normal']))
+    elements.append(Paragraph("<b>System-Informationen:</b>", styles["normal"]))
     elements.append(Spacer(1, 4))
-    
+
     meta_items = _extract_metadata_items(technical_json)
-    
+
     if meta_items:
         for item in meta_items:
-            elements.append(Paragraph(f"• {item}", styles['bullet']))
+            elements.append(Paragraph(f"• {item}", styles["bullet"]))
     else:
-        elements.append(Paragraph("Keine weiteren Metadaten verfügbar.", styles['normal']))
+        elements.append(
+            Paragraph("Keine weiteren Metadaten verfügbar.", styles["normal"])
+        )
 
 
 def _extract_metadata_items(technical_json: Dict[str, Any]) -> List[str]:
     meta_items = []
-    
+
     # Hostnames/Domains
     hostnames = technical_json.get("hostnames", [])
     if hostnames:
         meta_items.append(f"Hostname(s): {', '.join(hostnames[:3])}")
-    
+
     # Organisation/ISP
     org = technical_json.get("org", "")
     isp = technical_json.get("isp", "")
@@ -114,7 +334,7 @@ def _extract_metadata_items(technical_json: Dict[str, Any]) -> List[str]:
         meta_items.append(f"Organisation: {org}")
     elif isp:
         meta_items.append(f"ISP: {isp}")
-    
+
     # Geolocation
     country = technical_json.get("country", "")
     city = technical_json.get("city", "")
@@ -122,44 +342,55 @@ def _extract_metadata_items(technical_json: Dict[str, Any]) -> List[str]:
         meta_items.append(f"Standort: {city}, {country}")
     elif country:
         meta_items.append(f"Land: {country}")
-    
+
     # ASN
     asn = technical_json.get("asn", "")
     if asn:
         meta_items.append(f"Autonomous System: {asn}")
-    
+
+    # Tags
+    tags = technical_json.get("tags", [])
+    if tags:
+        meta_items.append(f"Tags: {', '.join(tags)}")
+
     # Vulnerabilities
     vulnerabilities = technical_json.get("vulnerabilities", [])
     if vulnerabilities:
         meta_items.append(f"Identifizierte Schwachstellen: {len(vulnerabilities)}")
-    
+
     # Kritische Services
     critical_services = technical_json.get("critical_services", [])
     if critical_services:
         high_critical = [c for c in critical_services if c.get("severity") == "high"]
         if high_critical:
             meta_items.append(f"Kritische Konfigurationen: {len(high_critical)}")
-    
+
     return meta_items
 
 
-def _add_security_notes(elements: List, styles: Dict, technical_json: Dict[str, Any]) -> None:
+def _add_security_notes(
+    elements: List, styles: Dict, technical_json: Dict[str, Any]
+) -> None:
     critical_services = technical_json.get("critical_services", [])
-    
+
     if not critical_services:
         return
-    
+
     elements.append(Spacer(1, 12))
-    elements.append(Paragraph("<b>Sicherheitshinweise:</b>", styles['normal']))
+    elements.append(Paragraph("<b>Sicherheitshinweise:</b>", styles["normal"]))
     elements.append(Spacer(1, 4))
-    
+
     for critical in critical_services[:3]:  # Max 3 Hinweise
         port = critical.get("port", "")
         reason = critical.get("reason", "")
+        # Remove stray debug tokens like 'nn' that may appear in snapshots
+        try:
+            reason = str(reason).replace("nn ", "").replace("nn", "").strip()
+        except Exception:
+            pass
         severity = critical.get("severity", "medium")
-        
-        severity_icon = "⚠️" if severity == "high" else "ℹ️"
-        elements.append(Paragraph(
-            f"{severity_icon} Port {port}: {reason}", 
-            styles['bullet']
-        ))
+
+        severity_label = "Achtung" if severity == "high" else "Hinweis"
+        elements.append(
+            Paragraph(f"{severity_label}: Port {port}: {reason}", styles["bullet"])
+        )

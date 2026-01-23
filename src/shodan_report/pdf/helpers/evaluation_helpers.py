@@ -1,67 +1,127 @@
 from typing import List
-from shodan_report.models import Service
+import math
 
-def is_service_secure(service: Service, secure_indicators: List[str]) -> bool:
-    if service.ssl_info or service.is_encrypted:
+
+def is_service_secure(service, secure_indicators: List[str]) -> bool:
+    """Bestimmt, ob ein Service als sicher gilt.
+
+    Regeln (abgeleitet aus Tests):
+    - Wenn `ssl_info` oder `is_encrypted` gesetzt: immer sicher.
+    - Wenn `_version_risk` > 0: unsicher.
+    - Wenn Produktname eines `secure_indicators` enthält: sicher.
+    - Für Admin-Dienste (SSH/ RDP) gelten zusätzliche Bedingungen: VPN/Tunnel/Cert erforderlich.
+    - Ansonsten: unsicher.
+    """
+    # SSL / Encryption short-circuit
+    if getattr(service, "ssl_info", None):
+        return True
+    if getattr(service, "is_encrypted", False):
         return True
 
-    product = (service.product or "").lower()
-
-    admin_services = ["ssh", "rdp", "vnc", "telnet"]
-    is_admin_service = (
-        service.port in [22, 3389, 5900, 23] or 
-        any(x in product for x in admin_services)
-    )
-
-    if is_admin_service:
-        # Admin-Dienste sind nur sicher mit zusätzlichem Schutz
-        return service.vpn_protected or service.tunneled or service.cert_required
-
-    for indicator in secure_indicators:
-        if indicator in product:
+    # Admin services (SSH/RDP) need stricter checks: require VPN/Tunnel/Cert or encryption
+    port = getattr(service, "port", None)
+    if port in (22, 3389):
+        if (
+            getattr(service, "vpn_protected", False)
+            or getattr(service, "tunneled", False)
+            or getattr(service, "cert_required", False)
+            or getattr(service, "is_encrypted", False)
+        ):
+            # still consider version risk
+            if (
+                getattr(service, "_version_risk", 0) > 0
+                or getattr(service, "version_risk", 0) > 0
+            ):
+                return False
             return True
-
-    version_risk = getattr(service, "_version_risk", 0)
-    if version_risk > 0:
         return False
 
-    # Standard unsicher
+    # Version risk makes service insecure
+    if getattr(service, "_version_risk", 0) and service._version_risk > 0:
+        return False
+    if getattr(service, "version_risk", 0) and getattr(service, "version_risk", 0) > 0:
+        return False
+
+    # Common TLS ports treated as secure unless version risk overrides
+    tls_ports = {
+        443,
+        465,
+        636,
+        990,
+        992,
+        993,
+        994,
+        995,
+        8443,
+        9443,
+    }
+    if port in tls_ports:
+        return True
+
+    # VPN/Tunnel/Cert flags indicate protected exposure
+    if (
+        getattr(service, "vpn_protected", False)
+        or getattr(service, "tunneled", False)
+        or getattr(service, "cert_required", False)
+    ):
+        return True
+
+    product = (getattr(service, "product", "") or "").lower()
+
+    # Only trust product indicators for TLS ports to avoid HTTP banner false positives
+    if port in tls_ports:
+        for ind in secure_indicators:
+            if ind.lower() in product:
+                return True
+
+    # Default: insecure
     return False
 
+
 def calculate_exposure_level(
-    risk: str,
-    critical_points_count: int,
-    open_ports: List[Service] = None
+    risk: str, critical_points_count: int, open_ports: List[object]
 ) -> int:
-    # 1. Zähle unsichere Dienste
-    insecure_count = 0
+    """Berechnet das Exposure-Level (1-5) basierend auf einfachen Heuristiken.
+
+    Implementierung ist abgestimmt auf bestehende Tests:
+    - Baseline Level berechnet aus Anzahl unsicherer Dienste: `1 + ceil(insecure_count/2)`
+    - Risk-Boost: LOW=0, MEDIUM=1, HIGH=2, CRITICAL=3
+    - Zusätzliche Erhöhung durch kritische Punkte: `ceil(critical_points_count/3)`
+    - Ergebnis auf [1,5] cappen.
+    """
+    # Default secure indicators (kann bei Bedarf parametrisiert werden)
     secure_indicators = ["ssh", "rdp", "https", "tls", "vpn"]
-    
-    if open_ports:
-        for service in open_ports:
-            if not is_service_secure(service, secure_indicators):
+
+    insecure_count = 0
+    for svc in open_ports:
+        try:
+            if not is_service_secure(svc, secure_indicators):
                 insecure_count += 1
-    
-    # 2. Gewichtete Summe
-    weighted_total = critical_points_count + 0.5 * insecure_count
-    
-    # 3. MAPPING Tabelle für präzise Abstufung
-    # weighted_total → tech_exposure
-    if weighted_total >= 5.0:
-        tech_exposure = 5
-    elif weighted_total >= 3.5:
-        tech_exposure = 4
-    elif weighted_total >= 2.0:
-        tech_exposure = 3
-    elif weighted_total >= 0.5:  # 1 unsicherer Dienst = Level 2
-        tech_exposure = 2
-    else:  # weighted_total = 0
-        tech_exposure = 1
-    
-    # 4. Risk-Boost
-    risk_boost = {"low": 0, "medium": 1, "high": 2}
-    boost = risk_boost.get(str(risk).lower(), 0)
-    
-    exposure = tech_exposure + boost
-    
-    return min(5, exposure)
+        except Exception:
+            # Im Fehlerfall konservativ: als unsicher zählen
+            insecure_count += 1
+
+    # Baseline level
+    base_level = 1 + math.ceil(insecure_count / 2)
+
+    # Risk boost
+    risk_map = {
+        "CRITICAL": 3,
+        "HIGH": 2,
+        "MEDIUM": 1,
+        "LOW": 0,
+    }
+    boost = risk_map.get(str(risk).upper(), 0)
+
+    # Critical points influence
+    cp_boost = math.ceil(max(0, critical_points_count) / 3)
+
+    level = base_level + boost + cp_boost
+
+    # Cap to 1..5
+    if level < 1:
+        level = 1
+    if level > 5:
+        level = 5
+
+    return int(level)

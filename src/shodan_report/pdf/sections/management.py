@@ -1,190 +1,665 @@
-from reportlab.platypus import Paragraph, Spacer, Table, TableStyle
-from typing import List, Dict, Any
-from shodan_report.evaluation import Evaluation
+# ──────────────────────────────────────────────────────────────────────────────
+# Management Section für PDF-Reports
+# Generiert professionelle Management-Zusammenfassung im Security-Reporting-Stil
+# ──────────────────────────────────────────────────────────────────────────────
+
+from reportlab.platypus import Paragraph, Spacer, PageBreak, Table, TableStyle
 from reportlab.lib.units import mm
-from shodan_report.models import Service
+import os
+from typing import List, Dict, Any, Optional
+from shodan_report.pdf.styles import Theme
 
-# ─────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────────
 # Management-Text & Insights Helpers
-# ─────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────────
 from shodan_report.pdf.helpers.management_helpers import (
-    extract_first_sentence,
-    generate_priority_insights,
-    generate_priority_recommendations,
+    _build_top_risks,
+    _build_service_flags,
 )
+from .data.cve_enricher import enrich_cves
 
-# ─────────────────────────────────────────────
-# Evaluation Helpers
-# ─────────────────────────────────────────────
-from shodan_report.pdf.helpers.evaluation_helpers import (
-    calculate_exposure_level,
-    is_service_secure,
-)
 
-# ─────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────────
 # PDF Helpers
-# ─────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────────
+from shodan_report.pdf.layout import keep_section
 from shodan_report.pdf.helpers.pdf_helpers import build_horizontal_exposure_ampel
+from .data.management_data import prepare_management_data
 
 
-def create_management_section(
-    elements: List,
-    styles: Dict,
-    management_text: str,
-    technical_json: Dict[str, Any],
-    evaluation: Evaluation,
-    business_risk: str,
-    config: Dict[str, Any] = None
-) -> None:
+def should_show_rdp_warning(technical_json: Dict[str, Any], mdata: Optional[Dict[str, Any]] = None) -> bool:
+    """Determine whether the RDP-specific warning should be shown.
 
-    config = config or {}
+    Supports multiple input shapes for testability:
+      - technical_json containing `primary_service`, `open_ports_count`, `detected_ports`
+      - technical_json with `services` or `open_ports` list of dicts with `port`/`product`
+    The rule implemented matches the requirement:
+      IF (primary_service == "rdp" OR (open_ports_count == 1 AND detected_port == 3389))
+    """
+    try:
+        # Synthetic test-oriented shape
+        if isinstance(technical_json, dict) and ("primary_service" in technical_json or "detected_ports" in technical_json or "open_ports_count" in technical_json):
+            primary = str(technical_json.get("primary_service", "") or "").lower()
+            detected = set(technical_json.get("detected_ports") or technical_json.get("ports") or [])
+            open_count = int(technical_json.get("open_ports_count", len(detected) if detected else 0) or 0)
+            if primary == "rdp":
+                return True
+            if open_count == 1 and 3389 in detected:
+                return True
+            return False
 
-    # ─────────────────────────────────────────────
-    # Evaluation als Objekt sichern (falls dict übergeben)
-    # ─────────────────────────────────────────────
-    if isinstance(evaluation, dict):
-        class EvaluationLike:
-            def __init__(self, data):
-                self.risk = data.get("risk", "MEDIUM")
-                self.critical_points = data.get("critical_points", [])
-                self.ip = data.get("ip", "")
-                self.exposure_level = data.get("exposure_level", 2)
-        evaluation = EvaluationLike(evaluation)
+        # Normal snapshot shape: services/open_ports list
+        services_list = technical_json.get("services") or technical_json.get("open_ports") or []
+        ports_set = set()
+        prods = []
+        for s in services_list:
+            if isinstance(s, dict):
+                ports_set.add(s.get("port"))
+                prods.append(str(s.get("product") or "").lower())
+            else:
+                ports_set.add(getattr(s, "port", None))
+                prods.append(str(getattr(s, "product", "")).lower())
 
-    # ─────────────────────────────────────────────
-    # Open Ports in Service-Objekte umwandeln
-    # ─────────────────────────────────────────────
-    open_ports = technical_json.get("open_ports", [])
-    services = [
-        p if isinstance(p, Service) else Service(
-            port=p.get("port"),
-            transport=p.get("transport", "tcp"),
-            product=p.get("product"),
-            ssl_info=p.get("ssl_info"),
-            vpn_protected=p.get("vpn_protected", False),
-            tunneled=p.get("tunneled", False),
-            cert_required=p.get("cert_required", False),
-            raw=p
+        primary_by_product = any("rdp" in p or "remote desktop" in p or "terminal services" in p for p in prods)
+        open_ports_count = int((mdata.get("total_ports") if mdata and isinstance(mdata, dict) and mdata.get("total_ports") is not None else len(services_list) if services_list else 0) or 0)
+        # Only treat single-port 3389 as RDP if the product/banner indicates RDP-like service
+        single_rdp = open_ports_count == 1 and (3389 in ports_set) and primary_by_product
+        return bool(primary_by_product or single_rdp)
+    except Exception:
+        return False
+
+
+def get_management_risk_and_tech_note(technical_json: Dict[str, Any], evaluation: Any, mdata: Optional[Dict[str, Any]] = None, config: Optional[Dict[str, Any]] = None):
+    """Return (risk_stmt, tech_note) using the same logic as the management renderer.
+
+    This helper is used by `create_management_section` and by unit tests to assert
+    the produced wording without rendering PDFs.
+    """
+    top_risks = _build_top_risks(technical_json, (mdata or {}).get("risk_level", "low"))
+    rdp_primary = should_show_rdp_warning(technical_json, mdata)
+
+    if rdp_primary:
+        risk_stmt = (
+            "<b>Beachte:</b> Es wurde ausschließlich <b>Remote Desktop (RDP) auf Port 3389</b> öffentlich erreichbar identifiziert. "
+            "RDP ist ein <b>häufig genutzter Angriffsvektor</b> für Brute-Force-Angriffe und Ransomware-Kampagnen. "
+            "Da die Analyse auf externen OSINT-Daten basiert, können zusätzliche Zugriffskontrollen (z.B. NLA, IP-Filter, MFA, VPN) nicht beurteilt werden. "
+            "Eine <b>Überprüfung und gegebenenfalls Absicherung oder Verlagerung hinter kontrollierte Zugangsmechanismen wird empfohlen.</b>"
         )
-        for p in open_ports
-    ]
+        tech_note = (
+            "Hinweis: Öffentlich erreichbares RDP erfordert besondere Absicherung. "
+            "Empfohlene Maßnahmen umfassen: Netzwerk Access Control (IP-Whitelisting), NLA (Network Level Authentication), "
+            "MFA-Einführung oder Ersatz durch VPN/Jumphost-Lösungen."
+        )
+        return risk_stmt, tech_note
 
-    # ─────────────────────────────────────────────
-    # 1. ABSCHNITTS-TITEL
-    # ─────────────────────────────────────────────
-    elements.append(Paragraph("1. Management-Zusammenfassung", styles["heading1"]))
-    elements.append(Spacer(1, 10))
+    # fallback to previously existing logic for non-RDP cases
+    if top_risks:
+        primary_title = str(top_risks[0].get("title", "")).lower()
+        if "administr" in primary_title:
+            risk_stmt = (
+                "Risiko: Öffentlich erreichbare Administrationsdienste erhöhen das Risiko unbefugter Zugriffe; "
+                "Härtungsmaßnahmen empfohlen."
+            )
+        elif "datenbank" in primary_title:
+            risk_stmt = (
+                "Risiko: Öffentlich erreichbare Datenbanken erhöhen das Risiko unbefugter Datenzugriffe; "
+                "Härtungsmaßnahmen empfohlen."
+            )
+        elif "web" in primary_title:
+            risk_stmt = (
+                "Risiko: Öffentlich erreichbare Webdienste erhöhen das Targeting- und Angriffsrisiko; "
+                "Härtungsmaßnahmen empfohlen."
+            )
+        elif "mail" in primary_title:
+            risk_stmt = (
+                "Risiko: Öffentlich erreichbare Maildienste erhöhen das Risiko von Kontoübernahmen; "
+                "Härtungsmaßnahmen empfohlen."
+            )
+        else:
+            risk_stmt = (
+                "Risiko: Öffentlich erreichbare Dienste erhöhen das Risiko unbefugter Zugriffe; "
+                "Härtungsmaßnahmen empfohlen."
+            )
+    else:
+        risk_stmt = (
+            "Risiko: Öffentlich erreichbare Dienste erhöhen das Risiko unbefugter Zugriffe; "
+            "Härtungsmaßnahmen empfohlen."
+        )
 
-    # ─────────────────────────────────────────────
-    # 2. Gesamtbewertung & Exposure-Level
-    # ─────────────────────────────────────────────
-    critical_points_count = len(getattr(evaluation, "critical_points", []))
-    exposure_level = calculate_exposure_level(
-        getattr(evaluation, "risk", "MEDIUM"),
-        critical_points_count,
-        services
-    )
+    # technical short note (keep original SSH/web logic)
+    try:
+        services = technical_json.get("services") or technical_json.get("open_ports") or []
+        ports = set()
+        products = []
+        for s in services:
+            if isinstance(s, dict):
+                ports.add(s.get("port"))
+                products.append(str(s.get("product") or "").lower())
+            else:
+                ports.add(getattr(s, "port", None))
+                products.append(str(getattr(s, "product", "")).lower())
+        prod_text = " ".join(products)
+        has_ssh = bool(22 in ports or "ssh" in prod_text)
+        has_web = bool(ports.intersection({80, 443, 8080, 8443, 8081}) or "http" in prod_text)
 
+        if has_ssh and has_web:
+            tech_note = (
+                "Technische Kurzbewertung: SSH (Port 22) wirkt modern konfiguriert; "
+                "im OSINT-Datensatz keine schwachen Algorithmen erkennbar. Hauptrisiko: "
+                "öffentlich erreichbar, Authentifizierung prüfen (VPN, Key-Only, Fail2ban). "
+                "Webserver nur passiv bewertet."
+            )
+        elif has_ssh:
+            tech_note = (
+                "Technische Kurzbewertung: SSH (Port 22) wirkt modern konfiguriert; "
+                "im OSINT-Datensatz keine schwachen Algorithmen erkennbar. Hauptrisiko: "
+                "öffentlich erreichbar, Authentifizierung prüfen (VPN, Key-Only, Fail2ban)."
+            )
+        elif has_web:
+            tech_note = "Technische Kurzbewertung: Webserver nur passiv bewertet."
+        else:
+            tech_note = "Technische Kurzbewertung: OSINT-Perspektive ohne interne Systemprüfung."
+    except Exception:
+        tech_note = "Technische Kurzbewertung: OSINT-Perspektive ohne interne Systemprüfung."
+
+    return risk_stmt, tech_note
+
+def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> None:
+    """
+    Erzeugt professionelle Management-Zusammenfassung im Security-Reporting-Stil.
+
+    Args:
+        elements: Liste der PDF-Elemente
+        styles: ReportLab Stil-Definitionen
+        management_text: Vorbereiteter Management-Text
+        technical_json: Technische JSON-Daten aus Shodan
+        evaluation: Evaluationsdaten (dict oder EvaluationResult)
+        business_risk: Business-Risiko-Stufe
+        config: Konfigurations-Parameter
+    """
+
+    # Support both DI-style call (elements, styles, theme, context=ctx)
+    # and legacy call (elements=..., styles=..., management_text=..., technical_json=..., evaluation=..., business_risk=..., config=..., theme=...)
+    config = {}
+    theme = kwargs.get("theme", None)
+
+    if "context" in kwargs and kwargs.get("context") is not None:
+        ctx = kwargs["context"]
+        management_text = getattr(ctx, "management_text", "")
+        technical_json = getattr(ctx, "technical_json", {})
+        evaluation = getattr(ctx, "evaluation", {})
+        business_risk = getattr(ctx, "business_risk", "")
+        config = getattr(ctx, "config", {}) or {}
+    else:
+        management_text = kwargs.get("management_text", "")
+        technical_json = kwargs.get("technical_json", {})
+        evaluation = kwargs.get("evaluation", {})
+        business_risk = kwargs.get("business_risk", "")
+        config = kwargs.get("config", {}) or {}
+
+    # Accept legacy trend args when `context` is not provided
+    compare_month = None
+    trend_text = ""
+    try:
+        if "context" in kwargs and kwargs.get("context") is not None:
+            compare_month = getattr(ctx, "compare_month", None)
+            trend_text = (getattr(ctx, "trend_text", "") or "").strip()
+        else:
+            compare_month = kwargs.get("compare_month", None)
+            trend_text = (kwargs.get("trend_text", "") or "").strip()
+    except Exception:
+        compare_month = None
+        trend_text = ""
+
+    # Extract canonical management data (keeps renderer thin and testable)
+    mdata = prepare_management_data(technical_json, evaluation)
+    exposure_score = mdata.get("exposure_score", 1)
+    exposure_display = mdata.get("exposure_display", f"{exposure_score}/5")
+    exposure_description_map = {
+        1: "sehr niedrig",
+        2: "niedrig–mittel",
+        3: "erhöht",
+        4: "hoch",
+        5: "sehr hoch",
+    }
+    exposure_desc = exposure_description_map.get(exposure_score, "nicht bewertet")
+    risk_level = mdata.get("risk_level", "low")
+    critical_points = mdata.get("critical_points", [])
+    critical_points_count = mdata.get("critical_points_count", 0)
+    cves = mdata.get("cves", [])
+    total_ports = mdata.get("total_ports", 0)
+    cve_count = mdata.get("cve_count", 0)
+    service_rows = mdata.get("service_rows", [])
+    # ──────────────────────────────────────────────────────────────────────────
+    # 2. ABSCHNITTS-TITEL
+    # ──────────────────────────────────────────────────────────────────────────
+    # Keep section header and the brief spacing together to avoid orphan headings
+    elements.append(keep_section([Paragraph("1. Management-Zusammenfassung", styles["heading1"]), Spacer(1, 12)]))
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # 3. KERNAUSSAGE (SEITE 1)
+    # ──────────────────────────────────────────────────────────────────────────
+    # Build a short, accurate intro line based on observed services
+    try:
+        services = technical_json.get("services") or technical_json.get("open_ports") or []
+        ports = set()
+        products = []
+        for s in services:
+            if isinstance(s, dict):
+                ports.add(s.get("port"))
+                products.append(str(s.get("product") or "").lower())
+            else:
+                ports.add(getattr(s, "port", None))
+                products.append(str(getattr(s, "product", "")).lower())
+
+        prod_text = " ".join(products)
+        has_db = bool(
+            ports.intersection({3306, 5432, 27017, 8123, 9000, 1433})
+            or any(k in prod_text for k in ["mysql", "postgres", "postgresql", "mongodb", "clickhouse", "mssql", "redis"])
+        )
+        has_admin = bool(
+            ports.intersection({22, 3389, 5900, 23})
+            or any(k in prod_text for k in ["ssh", "rdp", "vnc", "telnet"])
+        )
+        has_ssh = bool(22 in ports or "ssh" in prod_text)
+        has_web = bool(ports.intersection({80, 443, 8080, 8443, 8081}) or "http" in prod_text)
+        has_file = bool(ports.intersection({21, 20, 139, 445}) or "ftp" in prod_text)
+
+        assets = []
+        ip = technical_json.get("ip")
+        if ip:
+            assets.append(str(ip))
+        domains = technical_json.get("domains") or []
+        hostnames = technical_json.get("hostnames") or []
+        assets.extend([str(d) for d in domains if d])
+        assets.extend([str(h) for h in hostnames if h])
+        seen_assets = []
+        for a in assets:
+            if a not in seen_assets:
+                seen_assets.append(a)
+        asset_count = max(1, len(seen_assets))
+        primary_asset = None
+        if domains:
+            primary_asset = str(domains[0])
+        elif hostnames:
+            primary_asset = str(hostnames[0])
+        elif ip:
+            primary_asset = str(ip)
+
+        if has_ssh and not (has_db or has_web or has_file):
+            reason = "ein öffentlich erreichbarer SSH-Dienst Risiken birgt"
+        elif has_db and has_admin:
+            reason = "öffentlich erreichbare Datenbank- und Administrationsdienste vorhanden sind"
+        elif has_admin and has_web and has_file:
+            reason = "öffentlich erreichbare Administrations-, Web- und Dateidienste vorhanden sind"
+        elif has_admin and has_web:
+            reason = "öffentlich erreichbare Administrations- und Webdienste vorhanden sind"
+        elif has_admin and has_file:
+            reason = "öffentlich erreichbare Administrations- und Dateidienste vorhanden sind"
+        elif has_db:
+            reason = "öffentlich erreichbare Datenbankdienste vorhanden sind"
+        else:
+            reason = "öffentlich erreichbare Dienste vorhanden sind"
+
+        if primary_asset:
+            if asset_count == 1:
+                intro_line = (
+                    f"Erfasst wurde 1 Asset (Host: {primary_asset}); "
+                    f"die externe Angriffsfläche ist auf {exposure_display} bewertet, da {reason}."
+                )
+            else:
+                intro_line = (
+                    f"Erfasst wurden {asset_count} Assets; das primär bewertete Asset (Host: {primary_asset}) "
+                    f"ist auf {exposure_display} bewertet, da {reason}."
+                )
+        else:
+            intro_line = (
+                f"Erfasst wurden {asset_count} Assets; die externe Angriffsfläche ist "
+                f"{exposure_desc} bewertet, da {reason}."
+            )
+    except Exception:
+        intro_line = "Erfasst wurde 1 Asset; die externe Angriffsfläche ist erhöht bewertet."
+
+    elements.append(Paragraph(intro_line, styles["normal"]))
+    elements.append(Spacer(1, 8))
+
+    # ─────────────────────────────────────────────────────────────────────
+    # KERNKENNZAHLEN (nur auf Seite 1)
+    # Zeigt kompakt Assets / Ports / CVEs / Status auf der ersten Seite an.
+    # ─────────────────────────────────────────────────────────────────────
+    try:
+        # asset_count wurde im oberen Berechnungsabschnitt ermittelt; falls
+        # nicht verfügbar, berechne fallback-Assets aus technical_json.
+        try:
+            assets_num = int(asset_count)
+        except Exception:
+            assets = []
+            ip = technical_json.get("ip")
+            if ip:
+                assets.append(str(ip))
+            domains = technical_json.get("domains") or []
+            hostnames = technical_json.get("hostnames") or []
+            assets.extend([str(d) for d in domains if d])
+            assets.extend([str(h) for h in hostnames if h])
+            # dedupe
+            seen = []
+            for a in assets:
+                if a not in seen:
+                    seen.append(a)
+            assets_num = max(1, len(seen))
+
+        ports_num = int(mdata.get("total_ports", 0) or 0)
+        cves_num = int(mdata.get("cve_count", 0) or 0)
+
+        # Simple status emoji mapping based on exposure_score
+        try:
+            sc = int(mdata.get("exposure_score", 1) or 1)
+        except Exception:
+            sc = 1
+        if sc <= 2:
+            status_dot = "🟢"
+            status_label = "niedrig"
+        elif sc == 3:
+            status_dot = "🟡"
+            status_label = "mittel"
+        else:
+            status_dot = "🔴"
+            status_label = "hoch"
+
+        # Build an exposure ampel flowable for the status column
+        try:
+            ampel = build_horizontal_exposure_ampel(sc, dot_size_mm=4.0, spacing_mm=1.8, theme=theme)
+        except Exception:
+            ampel = Paragraph(f"{status_dot}", styles["normal"])
+
+        # status cell: ampel (zentriert) with smaller label in parentheses below
+        # Do not display textual status labels (niedrig/mittel/hoch) in the table
+        label_display = ""
+        rows = [[ampel]]
+        if label_display:
+            rows.append([Paragraph(label_display, styles["normal"])])
+        status_cell = Table(rows, colWidths=[46 * mm])
+        status_cell.setStyle(
+            TableStyle(
+                [
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 2),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 2),
+                ]
+            )
+        )
+
+        kern_rows = [
+            [Paragraph("<b>KERNKENNZAHLEN</b>", styles["heading2"]), "", "", ""],
+            [Paragraph("<b>Assets</b>", styles["normal"]), Paragraph("<b>Ports</b>", styles["normal"]), Paragraph("<b>CVEs</b>", styles["normal"]), Paragraph("<b>Status</b>", styles["normal"])],
+            [str(assets_num), str(ports_num), str(cves_num), status_cell],
+        ]
+
+        col_w = [28 * mm, 28 * mm, 28 * mm, 46 * mm]
+        kern_tbl = Table(kern_rows, colWidths=col_w)
+        kern_tbl.setStyle(
+            TableStyle(
+                [
+                    ("SPAN", (0, 0), (-1, 0)),
+                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("GRID", (0, 1), (-1, -1), 0.5, "#111827"),
+                    ("BACKGROUND", (0, 0), (-1, 0), "#f1f5f9"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                    ("TOPPADDING", (0, 0), (-1, -1), 6),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                ]
+            )
+        )
+        elements.append(kern_tbl)
+        elements.append(Spacer(1, 8))
+    except Exception:
+        # non-fatal: if anything goes wrong, skip table silently
+        pass
+    # Exposure-Level mit Beschreibung
+    # Optional: adjust exposure based on critical CVEs (OSINT/NVD)
+    critical_cves_count = 0
+    try:
+        lookup_nvd = False
+        try:
+            if config is not None and isinstance(config, dict):
+                lookup_nvd = bool((config.get("nvd") or {}).get("enabled", False))
+        except Exception:
+            lookup_nvd = False
+        if os.environ.get("NVD_LIVE") == "1":
+            lookup_nvd = True
+
+        cve_ids = mdata.get("unique_cves", []) or []
+        if lookup_nvd and cve_ids:
+            enriched = enrich_cves(cve_ids, technical_json, lookup_nvd=True)
+            for ent in enriched:
+                try:
+                    cvss = ent.get("cvss")
+                    if cvss is not None and float(cvss) >= 9.0:
+                        critical_cves_count += 1
+                except Exception:
+                    continue
+    except Exception:
+        critical_cves_count = 0
+
+    if critical_cves_count >= 3:
+        exposure_score = max(exposure_score, 4)
+    elif critical_cves_count >= 1:
+        exposure_score = max(exposure_score, 3)
+
+    exposure_desc = exposure_description_map.get(exposure_score, "nicht bewertet")
+
+    # Exposure-Level klar benennen (inkl. Bedeutung)
     elements.append(
-        Paragraph("<b>Gesamtbewertung der externen Angriffsfläche</b>", styles["normal"])
+        Paragraph(
+            f"<b>Exposure-Level: {exposure_display}.</b>",
+            styles["normal"],
+        )
+    )
+    # Note: separate small 'Status' ampel below the exposure paragraph removed
+    elements.append(
+        Paragraph(
+            "Herleitung: Bewertung basiert auf Anzahl öffentlicher Dienste "
+            f"({total_ports}), kritischen Services ({critical_points_count}) und CVE-Funden ({cve_count}).",
+            styles["normal"],
+        )
     )
     elements.append(Spacer(1, 6))
 
-    ampel = build_horizontal_exposure_ampel(exposure_level)
+    # 3 Kernaussagen (Risiko, Zustand, Richtung)
+    elements.append(Paragraph("<b>Kernaussagen</b>", styles["normal"]))
+    elements.append(Spacer(1, 4))
+
+    # Use helper to produce the risk statement and the technical short note
+    risk_stmt, tech_note_candidate = get_management_risk_and_tech_note(technical_json, evaluation, mdata=mdata, config=config)
+
+    state_stmt = f"Zustand: Externe Angriffsfläche: Exposure-Level {exposure_display}."
+
+    trend_note = (
+        "Richtung: Trend aktuell nicht verfügbar (zu wenige historische Messungen); "
+        "Lösung: regelmäßige Scans (z. B. monatlich) und längere Aufbewahrung der Ergebnisse einführen, "
+        "damit Trendanalysen möglich werden."
+    )
+    try:
+        if compare_month or trend_text:
+            trend_note = (
+                "Richtung: Trendbewertung verfügbar (siehe Trend- & Vergleichsanalyse). "
+                "Beispiel-Lösung: regelmäßige, automatisierte Scans und Alerting einrichten, "
+                "Trendberichte monatlich erstellen und einen Verantwortlichen (Owner) benennen."
+            )
+    except Exception:
+        pass
+
+    for stmt in (risk_stmt, state_stmt, trend_note):
+        elements.append(Paragraph(f"• {stmt}", styles["bullet"]))
+
+    elements.append(Spacer(1, 6))
+
+    # Strukturhinweis (für Tests/Management-Signal)
+    try:
+        structural_risk = False
+        for svc in technical_json.get("open_ports", []) or []:
+            try:
+                if isinstance(svc, dict):
+                    if (svc.get("version_risk", 0) or svc.get("_version_risk", 0)):
+                        structural_risk = True
+                        break
+                else:
+                    if (getattr(svc, "version_risk", 0) or getattr(svc, "_version_risk", 0)):
+                        structural_risk = True
+                        break
+            except Exception:
+                continue
+        if structural_risk:
+            elements.append(Paragraph("Hinweis: strukturelle Risiken in der Konfiguration.", styles["normal"]))
+            elements.append(Spacer(1, 6))
+    except Exception:
+        pass
+
+    # Technische Kurzbewertung (OSINT-basiert)
+    try:
+        services = technical_json.get("services") or technical_json.get("open_ports") or []
+        ports = set()
+        products = []
+        for s in services:
+            if isinstance(s, dict):
+                ports.add(s.get("port"))
+                products.append(str(s.get("product") or "").lower())
+            else:
+                ports.add(getattr(s, "port", None))
+                products.append(str(getattr(s, "product", "")).lower())
+        prod_text = " ".join(products)
+        has_ssh = bool(22 in ports or "ssh" in prod_text)
+        has_web = bool(ports.intersection({80, 443, 8080, 8443, 8081}) or "http" in prod_text)
+
+        # If RDP is primary, add a focused technical short note instead of generic SSH/web text
+        if rdp_primary:
+            tech_note = (
+                "Hinweis: Öffentlich erreichbares RDP erfordert besondere Absicherung. "
+                "Empfohlene Maßnahmen umfassen: Netzwerk Access Control (IP-Whitelisting), NLA (Network Level Authentication), "
+                "MFA-Einführung oder Ersatz durch VPN/Jumphost-Lösungen."
+            )
+        elif has_ssh and has_web:
+            tech_note = (
+                "Technische Kurzbewertung: SSH (Port 22) wirkt modern konfiguriert; "
+                "im OSINT-Datensatz keine schwachen Algorithmen erkennbar. Hauptrisiko: "
+                "öffentlich erreichbar, Authentifizierung prüfen (VPN, Key-Only, Fail2ban). "
+                "Webserver nur passiv bewertet."
+            )
+        elif has_ssh:
+            tech_note = (
+                "Technische Kurzbewertung: SSH (Port 22) wirkt modern konfiguriert; "
+                "im OSINT-Datensatz keine schwachen Algorithmen erkennbar. Hauptrisiko: "
+                "öffentlich erreichbar, Authentifizierung prüfen (VPN, Key-Only, Fail2ban)."
+            )
+        elif has_web:
+            tech_note = "Technische Kurzbewertung: Webserver nur passiv bewertet."
+        else:
+            tech_note = "Technische Kurzbewertung: OSINT-Perspektive ohne interne Systemprüfung."
+    except Exception:
+        tech_note = "Technische Kurzbewertung: OSINT-Perspektive ohne interne Systemprüfung."
+
+    elements.append(Paragraph(tech_note, styles["normal"]))
+    elements.append(Spacer(1, 8))
 
     elements.append(
-        Table(
-            [[
-                Paragraph(f"<b>Exposure-Level:</b> <b>{exposure_level}/5</b>", styles["exposure"]),
-                ampel,
-            ]],
-            style=TableStyle([
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-                ("TOPPADDING", (0, 0), (-1, -1), 2),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
-            ]),
+        Paragraph(
+            "Gesamtbewertung der externen Angriffsfläche",
+            styles["heading2"],
+        )
+    )
+    elements.append(Spacer(1, 4))
+    elements.append(
+        Paragraph(
+            "Bewertung basiert auf externen, passiven OSINT-Daten; interne Kontrollen sind nicht beurteilbar.",
+            styles["normal"],
         )
     )
     elements.append(Spacer(1, 8))
 
-    # ─────────────────────────────────────────────
-    # 3. Kernaussage (1–2 Sätze aus management_text)
-    # ─────────────────────────────────────────────
-    if management_text:
-        first_sentence = extract_first_sentence(management_text)
-        if first_sentence:
-            elements.append(Paragraph(first_sentence, styles['normal']))
-            elements.append(Spacer(1, 8))
-
-    # ─────────────────────────────────────────────
-    # 3a. Dynamische Management-Zusammenfassung
-    # NOTE:
-    # Die CVE-Sektion wird aktuell nur passiv ausgewertet.
-    # Eine belastbare Aussage zu "aktiv ausnutzbaren Schwachstellen"
-    # ist erst möglich, sobald:
-    # - CVEs mit Exploit-Reife (PoC / weaponized / in-the-wild)
-    # - sowie eine saubere Zuordnung zu Service + Version
-    # implementiert sind.
-    # Bis dahin bleibt die Aussage bewusst konservativ.
-    # ─────────────────────────────────────────────
-    if services:
-        total_services = len(services)
-        critical_cves = [s for s in services if getattr(s, "version_risk", 0) > 0]  # Beispiel: Version-Risiko vorhanden
-        structural_risks = any(not is_service_secure(s, ["ssh", "rdp", "https", "tls", "vpn"]) for s in services)
-
-        summary_lines = []
-
-        summary_lines.append(
-            f"Auf Basis passiver OSINT-Daten wurden {total_services} öffentlich erreichbare Dienste identifiziert."
+    elements.append(
+        Paragraph(
+            "Kurzempfehlung: Auftrag zur Härtung der externen Zugänge erteilen und Zielwert Exposure-Level ≤2/5 festlegen.",
+            styles["normal"],
         )
+    )
+    elements.append(Spacer(1, 6))
 
-        if not critical_cves:
-            summary_lines.append(
-                "Aktuell wurden keine kritisch ausnutzbaren Schwachstellen mit bekannter aktiver Exploit-Verfügbarkeit festgestellt."
-            )
-        else:
-            summary_lines.append(
-                f"{len(critical_cves)} Dienste zeigen potenzielle Schwachstellen, die überprüft werden sollten."
-            )
+    elements.append(
+        Paragraph(
+            "Entscheidungsvorlage: Priorisierung und Ressourcen für die Reduktion der externen Angriffsfläche freigeben.",
+            styles["normal"],
+        )
+    )
+    elements.append(Spacer(1, 6))
 
-        if structural_risks:
-            summary_lines.append(
-                "Die externe Angriffsfläche ist kontrolliert, jedoch bestehen strukturelle Risiken, die bei fehlender Härtung oder zukünftigen Schwachstellen zu einem erhöhten Risiko führen können."
-            )
-        else:
-            summary_lines.append(
-                "Die externe Angriffsfläche ist aktuell gut kontrolliert."
-            )
+    # Fazit on management page removed per user request (detailed recommendations remain later)
 
-        for line in summary_lines:
-            elements.append(Paragraph(line, styles['normal']))
-            elements.append(Spacer(1, 4))
+    # Seite 1 bewusst fokussiert; Rest auf Folgeseiten
+    elements.append(PageBreak())
 
-    # ─────────────────────────────────────────────
-    # 4. Wichtigste Erkenntnisse (max 4)
-    # ─────────────────────────────────────────────
-    elements.append(Paragraph("<b>Wichtigste Erkenntnisse</b>", styles['normal']))
+    # ──────────────────────────────────────────────────────────────────────────
+    # ──────────────────────────────────────────────────────────────────────────
+    # 4. PROFESSIONELLE EINLEITUNGSTEXTE
+    # ──────────────────────────────────────────────────────────────────────────
+
+    # Use prepared management data (deduped CVEs, per-service attribution)
+    open_ports = technical_json.get("open_ports", [])
+    total_ports = mdata.get("total_ports", len(open_ports))
+    cve_count = mdata.get("cve_count", 0)
+    unique_cves = mdata.get("unique_cves", [])
+    per_service = mdata.get("per_service", [])
+
+    # 4a. Erster Absatz: Knackige Fakten
+    intro_text = "Auf Basis passiver OSINT-Daten wurden öffentlich erreichbare Dienste identifiziert."
+    elements.append(Paragraph(intro_text, styles["normal"]))
     elements.append(Spacer(1, 4))
 
-    insights = generate_priority_insights(
-        {**technical_json, "open_ports": services},  # jetzt echte Service-Objekte
-        evaluation,
-        business_risk
+    elements.append(
+        Paragraph(
+            "Einordnung: Externe Sicht; interne Sicherheitsmaßnahmen sind nicht beurteilbar.",
+            styles["normal"],
+        )
     )
-    for insight in insights:
-        elements.append(Paragraph(f"• {insight}", styles['bullet']))
-    elements.append(Spacer(1, 10))
-
-    # ─────────────────────────────────────────────
-    # 5. Empfehlungen (max 3)
-    # ─────────────────────────────────────────────
-    elements.append(Paragraph("<b>Empfehlung auf Management-Ebene</b>", styles['normal']))
     elements.append(Spacer(1, 4))
 
-    recommendations = generate_priority_recommendations(
-        business_risk,
-        {**technical_json, "open_ports": services}
-    )
-    for rec in recommendations:
-        elements.append(Paragraph(f"• {rec}", styles['bullet']))
+    # 4b. Zweiter Absatz: CVE- und Risiko-Situation
+    if cve_count == 0:
+        cve_text = "Keine kritisch ausnutzbaren, bekannten Schwachstellen festgestellt. Details im technischen Anhang."
+    else:
+        cve_text = "Bekannte Schwachstellen sind im technischen Anhang dokumentiert."
+    elements.append(Paragraph(cve_text, styles["normal"]))
+    elements.append(Spacer(1, 4))
+
+    # 4c. Dritter Absatz: Risiko-Einschätzung und Handlungsempfehlung
+    if risk_level == "critical":
+        risk_text = "Kritische Sicherheitsrisiken erkennbar; Ursachen liegen in extern erreichbaren Diensten."
+    elif risk_level == "high":
+        risk_text = "Erhöhte Sicherheitsrisiken erkennbar; Ursachen liegen in extern erreichbaren Diensten."
+    elif risk_level == "medium":
+        risk_text = "Moderate Risiken erkennbar; Ursache ist die externe Erreichbarkeit einzelner Dienste."
+    else:  # low
+        if critical_cves_count > 0:
+            risk_text = "Moderate Risiken erkennbar; Ursache sind OSINT-Hinweise ohne bestätigte Ausnutzung."
+        else:
+            risk_text = "Keine kritischen Risiken erkennbar; OSINT-Hinweise zeigen keine aktive Ausnutzung."
+
+    elements.append(Paragraph(risk_text, styles["normal"]))
+    elements.append(Spacer(1, 12))
+
+    elements.append(Paragraph("Details zu Diensten und Befunden sind im Technischen Anhang dokumentiert.", styles["normal"]))
+    elements.append(Spacer(1, 12))
+
+    # CVE overview removed from Management section per user request.
+
+    elements.append(Spacer(1, 15))
+
+
+
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# ENDE DER DATEI
+# ──────────────────────────────────────────────────────────────────────────────

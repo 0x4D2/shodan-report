@@ -1,20 +1,78 @@
-# Shodan Report — Automatisierte externe Sicherheitsanalyse (OSINT)
 
-**Status: MVP FUNKTIONIERT - Interne Testversion mit professionellem Layout**
+## Shodan Report — Kurzüberblick
 
-Kurzfassung:  
-Automatisierter Security Report Generator für externe Angriffsflächenanalyse. Erstellt professionelle monatliche Berichte basierend auf Shodan-Snapshots mit vollständiger Pipeline von der Datenerfassung bis zur revisionssicheren Archivierung.
+`shodan-report` erzeugt aus Shodan‑Snapshots reproduzierbare PDF‑Reports mit Executive Summary und technischem Anhang.
+
+Wichtige Links:
+
+- Detaillierte Entwickler‑ und Architektur‑Dokumentation: [docs/DETAILED_README.md](docs/DETAILED_README.md)
+- Beispiele & Demo: [examples/README.md](examples/README.md)
+
+Schnellstart (Kurz):
+
+1. Clone & install
+
+```powershell
+git clone <repo-url>
+cd shodan-report
+python -m venv .venv
+.venv\Scripts\activate
+pip install -e .
+```
+
+2. Set API key
+
+```powershell
+$env:SHODAN_API_KEY = "DEIN_API_KEY"
+```
+
+3. Run example
+
+```powershell
+shodan-report --customer "Testkunde" --ip "8.8.8.8" --month "2025-01"
+```
+
+Konfiguration: siehe `config/example.yaml` für ein minimal Beispiel.
+
+Bei tieferen Details zur Architektur, Evaluation, CVE‑Enrichment oder PDF‑Templates öffne bitte [docs/DETAILED_README.md](docs/DETAILED_README.md).
+
+- `NVD_LIVE=1` (Env): Erzwingt Live‑NVD‑Lookups (alternativ per Kundenconfig `nvd.enabled`).
+- `NVD_API_KEY` (optional): NVD API Key für höhere Raten/Limits; wird von `NvdClient` und `scripts/fetch_nvd_feeds.py` unterstützt.
+- `fetch_nvd_feeds.py --years 2026,2025` lädt NVD JSON in `.cache/nvd/` zur Offline‑Nutzung.
+
+Empfohlene Nutzung / Befehle:
+
+```powershell
+# Offline: NVD Jahresfeeds herunterladen (einmalig / regelmäßig)
+python scripts/fetch_nvd_feeds.py --years 2026,2025
+
+# Report mit NVD Lookup (Live‑API)
+setx NVD_LIVE 1
+setx NVD_API_KEY "DEIN_NVD_API_KEY"  # optional
+shodan-report --customer "Kunde" --ip "1.2.3.4" --month "2026-01"
+```
+
+Hinweise & Empfehlungen:
+- Performance & Ratenlimits: NVD Live‑API hat Rate‑Limits; für Batch‑Jobs empfiehlt sich das Vorladen der NVD‑Feeds oder Nutzung eines API‑Keys.
+- Cache & TTL: Standard‑TTL ist 7 Tage; bei Bedarf TTL oder Cache‑Pfad per Aufruf an `enrich_cves(..., cache_ttl=..., cache_path=...)` anpassen.
+- Konfigurierbarkeit: Scoring‑Schwellen (z. B. wann CVE→risk_score) sollten in `evaluation.config` ausgelagert werden — derzeit sind Schwellen in Code festcodiert (TODO).
+- Testbarkeit: Unit‑Tests mocken `NvdClient` und `CisaClient` (siehe `src/shodan_report/tests/`), live NVD‑Tests sind per Env Flag (`NVD_LIVE_TESTS=1`) deaktiviert, es gibt Dummy‑Skripte zum Demo‑Generieren.
+
+Sicherheits‑/Rechtsinfo:
+- NVD und CISA sind öffentliche Datenquellen; Angaben sind OSINT‑Indizien und sollten in Management‑Texten entsprechend als Hinweise und nicht als definitive Aussagen dargestellt werden.
 
 ---
 
-## WICHTIGER HINWEIS
 
-**AKTUELLER STATUS:** Interne Testversion - Noch nicht kundenreif  
-• PDF zeigt **hartcodierte Beispielinhalte** (Layout steht 100%)  
-• Echte Datenanalyse funktioniert, muss nur noch im PDF sichtbar gemacht werden  
-• 82/82 Tests bestanden - Alle Kernfunktionen laufen  
 
 ---
+
+## Notes / Known issues
+
+- Die Produkt-/Versionserkennung wurde verbessert, befindet sich aber noch in der Feinjustierung. Nicht alle Versionen werden in allen Bannern zuverlässig erkannt.
+- In der Management‑Zusammenfassung werden bewusst nur Versionen mit mittlerer oder hoher Konfidenz angezeigt, um irreführende Angaben zu vermeiden. Das bedeutet, dass einige Versionsinformationen nicht im Executive‑Summary auftauchen, auch wenn sie technisch im Snapshot vorkommen.
+- Die geplante `Top Vulnerability`‑Spalte im Management‑Table ist noch nicht aktiviert; diese wird nach weiterer CVE‑Zuordnung und Verifikation freigeschaltet.
+
 
 ## SCHNELLSTART
 
@@ -37,9 +95,11 @@ shodan-report --customer "Testkunde" --ip "8.8.8.8" --month "2025-01" --verbose
 shodan-report --customer "Testkunde" --ip "8.8.8.8" --month "2025-01" --compare "2024-12"
 ```
 
+Hinweis: Wenn kein `--compare` angegeben ist, wird automatisch der vorherige Monat verwendet (falls Snapshot vorhanden).
+
 ---
 
-## PROFESSIONELLER REPORT-AUFBAU (7 Abschnitte)
+## PROFESSIONELLER REPORT-AUFBAU (9 Abschnitte)
 
 Jeder Report enthält automatisch:
 
@@ -95,6 +155,56 @@ disclaimer:
 
 ---
 
+## WICHTIG: Hochprioritäre Konfiguration & Betriebshinweise
+
+Diese Abschnitte sind für Betrieb und sichere Nutzung des Tools relevant — bitte lesen und in Produktionsumgebungen entsprechend anpassen.
+
+- **Umgebungsvariablen (minimale Auswahl)**
+  - **`SHODAN_API_KEY`**: Pflicht — API Key für Shodan (aus .env oder Umgebung).
+  - **`NVD_API_KEY`**: Optional — API Key für NVD (höhere Raten/Quotas).
+  - **`NVD_LIVE`**: Setze `1`, um Live‑NVD‑Lookups zu erzwingen (überschreibt Kundenconfig `nvd.enabled`).
+  - **`NVD_LIVE_TESTS`** / **`NVD_LIVE`**: Wird in Tests/Debug‑Flows verwendet; nutze nur lokal/CI kontrolliert.
+
+- **Wichtiges Kunden‑YAML (Ergänzung / Empfehlung)**
+  - Ergänze in `config/customers/<name>.yaml` zumindest folgende Felder:
+
+```yaml
+report:
+  include_trend_analysis: true   # true/false
+  debug_mdata: false             # false in Prod: verhindert .mdata.json Sidecar
+
+nvd:
+  enabled: false                 # true für automatische NVD‑Lookups (oder setze NVD_LIVE=1)
+```
+
+- **Evaluation / Scoring (Kurzbeschreibung)**
+  - Eingang: `AssetSnapshot` (IP, Services, Banners, vulns).
+  - Engine: `EvaluationEngine.evaluate(snapshot)` → `EvaluationResult` mit Feldern:
+    - `risk` (Enum `RiskLevel`: CRITICAL/HIGH/MEDIUM/LOW)
+    - `exposure_score` (int 1–5)
+    - `critical_points` (List[str])
+    - `recommendations` (List[str])
+  - Wichtige Heuristiken:
+    - `_calculate_exposure_score` verwendet eine Kombination aus `risk_score` (Summen aus Service‑Evaluatoren) und Port‑Anzahl (Schwellen intern: 1–5).
+    - `_determine_risk_level` prüft `critical_points` auf Schlüsselwörter (z.B. `rdp`, `cve`, `unverschlüsselt`) und kann `CRITICAL` direkt setzen.
+  - Hinweis: Scoring‑Schwellen sind aktuell im Code festgelegt; für Anpassungen nutze `EvaluationConfig` bzw. wende Pull‑Request an.
+
+- **`evaluation_result_to_dict` (PDF‑Mapping)**
+  - Der Runner wandelt `EvaluationResult` in ein Dict mit folgenden erwarteten Feldern: `risk`, `risk_score`, `exposure_score`, `exposure_level` (z.B. `5/5`), `critical_points`, `critical_services`, `has_ssh/has_rdp/has_mysql`, Port‑Listen.
+  - Achtung: Im Code gibt es doppelte Zuweisungen von `risk_str` — das ist dokumentiert und sollte bei Template‑Änderungen geprüft werden.
+
+- **CVE / NVD / CISA (Betrieb & Cache)**
+  - Ablauf: `generate_pdf` ruft intern `prepare_management_data()` und optional `enrich_cves()` auf. `enrich_cves` baut zuerst lokale Zuordnungen (CVE→Ports/CPEs/CVSS) und kann danach NVD/CISA ergänzen.
+  - Konfig‑Priorität: `NVD_LIVE=1` (Env) überschreibt `nvd.enabled` in Kundenconfig.
+  - Cache‑Pfad & Offline: Standardcache liegt unter `.cache/shodan_report/cve_cache.json` und NVD‑Feeds unter `.cache/nvd/`. Nutze `scripts/fetch_nvd_feeds.py` zum Vorladen für Offline‑Betrieb.
+  - CISA KEV: Treffer werden markiert (`exploit_status = "public"`) und Quelle `cisa_kev` vermerkt.
+
+- **Privacy / Sidecar‑Daten**
+  - `generate_pdf` schreibt standardmäßig ein `.mdata.json` Sidecar neben dem PDF, wenn `debug_mdata` aktiv ist (default im Code war `True` — empfehlenswert: setze `report.debug_mdata: false` in Kundenconfig für Prod).
+  - Sidecar enthält eine stark gesäuberte Sicht auf Services (Banners werden getrimmt, lange Base64‑Sequenzen redigiert). Trotzdem: diese Dateien können sensible Inhalte enthalten — behandeln wie vertrauliche Artefakte oder deaktivieren.
+
+---
+
 ## AUTOMATISIERUNG
 
 ### Batch-Verarbeitung mit `jobs.txt`
@@ -106,6 +216,11 @@ Kunde3 172.16.0.1 2025-01 --config config/customers/kunde3.yaml
 
 ```bash
 python scripts/run-jobs-direct.py
+```
+
+Lokale Änderungen direkt testen (ohne installierte Version):
+```powershell
+$env:USE_LOCAL_SRC=1; python scripts/run-jobs-direct.py
 ```
 
 ### PowerShell Script
@@ -120,7 +235,7 @@ python -m shodan_report --customer "Enterprise AG" --ip "203.0.113.10" --month "
 ```
 shodan-report/
 ├── src/shodan_report/
-│   ├── cli.py                    # CLI Entry Point
+│   ├── cli.py                   # CLI Entry Point
 │   ├── core/runner.py           # Haupt-Pipeline
 │   ├── pdf/                     # Professionelle PDF-Generierung
 │   │   ├── pdf_manager.py       # Layout-Koordination (6703 Zeilen → WIRD REFACTORED)
@@ -131,13 +246,71 @@ shodan-report/
 │   │   └── version_manager.py   # Versionsverwaltung
 │   ├── evaluation/              # Risikobewertung
 │   ├── reporting/               # Textgenerierung
-│   └── tests/                   # 82/82 Tests bestanden ✓
+│   └── tests/                   # Tests (siehe Teststatus oben)
 ├── config/customers/            # Kundenkonfigurationen
 ├── archive/                     # Revisionssichere Ablage
 │   └── {kunde}/{YYYY-MM}/{IP}_v{N}.pdf
 ├── reports/                     # Temporäre PDFs
 └── scripts/run-jobs-direct.py  # Batch-Verarbeitung
 ```
+
+## ARCHITEKTUR & WORKFLOW (Detaillierte Erklärung)
+
+Zweck: `shodan-report` ist ein automatisierter Report-Generator für externe Sicherheitsanalysen (OSINT). Ziel ist es, monatlich reproduzierbare, revisionssichere Reports zu erzeugen, die Management und Technik klare Handlungsfelder liefern.
+
+Pipeline (kurz und präzise, referenziert `src/shodan_report/core/runner.py`):
+
+- 1) Kundenkonfiguration laden (`load_customer_config`) — YAML per `config/customers/*`.
+- 2) Shodan API-Key aus Umgebung (`.env`) laden.
+- 3) Shodan-Daten abrufen (`ShodanClient.get_host`) und in ein internes `Snapshot`-Modell parsen (`parse_shodan_host`).
+- 4) Snapshot persistieren (`save_snapshot`) und optional historischen Snapshot laden (`load_snapshot`) für Trendanalyse.
+- 5) Trendanalyse durchführen (`analyze_trend`) — liefert menschlich lesbare `trend_text`.
+- 6) Evaluation mit `EvaluationEngine` (zentrale Komponente): aus dem `Snapshot` wird ein `EvaluationResult` erzeugt.
+- 7) Business-Risiko ableiten (`prioritize_risk`) — wird im Management-Teil verwendet.
+- 8) Management-Text generieren (`generate_management_text`) und HTML-Tags entfernen (Runner macht `re.sub`).
+- 9) Technischen Anhang bauen (`build_technical_data`).
+- 10) PDF erzeugen (`generate_pdf`) — `evaluation_result` wird vorher durch `evaluation_result_to_dict` in ein Template-kompatibles Dict umgewandelt.
+- 11) Report revisionssicher archivieren (`ReportArchiver.archive_report`) inklusive SHA256 & Versionierung.
+
+Wichtige Konzepte / Objekte:
+
+- `EvaluationEngine` (Empfohlen):
+  - Eingabe: `Snapshot` (von Shodan-parsing)
+  - Ausgabe: `EvaluationResult` mit klaren Attributen:
+    - `risk`: Enum `RiskLevel` (z.B. `CRITICAL`, `HIGH`, `MEDIUM`, `LOW`)
+    - `exposure_score`: Ganzzahl 1–5 (Exponiertheit)
+    - `critical_points`: Liste von Strings (kurze Problembeschreibungen)
+    - optional `messages`: zusätzliche Hinweise / Warnungen
+  - Gründe: zentrale, testbare, erweiterbare Bewertungslogik; ersetzt ältere, verstreute Funktionen.
+
+- `evaluation_result_to_dict(evaluation_result)` (Runner-Wrapper):
+  - Zweck: Normiert `EvaluationResult` in ein Dictionary, das das PDF-Template erwartet.
+  - Mapped Felder: `risk` → string (lowercase), `risk_score` (numerisch für Visualisierung), `exposure_score`, `exposure_level` (z.B. `5/5`), `critical_points_count`, `critical_services`, `has_ssh`/`has_rdp`/`has_mysql`, uvm.
+  - Hinweis: Anpassungen hier sind normal, wenn PDF-Templates oder Sections neue Felder benötigen.
+
+- Deprecation: `_calculate_exposure_level(critical_points: List[str])` ist im Runner als veraltet markiert — benutze stattdessen `evaluation_result.exposure_score` aus der `EvaluationEngine`.
+
+Debugging / Entwicklungshinweise (aus `runner.py`):
+
+- Der Runner enthält temporäre Debug-Prints (z.B. `Evaluation Dict nach Konvertierung`, `DEBUG: Evaluation Result vor PDF-Generierung`). Diese helfen beim Entwickeln, sollten vor Produktions-Run auf `verbose`/logging umgestellt oder entfernt werden.
+- Wenn Tests ImportError melden (z.B. fehlende Module unter `shodan_report.pdf.helpers`), prüfen: relative vs. absolute Imports und Paketstruktur (`src` in `pyproject.toml` ist korrekt eingestellt).
+
+Keine offenen Fragen (FAQ-basiert):
+
+- Q: Was ist die primäre Eingabe?  
+  A: Ein Shodan-Snapshot für eine IP (JSON → internal `Snapshot`).
+
+- Q: Wer berechnet das Risiko?  
+  A: `EvaluationEngine` liefert `EvaluationResult`; `prioritize_risk` wandelt das technischen Ergebnis in Business-Risk um.
+
+- Q: Was verwendet das PDF?  
+  A: `generate_pdf` erwartet die normalisierten Felder — `evaluation_result_to_dict` sorgt für Kompatibilität.
+
+- Q: Warum `_calculate_exposure_level` noch im Repo?  
+  A: Historischer Fallback; markiert als deprecated. Produktionscode soll `evaluation_result.exposure_score` nutzen.
+
+- Q: Wie gehe ich mit fehlschlagenden Tests um?  
+  A: `pytest -q` ausführen, Fehlermeldungen lesen (ImportErrors → Pfade/Init prüfen; AssertionErrors → Bewertungslogik/Defaultwerte prüfen). Siehe `TESTSTATUS` Abschnitt.
 
 ---
 
@@ -161,18 +334,10 @@ archive/
 
 ---
 
-## TESTSTATUS
+## TESTSTATUS (AKTUELL)
 
-```bash
-pytest  # 82/82 Tests erfolgreich ✅
+Tipp: Tests lokal ausführen mit `pytest -q` oder `pytest tests/<file>` und das Ergebnis als Status notieren.
 
-src/shodan_report/tests/
-├── integration/                 # Komplette Pipeline-Tests
-├── pdf/                        # PDF-Generierung
-├── archiver/                   # Archivierungslogik
-├── cli/                        # CLI-Parsing
-└── ...                         # Alle Module getestet
-```
 
 ---
 
@@ -203,15 +368,15 @@ Shodan API → AssetSnapshot → Evaluation → Reporting → PDF → Archiv
 - [x] AssetSnapshot Model & Daten-Normalisierung
 - [x] Regelbasierte Evaluation & Risiko-Priorisierung
 - [x] Management-Text Generierung
-- [x] Professionelles PDF-Layout (7 Abschnitte)
+- [x] Professionelles PDF-Layout (9 Abschnitte)
 - [x] Revisionssichere Archivierung (SHA256, Versionierung)
 - [x] Vollständige CLI mit allen Parametern
 - [x] Batch-Verarbeitung mit `jobs.txt`
-- [x] 82/82 Tests bestanden
+- [x] Tests vorhanden
 
 ### IN ARBEIT
-- [~] PDF-Inhalte dynamisieren (hartcodierte → echte Daten)
-- [~] Kundenkonfiguration voll integrieren
+- [~] PDF-Inhalte dynamisieren (einige Sections noch statisch)
+- [~] CVE-Integration: Parsing & Normalisierung (teilweise umgesetzt)
 
 ### ⏳ NÄCHSTE SCHRITTE (Priorisiert)
 1. **PDF-Inhalte dynamisieren** - Echte Daten statt Beispiele
@@ -229,6 +394,20 @@ Jeder Report enthält automatisch:
 > Dieser Bericht basiert auf öffentlich verfügbaren OSINT-Daten von Shodan.  
 > Er stellt keine vollständige Sicherheitsanalyse dar und ersetzt keinen Penetrationstest.  
 > Keine Garantie auf Vollständigkeit oder Richtigkeit. Dient ausschließlich zu Informationszwecken.
+
+---
+
+## Betriebs-Checklist (Kurz)
+
+Vor einem Produktionslauf bitte sicherstellen:
+
+- `SHODAN_API_KEY` ist gesetzt und gültig.
+- `report.debug_mdata: false` in der Kundenconfig (verhindert Erzeugung sensibler Sidecar‑Dateien `.mdata.json`).
+- `nvd.enabled` oder `NVD_LIVE` bewusst setzen (Live‑Lookups können Rate‑Limits verursachen).
+- Offline‑Betrieb: vorab `python scripts/fetch_nvd_feeds.py --years <JAHRE>` ausführen, damit `.cache/nvd/` verfügbar ist.
+- Logs/Monitoring: `generate_report_pipeline(..., verbose=True)` nur für Debug; in Produktion strukturierte Logs verwenden.
+
+Siehe auch `SECURITY.md` für Responsible Disclosure und Umgang mit sicherheitsrelevanten Meldungen.
 
 ---
 
@@ -260,4 +439,4 @@ Bei Fragen oder Problemen: Issues im Repository öffnen.
 MIT License - Siehe `LICENSE` Datei.
 
 ---
-*Letzte Aktualisierung: 09.01.2024 - MVP funktional, PDF-Layout komplett, Inhalte werden dynamisiert*
+*Letzte Aktualisierung: 20.01.2026 - MVP funktional, PDF-Layout komplett, Inhalte werden dynamisiert*

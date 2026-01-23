@@ -1,64 +1,31 @@
+"""Methodik & Grenzen der Analyse (kompakt).
+
+Nur die vereinbarten Bullet-Punkte werden hier ausgegeben.
 """
-Methodik & Grenzen der Analyse für PDF-Reports.
-"""
 
-from typing import List, Dict
-from reportlab.platypus import Spacer, Paragraph
+from typing import List, Dict, Any
+from reportlab.platypus import Paragraph, Spacer
 
 
-def create_methodology_section(elements: List, styles: Dict) -> None:
+def create_methodology_section(elements: List[Any], styles: Dict[str, Any], *args, **kwargs) -> None:
+    """Fügt die kompakte Methodik-Section mit vier Bullet-Punkten hinzu.
+
+    Diese Funktion ändert nur lokale PDF-Elemente und führt keine I/O-Operationen
+    außerhalb der PDF-Erzeugung durch.
     """
-    Erstelle Section mit Methodik und Grenzen der Analyse.
-    
-    Args:
-        elements: Liste der PDF-Elemente
-        styles: Dictionary mit PDF-Styles
-    """
-    elements.append(Spacer(1, 20))
-    elements.append(Paragraph("<b>6. Methodik & Grenzen der Analyse</b>", styles['heading2']))
-    elements.append(Spacer(1, 12))
-    
-    methodology_points = [
-        "<b>Ausschließlich passive OSINT-Daten:</b>",
-        "• Keine aktiven Scans oder Penetrationstests",
-        "• Nur öffentlich verfügbare Informationen",
-        "• Keine Authentifizierung oder Zugriff auf Systeme",
-        "",
-        "<b>Datengrundlage:</b>",
-        "• Shodan.io Scan-Ergebnisse",
-        "• Public Certificates & TLS-Konfigurationen",
-        "• DNS-Auflösungen und Banner-Grabbing",
-        "• Bekannte CVE-Datenbanken (NVD, Exploit-DB)",
-        "",
-        "<b>Limitationen & Ausschlüsse:</b>",
-        "• Keine Garantie auf Vollständigkeit",
-        "• Keine Aussage über interne Systeme",
-        "• Keine Simulation realer Angriffe",
-        "• Nicht öffentlich erreichbare Dienste werden nicht erfasst",
-        "• Dynamische IP-Adressen können verfälschte Ergebnisse zeigen",
-        "",
-        "<b>Zeitlicher Rahmen:</b>",
-        "• Momentaufnahme zum Analysezeitpunkt",
-        "• Keine Echtzeit-Überwachung",
-        "• Veränderungen nach Erstellung nicht erfasst"
-    ]
-    
-    for point in methodology_points:
-        if point.startswith("<b>"):
-            # Überschrift
-            elements.append(Paragraph(point, styles['normal']))
-        elif point.startswith("•"):
-            # Bullet Point
-            elements.append(Paragraph(point, styles['bullet']))
-        elif point == "":
-            # Leerzeile
-            elements.append(Spacer(1, 6))
-        else:
-            # Normaler Text
-            elements.append(Paragraph(point, styles['normal']))
-    
+
+    elements.append(Spacer(1, 18))
+    elements.append(Paragraph("6. Methodik & Grenzen der Analyse", styles.get("heading1") or styles.get("heading2") or styles.get("normal")))
     elements.append(Spacer(1, 8))
-    elements.append(Paragraph(
-        "<i>Diese Analyse ersetzt keinen Penetrationstest oder Sicherheitsaudit.</i>",
-        styles['disclaimer']
-    ))
+
+    bullets = [
+        "Ausschließlich passive OSINT-Daten (keine aktiven Scans)",
+        "Die Analyse stellt eine Momentaufnahme zum angegebenen Zeitpunkt dar",
+        "Keine Garantie auf Vollständigkeit",
+        "Keine Aussage über interne Systeme oder nicht öffentlich erreichbare Dienste",
+        "Keine Simulation realer Angriffe",
+    ]
+
+    for b in bullets:
+        elements.append(Paragraph(f"• {b}", styles.get("bullet") or styles.get("normal")))
+        elements.append(Spacer(1, 6))

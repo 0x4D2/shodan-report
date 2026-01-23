@@ -58,7 +58,12 @@ def test_analyze_trend_new_and_removed_ports_and_services(monkeypatch):
 def test_analyze_trend_no_changes(monkeypatch):
     monkeypatch.setattr(
         "shodan_report.reporting.trend.compare_snapshots",
-        lambda prev, curr: {"new_ports": [], "removed_ports": [], "new_services": [], "removed_services": []},
+        lambda prev, curr: {
+            "new_ports": [],
+            "removed_ports": [],
+            "new_services": [],
+            "removed_services": [],
+        },
     )
 
     snapshot = make_snapshot(
@@ -67,13 +72,21 @@ def test_analyze_trend_no_changes(monkeypatch):
         services=[Service(port=22, transport="tcp", product="ssh", version="8.1")],
     )
     trend = analyze_trend(snapshot, snapshot)
-    assert trend == "Keine signifikanten Veränderungen im Vergleich zum vorherigen Snapshot."
+    assert (
+        trend
+        == "Keine signifikanten Veränderungen im Vergleich zum vorherigen Snapshot."
+    )
 
 
 def test_analyze_trend_removed_service(monkeypatch):
     monkeypatch.setattr(
         "shodan_report.reporting.trend.compare_snapshots",
-        lambda prev, curr: {"new_ports": [], "removed_ports": [22], "new_services": [], "removed_services": ["ssh"]},
+        lambda prev, curr: {
+            "new_ports": [],
+            "removed_ports": [22],
+            "new_services": [],
+            "removed_services": ["ssh"],
+        },
     )
 
     prev = make_snapshot(
@@ -90,7 +103,12 @@ def test_analyze_trend_removed_service(monkeypatch):
 def test_analyze_trend_order_and_format(monkeypatch):
     monkeypatch.setattr(
         "shodan_report.reporting.trend.compare_snapshots",
-        lambda prev, curr: {"new_ports": [8080, 443], "removed_ports": [], "new_services": [], "removed_services": []},
+        lambda prev, curr: {
+            "new_ports": [8080, 443],
+            "removed_ports": [],
+            "new_services": [],
+            "removed_services": [],
+        },
     )
 
     prev = make_snapshot("1.2.3.4")
@@ -102,7 +120,12 @@ def test_analyze_trend_order_and_format(monkeypatch):
 def test_analyze_trend_handles_empty_service_name(monkeypatch):
     monkeypatch.setattr(
         "shodan_report.reporting.trend.compare_snapshots",
-        lambda prev, curr: {"new_ports": [], "removed_ports": [], "new_services": [""], "removed_services": []},
+        lambda prev, curr: {
+            "new_ports": [],
+            "removed_ports": [],
+            "new_services": [""],
+            "removed_services": [],
+        },
     )
 
     prev = make_snapshot("1.2.3.4")

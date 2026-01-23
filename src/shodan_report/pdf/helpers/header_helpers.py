@@ -5,11 +5,12 @@ from reportlab.platypus import Image, Spacer
 import os
 from reportlab.lib.units import cm
 
+
 # ──────────────
 # Report-ID
 # ──────────────
 def generate_compact_report_id(customer_name: str, month: str, ip: str) -> str:
-   # Format: <Kunde3><YYMM><IP3><DD>
+    # Format: <Kunde3><YYMM><IP3><DD>
     clean_name = re.sub(r"[^A-Za-z]", "", customer_name)
     customer_code = clean_name[:3].upper() if clean_name else "CST"
 
@@ -35,14 +36,30 @@ def format_assets_text(ip: str, additional_assets: Optional[List[str]] = None) -
 # Logo Helper
 # ──────────────
 def add_logo_to_elements(elements: list, config: dict) -> None:
-    # Pfad asu Yaml
-    styling = config.get("styling", {})
+    # Pfad aus Kunden-Konfiguration: unterstütze sowohl `styling` als auch `assets`
+    styling = config.get("styling", {}) or {}
+    assets = config.get("assets", {}) or {}
 
-    logo_path = styling.get("logo_path")
+    # Logo-Pfad: styling.logo_path bevorzugen, sonst assets.logo_path
+    logo_path = styling.get("logo_path") or assets.get("logo_path")
+    if not logo_path:
+        logo_path = os.path.join("assets", "mg-solutions-logo.png")
+
+    # Normalize path: allow relative paths from project root
+    if not os.path.isabs(logo_path):
+        logo_path = os.path.join(os.getcwd(), logo_path)
+
     if logo_path and os.path.exists(logo_path):
         try:
-            logo_width = styling.get("logo_width", 2.0) * cm
-            logo_position = styling.get("logo_position", "center").upper()
+            # Width: styling.logo_width (cm) or assets.logo_width_cm
+            if styling.get("logo_width") is not None:
+                logo_width_cm = styling.get("logo_width")
+            else:
+                logo_width_cm = assets.get("logo_width_cm", 6.0)
+
+            logo_width = float(logo_width_cm) * cm
+
+            logo_position = (styling.get("logo_position") or assets.get("logo_position") or "center").upper()
 
             elements.append(
                 Image(

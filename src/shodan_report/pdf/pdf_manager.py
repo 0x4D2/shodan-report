@@ -1,9 +1,11 @@
 # src/shodan_report/pdf/pdf_manager.py
 
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Callable
 
 from .styles import create_theme, create_styles
 from .sections.header import _create_header
+from .context import ReportContext
+from .layout import keep_section
 
 from .sections.management import create_management_section
 from .sections.technical import create_technical_section
@@ -25,6 +27,11 @@ def prepare_pdf_elements(
     evaluation: Dict[str, Any],
     business_risk: str,
     config: Optional[Dict[str, Any]] = None,
+    trend_table: Optional[Dict[str, Any]] = None,
+    *,
+    compare_month: Optional[str] = None,
+    # Optional dependency-injection points for testability
+    sections: Optional[List[Callable[..., None]]] = None,
 ) -> List:
     # ─────────────────────────────────────────────
     # Config & Theme
@@ -40,98 +47,70 @@ def prepare_pdf_elements(
 
     elements: List = []
 
-    # ─────────────────────────────────────────────
-    # 1. HEADER
-    # ─────────────────────────────────────────────
-    _create_header(
-        elements=elements,
-        styles=styles,
-        theme=theme,
+    # Build a ReportContext for sections to consume
+    ctx = ReportContext(
         customer_name=customer_name,
         month=month,
         ip=ip,
-        config=config,
-    )
-
-    # ─────────────────────────────────────────────
-    # 2. MANAGEMENT SUMMARY
-    # ─────────────────────────────────────────────
-    create_management_section(
-        elements=elements,
-        styles=styles,
         management_text=management_text,
-        technical_json=technical_json,
-        evaluation=evaluation,
-        business_risk=business_risk,
-        config=config,
-    )
-
-    # ─────────────────────────────────────────────
-    # 3. TREND ANALYSIS
-    # ─────────────────────────────────────────────
-    create_trend_section(
-        elements=elements,
-        styles=styles,
         trend_text=trend_text,
-        legacy_mode=False,
-    )
-
-    # ─────────────────────────────────────────────
-    # 4. TECHNICAL DETAILS
-    # ─────────────────────────────────────────────
-    create_technical_section(
-        elements=elements,
-        styles=styles,
         technical_json=technical_json,
+        evaluation=evaluation,
+        business_risk=business_risk,
         config=config,
+        compare_month=compare_month,
+        show_full_cve_list=config.get("show_full_cve_list", False),
+        cve_limit=config.get("cve_limit", 6),
     )
 
-    # ─────────────────────────────────────────────
-    # 5. CVE OVERVIEW
-    # ─────────────────────────────────────────────
-    create_cve_overview_section(
-        elements=elements,
-        styles=styles,
-        technical_json=technical_json,
-        evaluation=evaluation,
-    )
+    # If a `sections` list was provided, call each section callable in order.
+    # Callables receive `elements`, `styles`, `theme`, and a `context` object.
+    if sections is not None:
+        for sec in sections:
+            sec(elements=elements, styles=styles, theme=theme, context=ctx)
+        return elements
 
-    # ─────────────────────────────────────────────
-    # 6. RECOMMENDATIONS
-    # ─────────────────────────────────────────────
-    create_recommendations_section(
-        elements=elements,
-        styles=styles,
-        business_risk=business_risk,
-        technical_json=technical_json,
-        evaluation=evaluation,
-    )
+    # Marker used to identify section starts. `render_pdf` will turn ranges
+    # starting at this marker into a `KeepTogether` block before building.
+    class _SectionMarker:
+        pass
 
-    # ─────────────────────────────────────────────
-    # 7. METHODOLOGY
-    # ─────────────────────────────────────────────
-    create_methodology_section(
-        elements=elements,
-        styles=styles,
-    )
+    if sections is not None:
+        for sec in sections:
+            sec(elements=elements, styles=styles, theme=theme, context=ctx)
+        return elements
 
-    # ─────────────────────────────────────────────
-    # 8. CONCLUSION
-    # ─────────────────────────────────────────────
-    create_conclusion_section(
-        elements=elements,
-        styles=styles,
-        customer_name=customer_name,
-        business_risk=business_risk,
-    )
+    # Default (legacy) behavior: call built-in section functions in order.
+    # Insert a marker before each section so the renderer can keep the whole
+    # section together when producing the PDF.
+    elements.append(_SectionMarker())
+    _create_header(elements=elements, styles=styles, theme=theme, customer_name=customer_name, month=month, ip=ip, config=config)
 
-    # ─────────────────────────────────────────────
-    # 9. FOOTER
-    # ─────────────────────────────────────────────
-    create_footer_section(
-        elements=elements,
-        styles=styles,
-    )
-    
+    # Do NOT insert a section marker between header and management — keep
+    # header and the management summary together on the same page when
+    # possible.
+    create_management_section(elements=elements, styles=styles, management_text=management_text, technical_json=technical_json, evaluation=evaluation, business_risk=business_risk, config=config, context=ctx)
+
+    # Section 3: Priorisierte Handlungsempfehlungen (directly after Management)
+    create_recommendations_section(elements=elements, styles=styles, business_risk=business_risk, technical_json=technical_json, evaluation=evaluation)
+
+    elements.append(_SectionMarker())
+    create_technical_section(elements=elements, styles=styles, technical_json=technical_json, config=config)
+
+    elements.append(_SectionMarker())
+    create_cve_overview_section(elements=elements, styles=styles, technical_json=technical_json, evaluation=evaluation, context=ctx)
+
+    elements.append(_SectionMarker())
+    create_trend_section(elements=elements, styles=styles, trend_text=trend_text, compare_month=compare_month, trend_table=trend_table, legacy_mode=False, technical_json=technical_json, evaluation=evaluation)
+
+    elements.append(_SectionMarker())
+    create_methodology_section(elements=elements, styles=styles)
+
+    elements.append(_SectionMarker())
+    create_conclusion_section(elements=elements, styles=styles, customer_name=customer_name, business_risk=business_risk, context=ctx)
+
+    # Keep Conclusion and Footer together — no marker between them so the
+    # renderer will try to place them on the same page when possible.
+    create_footer_section(elements=elements, styles=styles)
 
     return elements

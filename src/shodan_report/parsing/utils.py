@@ -6,46 +6,54 @@ import re
 from shodan_report.models import Service, AssetSnapshot
 
 
-def _extract_product_version(entry: Dict[str, Any]) -> Tuple[Optional[str], Optional[str]]:
-  
+def _extract_product_version(
+    entry: Dict[str, Any],
+) -> Tuple[Optional[str], Optional[str]]:
+
     # 1. Erst aus expliziten Feldern nehmen
     product = entry.get("product")
     version = entry.get("version")
-    
+
     # 2. Falls nicht vorhanden, aus Banner/Data parsen
     banner = entry.get("banner") or entry.get("data", "")
-    
+
     if banner and not (product and version):
         b = str(banner).strip()
-        
+
         # HTML und CSS entfernen
-        b = re.sub(r'<[^>]+>', '', b)
-        b = re.sub(r'\{[^}]+\}', '', b)
-        b = re.sub(r'\s+', ' ', b)
-        
+        b = re.sub(r"<[^>]+>", "", b)
+        b = re.sub(r"\{[^}]+\}", "", b)
+        b = re.sub(r"\s+", " ", b)
+
         # Produkt/Version aus Banner extrahieren
         parsed_product, parsed_version = None, None
-        
+
         if "/" in b:
             parts = b.split("/", 1)
             parsed_product = parts[0].strip() if parts[0].strip() else None
-            parsed_version = parts[1].strip() if len(parts) > 1 and parts[1].strip() else None
+            parsed_version = (
+                parts[1].strip() if len(parts) > 1 and parts[1].strip() else None
+            )
         elif "_" in b:
             parts = b.split("_", 1)
             parsed_product = parts[0].strip() if parts[0].strip() else None
-            parsed_version = parts[1].strip() if len(parts) > 1 and parts[1].strip() else None
+            parsed_version = (
+                parts[1].strip() if len(parts) > 1 and parts[1].strip() else None
+            )
         elif " " in b:
             parts = b.split()
             parsed_product = parts[0].strip() if parts[0].strip() else None
-            parsed_version = parts[1].strip() if len(parts) > 1 and parts[1].strip() else None
+            parsed_version = (
+                parts[1].strip() if len(parts) > 1 and parts[1].strip() else None
+            )
         else:
             parsed_product = b.strip() if b.strip() else None
-        
+
         if not product and parsed_product:
             product = parsed_product
         if not version and parsed_version:
             version = parsed_version
-    
+
     return product, version
 
 
@@ -53,23 +61,23 @@ def _extract_service_specific_data(entry: Dict[str, Any]) -> str:
     port = entry.get("port")
     data = entry.get("data", "")
     raw_data = entry  # Das gesamte entry-Dict
-    
+
     if port == 53:
         dns_info = raw_data.get("dns", {})
         if isinstance(dns_info, dict) and dns_info.get("recursive"):
             return "DNS Recursion aktiv"
-        
+
         # Prüfe data/banner Feld
         if "recursion: enabled" in str(data).lower():
             return "DNS Recursion aktiv"
         elif "recursion: disabled" in str(data).lower():
             return "DNS Recursion deaktiviert"
-        
+
         # Prüfe raw banner
         banner = raw_data.get("banner", "")
         if "recursion: enabled" in str(banner).lower():
             return "DNS Recursion aktiv"
-    
+
     # 2. TLS/SSL Information
     elif port == 443:
         ssl_info = raw_data.get("ssl")
@@ -88,7 +96,7 @@ def _extract_service_specific_data(entry: Dict[str, Any]) -> str:
                 return f"TLS: {ssl_info[:50]}..."
             else:
                 return "TLS/SSL aktiv"
-    
+
     # 3. SSH Information
     elif port == 22:
         ssh_info = raw_data.get("ssh")
@@ -102,27 +110,27 @@ def _extract_service_specific_data(entry: Dict[str, Any]) -> str:
             elif isinstance(ssh_info, str):
                 return f"SSH: {ssh_info[:50]}..."
             return "SSH Service"
-    
+
     return ""
 
 
 def parse_service(entry: Dict[str, Any], host_vulns: List = None) -> Service:
- 
+
     product, version = _extract_product_version(entry)
-    
+
     extra_data = _extract_service_specific_data(entry)
-    
+
     raw_data = entry.get("data", "")
     display_data = raw_data
     service_cves = []
-    
+
     if display_data:
         # Für Anzeige bereinigen (nicht für raw!)
         display_data = str(display_data).strip()
-        display_data = re.sub(r'<[^>]+>', '', display_data)
-        display_data = re.sub(r'\{[^}]+\}', '', display_data)
-        display_data = re.sub(r'\s+', ' ', display_data)
-        display_data = display_data[:200] 
+        display_data = re.sub(r"<[^>]+>", "", display_data)
+        display_data = re.sub(r"\{[^}]+\}", "", display_data)
+        display_data = re.sub(r"\s+", " ", display_data)
+        display_data = display_data[:200]
 
     if "vulns" in entry:
         if isinstance(entry["vulns"], list):
@@ -132,18 +140,14 @@ def parse_service(entry: Dict[str, Any], host_vulns: List = None) -> Service:
                 elif isinstance(vuln, str):
                     service_cves.append({"id": vuln})
 
-    if host_vulns and isinstance(host_vulns, list):
-        port = entry.get("port")
-        product, version = _extract_product_version(entry)
-        
+    if host_vulns:
         for vuln in host_vulns:
             if isinstance(vuln, dict):
-                # Einfache Zuordnung: Wenn Vuln für diesen Port/Product relevant ist
                 service_cves.append(vuln)
             elif isinstance(vuln, str):
                 service_cves.append({"id": vuln})
-    
-    enhanced_raw = dict(entry)  
+
+    enhanced_raw = dict(entry)
 
     enhanced_raw["_parsed_data"] = display_data
     enhanced_raw["_extra_info"] = extra_data
@@ -157,31 +161,50 @@ def parse_service(entry: Dict[str, Any], host_vulns: List = None) -> Service:
         version=version,
         ssl_info=entry.get("ssl"),
         ssh_info=entry.get("ssh"),
+        vulnerabilities=service_cves,
         raw=enhanced_raw,
-        
         # EXPLIZITE Flags übernehmen
         is_encrypted=bool(entry.get("ssl")),
         requires_auth=bool(entry.get("ssh")),
         vpn_protected=entry.get("vpn_protected", False),
         tunneled=entry.get("tunneled", False),
-        cert_required=entry.get("cert_required", False)
+        cert_required=entry.get("cert_required", False),
     )
 
 
 def parse_shodan_host(data: Dict[str, Any]) -> AssetSnapshot:
 
     services: List[Service] = []
-    host_vulns = data.get("vulns", []) 
-    
-    for entry in data.get("data", []):
+    host_vulns = data.get("vulns", [])
+
+    # Support both live Shodan payloads (`data`) and stored snapshots (`services`)
+    entries = data.get("data") or data.get("services") or []
+
+    for entry in entries:
         if "port" not in entry:
             continue
-        
+
         services.append(parse_service(entry, host_vulns=host_vulns))
-    
+
     location = data.get("location", {})
-    
- 
+    city = location.get("city", "") or data.get("city", "")
+    country = location.get("country_name", "") or data.get("country", "")
+
+    # Allow snapshot-style fields (ip, open_ports, last_update)
+    ip = data.get("ip_str") or data.get("ip")
+    open_ports = data.get("ports") or data.get("open_ports") or []
+
+    last_update = datetime.now(timezone.utc)
+    raw_last_update = data.get("last_update")
+    if raw_last_update:
+        try:
+            if isinstance(raw_last_update, datetime):
+                last_update = raw_last_update
+            else:
+                last_update = datetime.fromisoformat(str(raw_last_update))
+        except Exception:
+            last_update = datetime.now(timezone.utc)
+
     domains = data.get("domains", [])  # Zuerst 'domains' versuchen
     if not domains and "domain" in data:
         # Falls nur 'domain' (Singular) existiert, in Liste umwandeln
@@ -192,28 +215,25 @@ def parse_shodan_host(data: Dict[str, Any]) -> AssetSnapshot:
             domains = domain_value
         else:
             domains = []
-    
+
     return AssetSnapshot(
-        ip=data.get("ip_str"),
+        ip=ip,
         hostnames=data.get("hostnames", []),
-        domains=domains,  
-        
-        org=data.get("org", ""),       
-        isp=data.get("isp", ""),      
-        os=data.get("os"),             
-        
-        city=location.get("city", ""),      
-        country=location.get("country_name", ""), 
-        
+        domains=domains,
+        org=data.get("org", ""),
+        isp=data.get("isp", ""),
+        os=data.get("os"),
+        city=city,
+        country=country,
+        tags=data.get("tags", []) or [],
         services=services,
-        open_ports=data.get("ports", []),
-        last_update=datetime.now(timezone.utc),
-        
+        open_ports=open_ports,
+        last_update=last_update,
         # Optionale Felder
         asn=data.get("asn"),
         latitude=location.get("latitude"),
         longitude=location.get("longitude"),
-        vulns=host_vulns
+        vulns=host_vulns,
     )
 
 
