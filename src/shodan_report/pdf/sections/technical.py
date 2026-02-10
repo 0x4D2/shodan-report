@@ -164,9 +164,68 @@ def create_technical_section(elements: List, styles: Dict, *args, **kwargs) -> N
         if tls.get("weak_ciphers"):
             details.append("Schwache Cipher/Konfiguration identifiziert")
         if tls.get("cert_expiry"):
-            details.append(f"Zertifikat gültig bis: {tls.get('cert_expiry')}")
+            expiry_raw = tls.get("cert_expiry")
+            days = tls.get("cert_expires_in_days")
+            # format date to German style: DD.MM.YYYY HH:MM:SS when possible
+            try:
+                from dateutil import parser as _dtparser
+                from datetime import timezone
+
+                dt = None
+                try:
+                    dt = _dtparser.parse(str(expiry_raw))
+                except Exception:
+                    # fallback for compact formats like 20260206235959Z
+                    try:
+                        from datetime import datetime as _dt
+                        dt = _dt.strptime(str(expiry_raw), "%Y%m%d%H%M%SZ")
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    except Exception:
+                        dt = None
+                if dt is not None:
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    fmt = dt.strftime("%d.%m.%Y")
+                else:
+                    fmt = str(expiry_raw)
+            except Exception:
+                fmt = str(expiry_raw)
+
+            if isinstance(days, int):
+                try:
+                    if days < 0:
+                        details.append(f"Zertifikat gültig bis: {fmt} (abgelaufen vor {-days} Tagen)")
+                    else:
+                        details.append(f"Zertifikat gültig bis: {fmt} (in {days} Tagen)")
+                except Exception:
+                    details.append(f"Zertifikat gültig bis: {fmt}")
+            else:
+                details.append(f"Zertifikat gültig bis: {fmt}")
         if tls.get("cert_valid_from"):
-            details.append(f"Zertifikat gültig ab: {tls.get('cert_valid_from')}")
+            valid_raw = tls.get("cert_valid_from")
+            try:
+                from dateutil import parser as _dtparser
+                from datetime import timezone
+
+                dt2 = None
+                try:
+                    dt2 = _dtparser.parse(str(valid_raw))
+                except Exception:
+                    try:
+                        from datetime import datetime as _dt
+                        dt2 = _dt.strptime(str(valid_raw), "%Y%m%d%H%M%SZ")
+                        dt2 = dt2.replace(tzinfo=timezone.utc)
+                    except Exception:
+                        dt2 = None
+                if dt2 is not None:
+                    if dt2.tzinfo is None:
+                        dt2 = dt2.replace(tzinfo=timezone.utc)
+                    fmt2 = dt2.strftime("%d.%m.%Y")
+                else:
+                    fmt2 = str(valid_raw)
+            except Exception:
+                fmt2 = str(valid_raw)
+            details.append(f"Zertifikat gültig ab: {fmt2}")
         if tls.get("cert_issuer"):
             details.append(f"Zertifikat-Aussteller: {tls.get('cert_issuer')}")
         if tls.get("cert_self_signed") is True:

@@ -3,7 +3,7 @@ risk_weights:
     thresholds: [10, 20, 30]
     scores: [0, 1, 2, 3]
   high_risk_services:
-    rdp_unencrypted: 5
+    rdp_unencrypted: 10
     vnc_unencrypted: 5
     telnet: 4
     database_unencrypted: 3

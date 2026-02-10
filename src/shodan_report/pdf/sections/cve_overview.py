@@ -59,10 +59,10 @@ def create_cve_overview_section(
     cve_data = _extract_cve_data(technical_json)
 
     if not cve_data:
-        # Minimal "Keine CVEs" Darstellung
+        # Minimal "Keine CVEs" Darstellung (entschärfte Formulierung)
         elements.append(
             Paragraph(
-                "Keine kritischen CVEs identifiziert – kein unmittelbares Risiko für den Betrieb (nur erkannte Services).",
+                "Keine CVE-basierten Exploit-Risiken identifiziert; das Risiko ergibt sich jedoch aus der direkten Exposition des Dienstes.",
                 styles["normal"],
             )
         )

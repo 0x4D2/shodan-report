@@ -218,6 +218,7 @@ def generate_priority_insights(
             insights.append(f"{critical_cve_count} kritische Schwachstellen")
         insights.append(f"{total_cve_count} Sicherheitslücken (CVEs) identifiziert")
     else:
+        # No CVE top-level: state there are no critical findings
         insights.append("Keine kritischen Schwachstellen")
 
     # Priorisiere tatsächliche kritische Punkte aus Evaluation; wenn vorhanden, zeige diese,
@@ -227,7 +228,21 @@ def generate_priority_insights(
     else:
         total_risk_points = insecure_count
 
-    insights.append(f"{total_risk_points} Risikohinweise (OSINT)")
+    # Wenn RDP vorhanden, formuliere die Herleitung explizit als kritische Administrationsdienste
+    rdp_count = 0
+    try:
+        for svc in open_ports:
+            port = getattr(svc, "port", None) if not isinstance(svc, dict) else svc.get("port")
+            prod = (getattr(svc, "product", "") or "").lower() if not isinstance(svc, dict) else (svc.get("product") or "").lower()
+            if port == 3389 or "rdp" in prod:
+                rdp_count += 1
+    except Exception:
+        rdp_count = 0
+
+    if rdp_count > 0:
+        insights.append(f"kritische Administrationsdienste ({rdp_count}: RDP)")
+    else:
+        insights.append(f"{total_risk_points} Risikohinweise (OSINT)")
 
     # Structural risks insight (tests expect mention of 'strukturelle Risiken')
     if structural_risk or insecure_count > 0:
@@ -326,10 +341,8 @@ def generate_priority_recommendations(
             rec = "SSH: Schlüsselbasierte Authentifizierung erzwingen"
             if rec not in recommendations:
                 recommendations.append(rec)
-        if port == 3389 or "rdp" in prod:
-            rec = "RDP: Netzwerk-Level-Authentifizierung aktivieren"
-            if rec not in recommendations:
-                recommendations.append(rec)
+        # Do not add a generic RDP P2 recommendation here; RDP cases are handled
+        # by the explicit RDP override further down to avoid duplicating P1 items.
         if port == 3306 or "mysql" in prod:
             rec1 = "SOFORT: MySQL Remote-Zugriff auf interne IPs beschränken"
             rec2 = "Innerhalb 24 Stunden: MySQL auf unterstützte Version aktualisieren"
@@ -374,6 +387,61 @@ def generate_priority_recommendations(
     for r in recommendations:
         if r not in unique:
             unique.append(r)
+    # If RDP is explicitly present, override with precise priority list (minimal but decisive)
+    try:
+        rdp_present = False
+        services_list_check = []
+        try:
+            snapshot = parse_shodan_host(technical_json)
+            services_list_check = list(snapshot.services)
+            # If parse didn't yield services, fallback to raw open_ports entries
+            if not services_list_check:
+                services_list_check = technical_json.get("open_ports", []) or []
+        except Exception:
+            services_list_check = technical_json.get("open_ports", []) or []
+
+        for svc in services_list_check:
+            try:
+                port = getattr(svc, "port", None) if not isinstance(svc, dict) else svc.get("port")
+                prod = (getattr(svc, "product", "") or "").lower() if not isinstance(svc, dict) else (svc.get("product") or "").lower()
+                if port == 3389 or "rdp" in prod:
+                    rdp_present = True
+                    break
+            except Exception:
+                continue
+
+        if rdp_present:
+            # Minimal decisive priority list as requested
+            pr1 = (
+                "Priorität 1 — Kritisch (SOFORT): Öffentlich erreichbarer RDP-Zugang (Port 3389). "
+                "Maßnahme: Abschalten oder Zugriff ausschließlich über VPN / RD-Gateway / Jump Host. "
+                "Risiko: Server-Übernahme, Ransomware, laterale Bewegung."
+            )
+            # Only mention Port 444 explicitly if it's present in the parsed
+            # service list; otherwise use a generic phrasing to avoid false
+            # statements about non-present ports.
+            try:
+                port444_present = any(
+                    (svc.get("port") == 444 if isinstance(svc, dict) else getattr(svc, "port", None) == 444)
+                    for svc in services_list_check
+                )
+            except Exception:
+                port444_present = False
+
+            if port444_present:
+                pr2 = (
+                    "Priorität 2: Selbstsigniertes Zertifikat prüfen; Unbekannter Dienst auf Port 444 investigieren."
+                )
+            else:
+                pr2 = (
+                    "Priorität 2: Selbstsigniertes Zertifikat prüfen; Unbekannte Dienste/ungewöhnliche Ports investigieren."
+                )
+            pr3 = (
+                "Zeithorizont: Sofort (0–7 Tage): RDP absichern (z. B. Netzwerk-Level-Authentifizierung). 30–90 Tage: Härtung & Struktur (Policies, Zugangskonzepte)."
+            )
+            return [pr1, pr2, pr3]
+    except Exception:
+        pass
 
     return unique[:3]
     # 4. PORT-SPEZIFISCHE EMPFEHLUNGEN FÜR BEKANNTE DIENSTE
@@ -388,9 +456,10 @@ def generate_priority_recommendations(
             if rec not in recommendations:
                 recommendations.append(rec)
         elif port == 3389 and "rdp" in product:
-            rec = "RDP: Netzwerk-Level-Authentifizierung aktivieren"
-            if rec not in recommendations:
-                recommendations.append(rec)
+            # RDP handled by explicit RDP override earlier; avoid adding
+            # redundant generic recommendations here to prevent duplication
+            # between Priority 1 and Priority 2 outputs.
+            pass
         elif port == 3306 and "mysql" in product:
             rec = "MySQL: Remote-Zugriff einschränken"
             if rec not in recommendations:

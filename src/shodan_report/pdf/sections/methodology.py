@@ -24,6 +24,8 @@ def create_methodology_section(elements: List[Any], styles: Dict[str, Any], *arg
         "Keine Garantie auf Vollständigkeit",
         "Keine Aussage über interne Systeme oder nicht öffentlich erreichbare Dienste",
         "Keine Simulation realer Angriffe",
+        # Short explanation of Exposure-Level calculation (compact, non-technical)
+        "Exposure-Level (1–5): aggregiertes Maß aus Anzahl öffentlicher Dienste (Ports), Erkennbarkeit von Administrations-/kritischen Services und bekannten CVE-Befunden; Werte werden gewichtet und auf eine Skala 1–5 normiert. Diese Bewertung basiert ausschließlich auf externen OSINT-Indikatoren und berücksichtigt keine internen Kontrollen.",
     ]
 
     for b in bullets:

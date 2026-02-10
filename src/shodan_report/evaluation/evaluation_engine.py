@@ -87,6 +87,38 @@ class EvaluationEngine:
 
         level = base_level + port_boost
 
+        # Special-case: if an admin service like RDP is publicly exposed and
+        # not considered secure, escalate exposure to at least 4 so it is
+        # properly prioritized in reports.
+        try:
+            admin_unsecure = False
+            admin_present = False
+            for svc in services:
+                try:
+                    prod = (getattr(svc, "product", None) or "").lower()
+                    port = getattr(svc, "port", None)
+                    svc_secure = True
+                    try:
+                        svc_secure = is_service_secure(svc, secure_indicators)
+                    except Exception:
+                        svc_secure = True
+                    # detailed debug per-service
+                    # debug logging removed
+                    if port in (3389,) or "rdp" in prod:
+                        admin_present = True
+                        if not svc_secure:
+                            admin_unsecure = True
+                            break
+                except Exception:
+                    continue
+            # If any RDP is present, escalate exposure to at least 4 regardless
+            # of whether the RDP service advertises encryption (customer request).
+            if (admin_unsecure or admin_present) and level < 4:
+                level = 4
+        except Exception:
+            # non-fatal, preserve computed level
+            pass
+        # end calculation
         if level < 1:
             level = 1
         if level > 5:

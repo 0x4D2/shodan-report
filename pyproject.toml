@@ -11,7 +11,8 @@ authors = [
 dependencies = [
     "python-dotenv",
     "shodan",
-    "pyyaml"
+    "pyyaml",
+    "reportlab>=3.6"
 ]
 
 [project.optional-dependencies]

@@ -69,6 +69,29 @@ def prepare_recommendations_data(technical_json: Dict[str, Any], evaluation: Any
         except Exception:
             continue
 
+    # Also consider any pre-enriched CVE lists that may be present in the
+    # generated `.mdata.json` (e.g. `cve_enriched` / `cve_enriched_sample`).
+    try:
+        enriched_candidates = []
+        if isinstance(technical_json, dict):
+            enriched_candidates = technical_json.get("cve_enriched") or technical_json.get("cve_enriched_sample") or technical_json.get("cve_enriched_list") or []
+        if not enriched_candidates and isinstance(evaluation, dict):
+            enriched_candidates = evaluation.get("cve_enriched") or evaluation.get("cve_enriched_sample") or []
+        for ent in (enriched_candidates or []):
+            try:
+                if isinstance(ent, dict):
+                    cvss = ent.get("cvss", None)
+                else:
+                    cvss = getattr(ent, "cvss", None)
+                if cvss is None:
+                    continue
+                if float(cvss) >= 7.0:
+                    critical_count += 1
+            except Exception:
+                continue
+    except Exception:
+        pass
+
     if critical_count:
         # initial detection (cvss >= 7)
         priority1.append(f"Kritische CVE(s) mit CVSS ≥7 identifiziert: {critical_count}")
@@ -192,10 +215,53 @@ def prepare_recommendations_data(technical_json: Dict[str, Any], evaluation: Any
                 "Empfohlen für: Systemadministration / IT-Security-Team."
             )
         else:
+            # Do not add generic 'Überprüfen' for RDP here — RDP is handled as P1 elsewhere
+            if svc.upper() == "RDP":
+                # skip generic RDP check
+                continue
             priority2.append(f"Überprüfen: erreichbarer Managementdienst: {svc}")
 
     if dns_on_53:
         priority2.append("Prüfen: DNS-Server erreichbar (Port 53) – rekursive Anfragen prüfen")
+
+    # If RDP was detected among services, ensure priority2 contains other high items
+    try:
+        rdp_present = False
+        for s in _iter_services(technical_json):
+            port = None
+            prod = None
+            if isinstance(s, dict):
+                port = s.get("port")
+                prod = (s.get("product") or "").lower()
+            else:
+                port = getattr(s, "port", None)
+                prod = (getattr(s, "product", "") or "").lower()
+            if port == 3389 or "rdp" in (prod or ""):
+                rdp_present = True
+                break
+        if rdp_present:
+            # Ensure sensible P2 items present (self-signed cert, unknown port 444 if present)
+            if "Selbstsigniertes Zertifikat ersetzen" not in priority2:
+                priority2.insert(0, "Selbstsigniertes Zertifikat ersetzen")
+            # Mention Port 444 explicitly only if it's present; otherwise use
+            # a generic phrasing to avoid asserting a port that doesn't exist.
+            try:
+                port444_present = any(
+                    (svc.get("port") == 444 if isinstance(svc, dict) else getattr(svc, "port", None) == 444)
+                    for svc in _iter_services(technical_json)
+                )
+            except Exception:
+                port444_present = False
+
+            if port444_present:
+                txt = "Unbekannten Dienst auf Port 444 identifizieren und absichern"
+            else:
+                txt = "Unbekannte Dienste/ungewöhnliche Ports identifizieren und absichern"
+
+            if txt not in priority2:
+                priority2.insert(1, txt)
+    except Exception:
+        pass
 
     # Outdated/missing version heuristics
     outdated = []
@@ -231,7 +297,10 @@ def prepare_recommendations_data(technical_json: Dict[str, Any], evaluation: Any
         "priority2": priority2,
         "priority3": priority3,
         "meta": {
-            "critical_cves": critical_count,
+            # meta.critical_cves aggregates all detection paths so the
+            # recommendations rendering can decide whether a "no findings"
+            # placeholder is appropriate.
+            "critical_cves": int(critical_count + (critical_count_9 if 'critical_count_9' in locals() else 0) + (high_count if 'high_count' in locals() else 0)),
             "tls_issues": tls_issues,
             "found_management_services": list(sorted(found_mg)),
             "dns_on_53": dns_on_53,

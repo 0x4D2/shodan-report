@@ -45,14 +45,37 @@ def create_recommendations_section(elements: List, styles: Dict, *args, **kwargs
         for item in priority1_items:
             elements.append(Paragraph(f"• {item}", styles["bullet"]))
     else:
-        meta = buckets.get("meta", {}) or {}
-        crit = meta.get("critical_cves", 0)
-        tls_issues = meta.get("tls_issues", 0)
-        if crit == 0 and tls_issues == 0:
-            reason = "Keine Priorität-1-Maßnahmen aus OSINT ableitbar (keine kritischen CVEs/keine TLS-Schwachstellen in den Daten)."
+        # If no automatic priority1 items, check for presence of RDP and override
+        def _has_rdp(tech_json):
+            try:
+                services = tech_json.get("services") or tech_json.get("open_ports") or []
+                for s in services:
+                    if isinstance(s, dict):
+                        port = s.get("port")
+                        prod = (s.get("product") or "").lower()
+                    else:
+                        port = getattr(s, "port", None)
+                        prod = (getattr(s, "product", "") or "").lower()
+                    if port == 3389 or "rdp" in prod:
+                        return True
+            except Exception:
+                return False
+            return False
+
+        if _has_rdp(technical_json):
+            # Explicit decisive priority list for RDP
+            elements.append(Paragraph("• Öffentlich erreichbarer Managementdienst: RDP (Port 3389)", styles["bullet"]))
+            elements.append(Paragraph("  Maßnahme: Abschalten oder Zugriff ausschließlich über VPN / RD-Gateway / Jump Host", styles["bullet"]))
+            elements.append(Paragraph("  Risiko: Server-Übernahme, Ransomware, laterale Bewegung", styles["bullet"]))
         else:
-            reason = "Keine Priorität-1-Maßnahmen aus OSINT ableitbar."
-        elements.append(Paragraph(reason, styles["bullet"]))
+            meta = buckets.get("meta", {}) or {}
+            crit = meta.get("critical_cves", 0)
+            tls_issues = meta.get("tls_issues", 0)
+            if crit == 0 and tls_issues == 0:
+                reason = "Keine Priorität-1-Maßnahmen aus OSINT ableitbar (keine kritischen CVEs/keine TLS-Schwachstellen in den Daten)."
+            else:
+                reason = "Keine Priorität-1-Maßnahmen aus OSINT ableitbar."
+            elements.append(Paragraph(reason, styles["bullet"]))
 
     elements.append(Spacer(1, 8))
 

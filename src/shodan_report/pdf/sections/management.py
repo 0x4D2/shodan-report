@@ -459,13 +459,48 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
         )
     )
     # Note: separate small 'Status' ampel below the exposure paragraph removed
-    elements.append(
-        Paragraph(
-            "Herleitung: Bewertung basiert auf Anzahl öffentlicher Dienste "
-            f"({total_ports}), kritischen Services ({critical_points_count}) und CVE-Funden ({cve_count}).",
-            styles["normal"],
+    # Build explicit derivation string: include RDP count as 'kritische Administrationsdienste'
+    try:
+        services = technical_json.get("services") or technical_json.get("open_ports") or []
+        rdp_count = 0
+        for s in services:
+            if isinstance(s, dict):
+                port = s.get("port")
+                prod = (s.get("product") or "").lower()
+            else:
+                port = getattr(s, "port", None)
+                prod = (getattr(s, "product", "") or "").lower()
+            if port == 3389 or "rdp" in prod:
+                rdp_count += 1
+    except Exception:
+        rdp_count = 0
+
+    # Format CVE count safely
+    try:
+        cves_disp = int(cve_count)
+    except Exception:
+        cves_disp = 0
+
+    # Avoid showing a literal '(0)' for critical admin services — prefer
+    # explicit RDP count when present, otherwise show identified critical
+    # points or a neutral phrasing when none are detected.
+    if rdp_count > 0:
+        derivation = (
+            f"Herleitung: Bewertung basiert auf Anzahl öffentlicher Dienste ({total_ports}), "
+            f"kritischen Administrationsdiensten ({rdp_count}: RDP) und CVE-Funden ({cves_disp})."
         )
-    )
+    elif critical_points_count > 0:
+        derivation = (
+            f"Herleitung: Bewertung basiert auf Anzahl öffentlicher Dienste ({total_ports}), "
+            f"kritischen Administrationsdiensten ({critical_points_count}) und CVE-Funden ({cves_disp})."
+        )
+    else:
+        derivation = (
+            f"Herleitung: Bewertung basiert auf Anzahl öffentlicher Dienste ({total_ports}), "
+            f"kritischen Administrationsdiensten (keine identifiziert) und CVE-Funden ({cves_disp})."
+        )
+
+    elements.append(Paragraph(derivation, styles["normal"]))
     elements.append(Spacer(1, 6))
 
     # 3 Kernaussagen (Risiko, Zustand, Richtung)

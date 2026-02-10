@@ -127,6 +127,23 @@ def generate_report_pipeline(
 
         engine = EvaluationEngine()
         evaluation_result = engine.evaluate(snapshot)  # ← EvaluationResult Objekt
+        # Ensure RDP findings always promote risk when externally exposed.
+        try:
+            rdp_detected = any(
+                (getattr(s, "port", None) == 3389)
+                or ("rdp" in (getattr(s, "product", "") or "").lower())
+                or ("remote desktop" in (getattr(s, "product", "") or "").lower())
+                for s in snapshot.services
+            )
+            if rdp_detected and not any("rdp" in str(p).lower() for p in evaluation_result.critical_points):
+                # add explicit critical point and escalate risk to CRITICAL
+                evaluation_result.critical_points.append("RDP öffentlich erreichbar (Runner-Override)")
+                try:
+                    evaluation_result.risk = RiskLevel.CRITICAL
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
         # 6. Business Risk berechnen
         business_risk = prioritize_risk(evaluation_result)

@@ -62,9 +62,19 @@ class RiskWeights:
 class EvaluationConfig:
     def __init__(self, config_path: str = None):
         self.weights = RiskWeights()
-
+        # If a specific config_path was provided, load it. Otherwise try the
+        # repository `config/evaluation.yaml` in the current working directory
+        # (convenient for CLI usage where cwd is the project root).
         if config_path and Path(config_path).exists():
             self.load_config(config_path)
+        else:
+            default_path = Path.cwd() / "config" / "evaluation.yaml"
+            if default_path.exists():
+                try:
+                    self.load_config(str(default_path))
+                except Exception:
+                    # best-effort: do not fail construction on bad config
+                    pass
 
     def load_config(self, path: str):
         with open(path, "r") as f:

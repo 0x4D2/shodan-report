@@ -41,10 +41,11 @@ def _extract_tls_info(svc: Any) -> Dict[str, Optional[Any]]:
             "cert_valid_from": None,
         }
 
+    # Some snapshots use key 'ssl' while others use 'ssl_info'
     if isinstance(svc, dict):
-        si = svc.get("ssl_info") or {}
+        si = svc.get("ssl_info") or svc.get("ssl") or {}
     else:
-        si = getattr(svc, "ssl_info", None) or {}
+        si = getattr(svc, "ssl_info", None) or getattr(svc, "ssl", None) or {}
 
     protocols = si.get("protocols") or si.get("supported_protocols") or []
     weak = bool(si.get("has_weak_cipher") or si.get("weaknesses") or si.get("issues"))
@@ -56,14 +57,33 @@ def _extract_tls_info(svc: Any) -> Dict[str, Optional[Any]]:
     # try common fields
     cert = si.get("cert") if isinstance(si, dict) else None
     if cert and isinstance(cert, dict):
-        cert_expiry = cert.get("not_after") or cert.get("valid_to")
-        cert_valid_from = cert.get("not_before") or cert.get("valid_from")
+        # accept various possible field names used by different parsers
+        cert_expiry = cert.get("not_after") or cert.get("valid_to") or cert.get("expires") or cert.get("expiry")
+        cert_valid_from = cert.get("not_before") or cert.get("valid_from") or cert.get("issued") or cert.get("notBefore")
         cert_subject = cert.get("subject") or cert.get("subject_cn") or cert.get("subject_dn")
         cert_issuer = cert.get("issuer") or cert.get("issuer_cn") or cert.get("issuer_dn")
         cert_self_signed = cert.get("self_signed")
         if cert_self_signed is None and cert_subject and cert_issuer:
             cert_self_signed = str(cert_subject) == str(cert_issuer)
-    cert_expiry = cert_expiry or si.get("cert_expiry") or svc.get("cert_expiry") if isinstance(svc, dict) else cert_expiry
+    cert_expiry = cert_expiry or si.get("cert_expiry") or (svc.get("cert_expiry") if isinstance(svc, dict) else None)
+
+    # Compute days until expiry (can be negative if already expired)
+    cert_expires_in_days = None
+    if cert_expiry:
+        try:
+            from datetime import datetime, timezone
+            from dateutil import parser as _dtparser
+
+            dt = _dtparser.parse(str(cert_expiry))
+            # normalize naive datetimes to UTC
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            now = datetime.now(timezone.utc)
+            delta = dt - now
+            # use floor division to count full days
+            cert_expires_in_days = int(delta.total_seconds() // 86400)
+        except Exception:
+            cert_expires_in_days = None
 
     ciphers = []
     try:
@@ -88,6 +108,7 @@ def _extract_tls_info(svc: Any) -> Dict[str, Optional[Any]]:
         "protocols": protocols or [],
         "weak_ciphers": weak,
         "cert_expiry": cert_expiry,
+        "cert_expires_in_days": cert_expires_in_days,
         "ciphers": ciphers,
         "cert_issuer": cert_issuer,
         "cert_subject": cert_subject,

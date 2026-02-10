@@ -48,6 +48,28 @@ def evaluate_snapshot(snapshot: AssetSnapshot) -> Evaluation:
     critical_points.extend(port_points)
     critical_points.extend(svc_points)
 
+    # Additional explicit rule: if RDP is exposed and not clearly protected,
+    # ensure it is represented as a critical finding. This covers cases where
+    # upstream parsing did not surface an explicit 'rdp' critical point.
+    try:
+        for svc in snapshot.services or []:
+            port = getattr(svc, "port", None)
+            prod = (getattr(svc, "product", None) or "").lower()
+            is_encrypted = bool(getattr(svc, "ssl_info", None)) or bool(getattr(svc, "is_encrypted", False))
+            if port == 3389 or "rdp" in prod or "remote desktop" in prod:
+                # If we don't already have an RDP finding, add it and increase score
+                if not any("rdp" in str(p).lower() for p in critical_points):
+                    critical_points.append("RDP öffentlich erreichbar oder identifiziert")
+                    # match previous severity used in helpers (3 points for unencrypted RDP)
+                    if not is_encrypted:
+                        risk_score += 3
+                    else:
+                        risk_score += 1
+                break
+    except Exception:
+        # best-effort only; do not fail evaluation on unexpected shapes
+        pass
+
     # 3. Determine risk level (delegated to helper for clarity)
     risk = _calculate_risk_level(critical_points, risk_score)
 
