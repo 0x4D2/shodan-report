@@ -1,5 +1,53 @@
 # Changelog
 
+## 30.03.2026 (4)
+
+- test: 4 neue Tests für heutige Änderungen geschrieben
+  - `tests/pdf/sections/test_management.py`: `test_management_text_is_rendered_in_elements` — prüft dass `management_text`-Inhalt tatsächlich in den PDF-Elementen erscheint
+  - `tests/pdf/sections/test_cve_overview_integration.py`: `test_cve_hint_text_when_list_truncated` — prüft dass „Vollständige Liste auf Anfrage verfügbar" erscheint wenn die CVE-Liste gekürzt wird
+  - `tests/pdf/sections/test_trend_extra.py`: `test_no_data_view_shows_baseline_with_exposure_score` — prüft Baseline-Block mit Exposure-Level und Drei-Punkte-Argumentation im ersten Report
+  - `tests/pdf/sections/test_trend_extra.py`: `test_metrics_context_appears_in_comparison_view` — prüft dass „Was die Kennzahlen bedeuten" im Folgereport erscheint
+  - Ergebnis: **284 passed, 9 skipped, 0 failed**
+
+## 30.03.2026 (3)
+
+- feat: Trend-Sektion grundlegend überarbeitet
+  - `src/shodan_report/reporting/trend.py`: Trend-Text-Generierung neu geschrieben
+  - `src/shodan_report/pdf/sections/trend.py`: Trend-PDF-Sektion neu geschrieben
+  - **Erster Report (kein Vergleich):** statt leerer Seite jetzt drei inhaltliche Blöcke
+    - Ankündigung was ab dem nächsten Report erscheint
+    - Aktuelle Baseline mit Exposure-Score
+    - Drei konkrete Punkte warum kontinuierliche Messung wichtig ist (gleichzeitig stärkstes Abo-Verkaufsargument im Report)
+  - **Folgereport (mit Vergleich):** drei Verbesserungen
+    - Bewertungsspalte in der Vergleichstabelle ist farbig — rot bei Verschlechterung, grün bei Verbesserung, schwarz bei unveränderter Lage
+    - Interpretation spezifischer — nicht mehr generisch „stabil" sondern konkret was sich verändert hat und was das bedeutet
+    - Neuer Abschnitt „Was die Kennzahlen bedeuten" erklärt die vier Metriken für Nicht-Techniker
+  - **Liniendiagramm:** größer (100 mm statt 70 mm), Gitterlinien für Levels 1–5, Linie farbig (rot/grün/blau je nach Entwicklung)
+
+## 30.03.2026 (2)
+
+- test: 7 dauerhaft fehlschlagende Tests auf `skip` gesetzt
+  - `tests/pdf/sections/test_management_data_chinanet.py` (4 Tests): Snapshot `snapshots/CHINANET/2026-01_111.170.152.60.json` fehlt in diesem Klon
+  - `tests/pdf/sections/test_sanitization_management.py`, `test_sanitization_technical.py` (2 Tests): Snapshot `snapshots/Clean/2026-01_82.100.220.31.json` fehlt in diesem Klon
+  - `tests/pdf/test_mdata_enrichment.py` (1 Test): setzt `debug_mdata=True` voraus; Standard ist `False` (kein `.mdata.json` im Kundenreport)
+  - Ergebnis: **280 passed, 9 skipped, 0 failed**
+
+## 30.03.2026
+
+- feat: Management-Text szenario-spezifisch eingebunden
+  - `src/shodan_report/pdf/sections/management.py`: `management_text` wird jetzt tatsächlich gerendert — nach der Technischen Kurzbewertung, vor dem PageBreak
+  - Abschnittsbezeichner (z.B. „Empfehlung:") werden fett dargestellt
+  - Statischer Boilerplate (Gesamtbewertung, Kurzempfehlung, Entscheidungsvorlage) entfernt — ersetzt durch szenario-spezifischen Text aus `management_text.py`
+  - Fix: `rdp_primary` war nicht definiert im Renderer — wird jetzt korrekt vor Verwendung gesetzt
+- chore: `sections/management_data.py` (Duplikat) gelöscht — echte Datei liegt unter `sections/data/management_data.py`
+- feat: PDF-Styling grundlegend überarbeitet
+  - Sektions-Header erhalten jetzt einen dunkelblau gefüllten Balken mit weißem Text statt nur fettem Text — sofort erkennbare Struktur wie in professionellen Audit-Reports
+  - Neue Styles für Tabellen-Header, KPI-Werte und Risikostufen
+- chore: `scripts/dev/` in `.gitignore` aufgenommen — Ordner bleibt lokal, wird nicht getrackt
+- fix: `src/shodan_report/pdf/sections/__init__,py` → `__init__.py` umbenannt (Tippfehler im Dateinamen)
+- fix: CVE-Übersicht Hinweistext angepasst
+  - `src/shodan_report/pdf/sections/cve_overview.py`: Hinweis auf abgeschnittene CVE-Liste auf kundenfreundlicheres Wording geändert („Vollständige Liste auf Anfrage verfügbar")
+
 ## Unreleased
 
 - chore: update `.gitignore` — add caches and generated files

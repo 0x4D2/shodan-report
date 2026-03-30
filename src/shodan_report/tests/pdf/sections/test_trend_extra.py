@@ -277,3 +277,38 @@ def test_legacy_no_data_path(styles):
     # find legacy message
     texts = [getattr(e, "text", "") for e in elements if isinstance(e, Paragraph)]
     assert any("Keine historischen Daten" in t for t in texts), "Legacy message expected"
+
+
+def test_no_data_view_shows_baseline_with_exposure_score(styles):
+    """Erster Report: Baseline-Zeile mit Exposure-Score wird gerendert (30.03.2026)."""
+    elements = []
+    trend_mod.create_trend_section(
+        elements=elements,
+        styles=styles,
+        trend_text="",
+        evaluation={"exposure_score": 3},
+    )
+    texts = [getattr(e, "text", "") for e in elements if isinstance(e, Paragraph)]
+    assert any("Exposure-Level 3/5" in t for t in texts), "Baseline mit Exposure-Score fehlt"
+    assert any("Angriffsflächen verändern sich monatlich" in t for t in texts), "Drei-Punkte-Block fehlt"
+    assert any("Frühwarnung statt Reaktion" in t for t in texts), "Dritter Punkt fehlt"
+
+
+def test_metrics_context_appears_in_comparison_view(styles):
+    """Folgereport: 'Was die Kennzahlen bedeuten' erscheint wenn Tabelle Werte enthält (30.03.2026)."""
+    elements = []
+    trend_table = {
+        "Öffentliche Ports": (3, 5, "verschlechtert"),
+        "Kritische Services": (1, 2, "leicht verschlechtert"),
+        "Hochrisiko-CVEs": (0, 1, "neu"),
+        "TLS-Schwächen": (2, 2, "stabil"),
+    }
+    trend_mod.create_trend_section(
+        elements=elements,
+        styles={**styles, "heading3": styles["heading2"], "small": styles["normal"]},
+        trend_text="",
+        compare_month="Februar 2026",
+        trend_table=trend_table,
+    )
+    texts = [getattr(e, "text", "") for e in elements if isinstance(e, Paragraph)]
+    assert any("Was die Kennzahlen bedeuten" in t for t in texts), "Metriken-Erklärungsblock fehlt"

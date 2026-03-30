@@ -1,3 +1,9 @@
+# reporting/trend.py
+# ─────────────────────────────────────────────────────────────────────────────
+# Trend-Analyse Logik — vergleicht zwei Snapshots und generiert
+# einen strukturierten Trendtext für das PDF.
+# ─────────────────────────────────────────────────────────────────────────────
+
 from shodan_report.models import AssetSnapshot
 from shodan_report.persistence.snapshot_manager import compare_snapshots
 from shodan_report.evaluation.helpers.eval_helpers import (
@@ -7,35 +13,29 @@ from shodan_report.evaluation.helpers.eval_helpers import (
 
 
 def _rating_text(prev: int, curr: int, higher_is_worse: bool = True) -> str:
-    # Return a short arrow-based rating and a one-word description.
     diff = curr - prev
     if diff == 0:
         return "→ unverändert"
     if diff > 0:
-        # increase: worse when higher_is_worse
         if higher_is_worse:
-            return "↑ leicht" if diff == 1 else "↑↑ verschlechtert"
+            return "↑ leicht verschlechtert" if diff == 1 else "↑↑ verschlechtert"
         else:
-            return "↓ leicht" if diff == 1 else "↓↓ verbessert"
+            return "↓ leicht verbessert" if diff == 1 else "↓↓ verbessert"
     else:
-        # decrease
         if higher_is_worse:
-            return "↓ leicht" if diff == -1 else "↓↓ verbessert"
+            return "↓ leicht verbessert" if diff == -1 else "↓↓ verbessert"
         else:
-            return "↑ leicht" if diff == -1 else "↑↑ verschlechtert"
+            return "↑ leicht verschlechtert" if diff == -1 else "↑↑ verschlechtert"
 
 
 def analyze_trend(prev_snapshot: AssetSnapshot, current_snapshot: AssetSnapshot) -> str:
     """
-    Produce a compact German trend summary table and a short interpretation.
-
-    The table contains: Kategorie | Vormonat | Aktuell | Bewertung
+    Erzeugt einen kompakten Trendtext mit Tabelle und Interpretation.
+    Wird vom Runner aufgerufen wenn ein Vormonat-Snapshot vorhanden ist.
     """
-    # Counts
     prev_ports = len(getattr(prev_snapshot, "open_ports", []) or [])
     curr_ports = len(getattr(current_snapshot, "open_ports", []) or [])
 
-    # Critical services: use analyze_services findings and count entries
     _, prev_svc_findings = analyze_services(prev_snapshot.services or [])
     _, curr_svc_findings = analyze_services(current_snapshot.services or [])
 
@@ -46,11 +46,9 @@ def analyze_trend(prev_snapshot: AssetSnapshot, current_snapshot: AssetSnapshot)
     prev_crit = _count_critical(prev_svc_findings)
     curr_crit = _count_critical(curr_svc_findings)
 
-    # High-risk CVEs: fallback to counting listed vulns
     prev_cves = len(set(getattr(prev_snapshot, "vulns", []) or []))
     curr_cves = len(set(getattr(current_snapshot, "vulns", []) or []))
 
-    # TLS weaknesses: heuristic: count TLS/HTTPS ports without ssl_info
     tls_ports = {443, 8443, 9443}
 
     def _tls_issues(snapshot):
@@ -69,24 +67,22 @@ def analyze_trend(prev_snapshot: AssetSnapshot, current_snapshot: AssetSnapshot)
     prev_tls = _tls_issues(prev_snapshot)
     curr_tls = _tls_issues(current_snapshot)
 
-    # Compare snapshots for explicit new/removed ports and services
     diffs = compare_snapshots(prev_snapshot, current_snapshot)
 
-    # If there are no diffs at all and no metric changes, return a short message expected by callers/tests
+    # Keine Veränderungen
     if not any(diffs.get(k) for k in ("new_ports", "removed_ports", "new_services", "removed_services")):
         if prev_ports == curr_ports and prev_crit == curr_crit and prev_cves == curr_cves and prev_tls == curr_tls:
             return "Keine signifikanten Veränderungen im Vergleich zum vorherigen Snapshot."
 
-    # Build compact table lines (tab-separated so PDF renderer can keep compact)
     header = "Veränderung zur Vormonatsanalyse\n\nKategorie\tVormonat\tAktuell\tBewertung\n"
 
-    rows = []
-    rows.append(f"Öffentliche Ports\t{prev_ports}\t{curr_ports}\t{_rating_text(prev_ports, curr_ports)}")
-    rows.append(f"Kritische Services\t{prev_crit}\t{curr_crit}\t{_rating_text(prev_crit, curr_crit)}")
-    rows.append(f"Hochrisiko-CVEs\t{prev_cves}\t{curr_cves}\t{_rating_text(prev_cves, curr_cves)}")
-    rows.append(f"TLS-Schwächen\t{prev_tls}\t{curr_tls}\t{_rating_text(prev_tls, curr_tls)}")
+    rows = [
+        f"Öffentliche Ports\t{prev_ports}\t{curr_ports}\t{_rating_text(prev_ports, curr_ports)}",
+        f"Kritische Services\t{prev_crit}\t{curr_crit}\t{_rating_text(prev_crit, curr_crit)}",
+        f"Hochrisiko-CVEs\t{prev_cves}\t{curr_cves}\t{_rating_text(prev_cves, curr_cves)}",
+        f"TLS-Schwächen\t{prev_tls}\t{curr_tls}\t{_rating_text(prev_tls, curr_tls)}",
+    ]
 
-    # Build short change summary lines for human readers (e.g. "Neue offene Ports: 443")
     change_lines = []
     new_ports = diffs.get("new_ports", []) or []
     removed_ports = diffs.get("removed_ports", []) or []
@@ -97,28 +93,44 @@ def analyze_trend(prev_snapshot: AssetSnapshot, current_snapshot: AssetSnapshot)
         change_lines.append("Neue offene Ports: " + ", ".join(str(p) for p in new_ports))
     if removed_ports:
         change_lines.append("Geschlossene Ports: " + ", ".join(str(p) for p in removed_ports))
-    # For services keep names as given; allow empty names to show header only
-    if new_services is not None:
+    if new_services:
         change_lines.append("Neu entdeckte Dienste: " + ", ".join(s for s in new_services))
     if removed_services:
         change_lines.append("Entfernte Dienste: " + ", ".join(s for s in removed_services))
 
-    # Short single-line interpretation (compact)
+    # Interpretation mit mehr Kontext
     if curr_tls > prev_tls:
         interp = (
-            "\nInterpretation: Die Angriffsfläche ist stabil; leichte Verschlechterung in der Kryptokonfiguration."
-        )
-    elif curr_tls < prev_tls and prev_ports == curr_ports and prev_crit == curr_crit and prev_cves == curr_cves:
-        interp = (
-            "\nInterpretation: TLS-Schwächen wurden behoben; keine Zunahme bei öffentlichen Managementdiensten "
-            "(Management-/Administrationsdienste); Gesamtstruktur unverändert."
+            "\nInterpretation: Die Angriffsfläche ist stabil; "
+            "leichte Verschlechterung in der Kryptokonfiguration erkannt. "
+            "TLS-Zertifikate und Cipher-Suites sollten zeitnah geprüft werden."
         )
     elif curr_cves > prev_cves:
-        interp = "\nInterpretation: Anzahl hochriskanter Schwachstellen gestiegen; Patches empfohlen."
+        delta = curr_cves - prev_cves
+        interp = (
+            f"\nInterpretation: Die Anzahl bekannter Schwachstellen ist um {delta} gestiegen. "
+            "Dies kann auf neu veröffentlichte CVEs für die eingesetzte Software hinweisen. "
+            "Patches und Updates werden empfohlen."
+        )
+    elif curr_crit > prev_crit:
+        interp = (
+            "\nInterpretation: Ein zusätzlicher kritischer Administrationsdienst wurde identifiziert. "
+            "Die externe Angriffsfläche hat sich erhöht — Härtungsmaßnahmen empfohlen."
+        )
+    elif curr_ports > prev_ports:
+        delta = curr_ports - prev_ports
+        interp = (
+            f"\nInterpretation: {delta} neuer öffentlich erreichbarer Dienst wurde identifiziert. "
+            "Überprüfen Sie ob dieser Dienst absichtlich exponiert ist."
+        )
+    elif curr_ports < prev_ports or curr_crit < prev_crit or curr_cves < prev_cves:
+        interp = (
+            "\nInterpretation: Die externe Angriffsfläche hat sich im Vergleich zum Vormonat "
+            "verbessert. Umgesetzte Maßnahmen zeigen Wirkung."
+        )
     else:
-        interp = "\nInterpretation: Angriffsfläche stabil."
+        interp = "\nInterpretation: Die Angriffsfläche ist stabil. Keine signifikanten Veränderungen."
 
-    # Prepend change summary lines before the table
     change_block = "\n".join(change_lines)
     if change_block:
         return change_block + "\n\n" + header + "\n".join(rows) + interp

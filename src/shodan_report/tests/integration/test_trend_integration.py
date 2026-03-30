@@ -68,12 +68,12 @@ class TestTrendIntegration:
             config={},
         )
 
-        # Finde den "keine Daten" Text
+        # Finde den ersten-Report-Text des neuen _add_no_data_view
         no_data_elements = [
             e
             for e in elements
             if hasattr(e, "text")
-            and "Trend-Analyse aktuell nicht möglich" in e.text
+            and "erste Analyse für dieses Asset" in e.text
         ]
 
         assert len(no_data_elements) >= 1, "Sollte 'keine Daten' Meldung enthalten"

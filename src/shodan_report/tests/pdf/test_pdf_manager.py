@@ -112,11 +112,11 @@ class TestPDFManager:
             config={},
         )
 
-        # Suche nach der Trend-Hinweismeldung
+        # Suche nach dem ersten-Report-Text des neuen _add_no_data_view
         trend_elements = []
         for e in elements:
             if hasattr(e, "text"):
-                if "Trend-Analyse aktuell nicht möglich" in e.text:
+                if "erste Analyse für dieses Asset" in e.text:
                     trend_elements.append(e)
 
         # Prüfe ob mindestens ein Element gefunden wurde

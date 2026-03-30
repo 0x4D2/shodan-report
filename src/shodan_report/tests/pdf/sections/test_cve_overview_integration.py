@@ -227,3 +227,26 @@ def test_evaluation_note_is_appended(monkeypatch):
     paras = [p for p in elements if isinstance(p, Paragraph)]
     note = [p for p in paras if "technische verifikation" in _paragraph_text(p).lower()]
     assert note, "Evaluation note not found"
+
+
+def test_cve_hint_text_when_list_truncated(monkeypatch):
+    """Wenn mehr CVEs vorliegen als angezeigt werden, erscheint der
+    kundenfreundliche Hinweis 'Vollständige Liste auf Anfrage verfügbar' (30.03.2026)."""
+    styles = _make_styles()
+    elements = []
+    technical_json = {"services": [], "vulns": [f"CVE-2025-{i:04d}" for i in range(10)]}
+
+    enriched = [
+        {"id": f"CVE-2025-{i:04d}", "cvss": 7.0, "ports": [], "service": "Various",
+         "summary": "", "exploit_status": "none"}
+        for i in range(10)
+    ]
+
+    import shodan_report.pdf.sections.cve_overview as mod
+    monkeypatch.setattr(mod, "enrich_cves", lambda ids, technical_json=None, lookup_nvd=False: enriched)
+
+    create_cve_overview_section(elements, styles, technical_json)
+
+    para_texts = [_paragraph_text(p) for p in elements if isinstance(p, Paragraph)]
+    found = any("Vollständige Liste auf Anfrage verfügbar" in t for t in para_texts)
+    assert found, "Hinweistext 'Vollständige Liste auf Anfrage verfügbar' fehlt beim Truncate"

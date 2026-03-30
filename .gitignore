@@ -19,3 +19,5 @@ assets/*.png
 .cache/
 .mypy_cache/
 .ruff_cache/
+
+scripts/dev/

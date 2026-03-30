@@ -646,7 +646,7 @@ def _create_detailed_cve_table(elements: List, styles: Dict, cve_data: List[Dict
         if shown < total:
             elements.append(
                 Paragraph(
-                    f"<i>Es werden die {shown} wichtigsten CVEs angezeigt; {total - shown} weitere CVEs liegen in der Begleitdatei (.mdata.json) neben dem PDF vor.</i>",
+                    f"<i>Es werden die {shown} wichtigsten CVEs angezeigt. Vollständige Liste auf Anfrage verfügbar.</i>",
                     ParagraphStyle(
                         "SmallItalic",
                         parent=styles["normal"],

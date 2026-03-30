@@ -16,11 +16,6 @@ def test_service_hints_for_common_ports():
 
     text = generate_management_text(BusinessRisk.CRITICAL, evaluation, technical_json=technical_json)
 
-    # SSH hint
-    assert "Fail2Ban" in text or "SSH-Keys" in text
-
-    # HTTPS hint
-    assert "Zertifikat/Chain prüfen" in text
-
-    # HTTP hint
-    assert "HSTS" in text or "WAF" in text
+    # Multiple services → multi-service scenario text
+    assert "SSH" in text
+    assert "Webserver" in text or "Web" in text

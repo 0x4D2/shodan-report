@@ -210,13 +210,13 @@ def generate_report_pipeline(
             # non-fatal: leave enriched data empty
             pass
 
-        # Füge in runner.py nach evaluation_result_to_dict() hinzu:
-        print(f"\nEvaluation Dict nach Konvertierung:")
-        print(f"  risk: {evaluation_dict.get('risk')}")
-        print(f"  exposure_score: {evaluation_dict.get('exposure_score')}")
-        print(f"  exposure_level: {evaluation_dict.get('exposure_level')}")
-        print(f"  exposure: {evaluation_dict.get('exposure')}")
-        print("=" * 50 + "\n")
+        if verbose:
+            print(f"\nEvaluation Dict nach Konvertierung:")
+            print(f"  risk: {evaluation_dict.get('risk')}")
+            print(f"  exposure_score: {evaluation_dict.get('exposure_score')}")
+            print(f"  exposure_level: {evaluation_dict.get('exposure_level')}")
+            print(f"  exposure: {evaluation_dict.get('exposure')}")
+            print("=" * 50 + "\n")
 
         pdf_path = generate_pdf(
             customer_name=customer_name,

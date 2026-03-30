@@ -26,7 +26,7 @@ def generate_pdf(
 ) -> Path:
 
     config = config or {}
-    debug_mdata = bool(config.get("debug_mdata", True))
+    debug_mdata = bool(config.get("debug_mdata", False))
 
     output_dir.mkdir(parents=True, exist_ok=True)
     customer_dir = output_dir / customer_name.replace(" ", "_")

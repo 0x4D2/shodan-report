@@ -263,3 +263,31 @@ class TestManagementSection:
         assert len(elements) > 0
         # Es sollten trotzdem wichtige Absätze erstellt werden
         assert any(isinstance(e, Paragraph) for e in elements)
+
+    def test_management_text_is_rendered_in_elements(self, styles):
+        """management_text wird tatsächlich in die PDF-Elemente gerendert (30.03.2026)."""
+        elements = []
+        evaluation = Evaluation(ip="10.0.0.1", risk="MEDIUM", critical_points=[])
+        technical_json = {"open_ports": [{"port": 443, "product": "nginx"}]}
+        management_text = "Empfehlung: RDP-Zugang sofort schließen."
+
+        create_management_section(
+            elements=elements,
+            styles=styles,
+            management_text=management_text,
+            technical_json=technical_json,
+            evaluation=evaluation,
+            business_risk="MEDIUM",
+            config={},
+        )
+
+        para_texts = []
+        for e in elements:
+            if isinstance(e, Paragraph) and hasattr(e, "text"):
+                try:
+                    para_texts.append(e.getPlainText())
+                except Exception:
+                    para_texts.append(str(e.text))
+
+        found = any("RDP-Zugang sofort schließen" in t for t in para_texts)
+        assert found, "management_text-Inhalt muss in den gerenderten Elementen erscheinen"

@@ -508,6 +508,7 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
     elements.append(Spacer(1, 4))
 
     # Use helper to produce the risk statement and the technical short note
+    rdp_primary = should_show_rdp_warning(technical_json, mdata)
     risk_stmt, tech_note_candidate = get_management_risk_and_tech_note(technical_json, evaluation, mdata=mdata, config=config)
 
     state_stmt = f"Zustand: Externe Angriffsfläche: Exposure-Level {exposure_display}."
@@ -599,38 +600,27 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
     elements.append(Paragraph(tech_note, styles["normal"]))
     elements.append(Spacer(1, 8))
 
-    elements.append(
-        Paragraph(
-            "Gesamtbewertung der externen Angriffsfläche",
-            styles["heading2"],
-        )
-    )
-    elements.append(Spacer(1, 4))
-    elements.append(
-        Paragraph(
-            "Bewertung basiert auf externen, passiven OSINT-Daten; interne Kontrollen sind nicht beurteilbar.",
-            styles["normal"],
-        )
-    )
-    elements.append(Spacer(1, 8))
-
-    elements.append(
-        Paragraph(
-            "Kurzempfehlung: Auftrag zur Härtung der externen Zugänge erteilen und Zielwert Exposure-Level ≤2/5 festlegen.",
-            styles["normal"],
-        )
-    )
-    elements.append(Spacer(1, 6))
-
-    elements.append(
-        Paragraph(
-            "Entscheidungsvorlage: Priorisierung und Ressourcen für die Reduktion der externen Angriffsfläche freigeben.",
-            styles["normal"],
-        )
-    )
-    elements.append(Spacer(1, 6))
-
-    # Fazit on management page removed per user request (detailed recommendations remain later)
+    # ── Management-Text (szenario-spezifisch aus management_text.py) ──────────
+    try:
+        if management_text and management_text.strip():
+            for block in management_text.strip().split("\n\n"):
+                block = block.strip()
+                if not block:
+                    continue
+                lines = block.split("\n")
+                # Erste Zeile ggf. als Abschnittsbezeichner (z.B. "Empfehlung:")
+                first = lines[0].strip()
+                if len(lines) > 1 and first.endswith(":"):
+                    elements.append(Paragraph(f"<b>{first}</b>", styles["normal"]))
+                    rest = " ".join(l.strip() for l in lines[1:] if l.strip())
+                    if rest:
+                        elements.append(Paragraph(rest, styles["normal"]))
+                else:
+                    elements.append(Paragraph(block.replace("\n", " "), styles["normal"]))
+                elements.append(Spacer(1, 4))
+            elements.append(Spacer(1, 4))
+    except Exception:
+        pass
 
     # Seite 1 bewusst fokussiert; Rest auf Folgeseiten
     elements.append(PageBreak())
