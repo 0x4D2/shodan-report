@@ -216,6 +216,79 @@ def _render_eol_warnings(
         elements.append(Spacer(1, 4))
 
 
+# Insecure TLS/SSL protocol versions observed directly from TLS handshake data.
+# These are VERIFIED findings — not inferred from version strings.
+_TLS_INSECURE = {
+    "SSLv2":   ("kritisch", "SSL 2.0 — vollständig kompromittiert, triviale Angriffe möglich"),
+    "SSLv3":   ("kritisch", "SSL 3.0 — POODLE (CVE-2014-3566), vollständig kompromittiert"),
+    "TLSv1":   ("hoch",     "TLS 1.0 — BEAST/POODLE, seit 2020 durch RFC 8996 abgekündigt"),
+    "TLSv1.1": ("mittel",   "TLS 1.1 — bekannte kryptographische Schwächen, seit 2021 abgekündigt (RFC 8996)"),
+}
+
+
+def _render_tls_warnings(
+    elements: List, styles: Dict, technical_json: Dict[str, Any]
+) -> None:
+    """Render VERIFIED warning boxes for insecure TLS protocol versions.
+
+    Unlike EOL/CVE findings (inferred from version strings), these are
+    directly observable from the Shodan TLS handshake data — no guessing.
+    Shodan encodes: 'TLSv1' = enabled, '-TLSv1' = disabled (ignored here).
+    """
+    services = list(technical_json.get("services") or technical_json.get("open_ports") or [])
+    if not services:
+        return
+
+    # Collect enabled insecure protocols → ports
+    proto_ports: Dict[str, List] = {}
+    for svc in services:
+        if not isinstance(svc, dict):
+            continue
+        port = svc.get("port")
+        ssl_info = svc.get("ssl_info") or {}
+        if not isinstance(ssl_info, dict):
+            continue
+        for ver in (ssl_info.get("versions") or []):
+            ver_str = str(ver).strip()
+            if ver_str.startswith("-"):
+                continue  # disabled — safe
+            if ver_str in _TLS_INSECURE:
+                entry = proto_ports.setdefault(ver_str, [])
+                if port is not None and port not in entry:
+                    entry.append(port)
+
+    if not proto_ports:
+        return
+
+    _order = {"kritisch": 0, "hoch": 1, "mittel": 2}
+    sorted_protos = sorted(
+        proto_ports.items(), key=lambda x: _order.get(_TLS_INSECURE[x[0]][0], 9)
+    )
+
+    elements.append(Spacer(1, 4))
+    for proto, ports in sorted_protos:
+        sev, label = _TLS_INSECURE[proto]
+        bg = HexColor(_TAG_BG[sev])
+        border = HexColor(_TAG_BORDER[sev])
+        sev_label = _TAG_LABEL[sev]
+        port_str = (
+            f" · Port(s) {', '.join(str(p) for p in sorted(ports))}" if ports else ""
+        )
+        msg = f"<b>TLS [VERIFIED] [{sev_label}]:</b> {label}{port_str}"
+        cell_text = Paragraph(msg, styles["normal"])
+        box = Table([[cell_text]], colWidths=[163 * mm])
+        box.setStyle(TableStyle([
+            ("BACKGROUND",    (0, 0), (-1, -1), bg),
+            ("BOX",           (0, 0), (-1, -1), 1.0, border),
+            ("LEFTPADDING",   (0, 0), (-1, -1), 8),
+            ("RIGHTPADDING",  (0, 0), (-1, -1), 8),
+            ("TOPPADDING",    (0, 0), (-1, -1), 6),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ]))
+        elements.append(box)
+        elements.append(Spacer(1, 4))
+
+
 def _find_insecure_tls(protocols: List[str]) -> List[str]:
     insecure = []
     for p in protocols or []:
@@ -252,6 +325,8 @@ def create_technical_section(elements: List, styles: Dict, *args, **kwargs) -> N
     _render_shodan_tags_warning(elements, styles, technical_json)
     # Show EOL/near-EOL warning boxes derived from service banners
     _render_eol_warnings(elements, styles, technical_json)
+    # Show VERIFIED TLS warning boxes (directly observable from TLS handshake)
+    _render_tls_warnings(elements, styles, technical_json)
 
     if not technical_json:
         elements.append(Paragraph("Keine technischen Details verfügbar.", styles["normal"]))

@@ -1,5 +1,19 @@
 # Changelog
 
+## 31.03.2026 (5)
+
+- feat: TLS Verified-Finding Warn-Boxen im Technischen Anhang
+  - `pdf/sections/technical.py`: neuer `_TLS_INSECURE`-Katalog + `_render_tls_warnings()`
+    - Liest `ssl_info.versions` direkt aus Shodan-Daten (Format: kein Prefix = aktiv, `-` Prefix = deaktiviert)
+    - SSLv2/SSLv3 → KRITISCH, TLSv1.0 → HOCH, TLSv1.1 → MITTEL
+    - Label `TLS [VERIFIED]` — unterscheidet direkt beobachtete Fakten vom TLS-Handshake von OSINT-basierten CVE-Indikatoren
+    - Deduplizierung pro Protokoll über alle Ports, Ports im Box-Text sichtbar
+    - Sortierung: KRITISCH → HOCH → MITTEL
+  - `pdf/sections/data/recommendations_data.py`: TLS-Block prüft jetzt `ssl_info.versions`
+    - Neue P1-Message mit konkreten Protokollnamen: `"TLS-Konfiguration: Unsichere Protokolle aktiv (TLSv1.1) — sofort deaktivieren"`
+    - Fallback auf generische Meldung wenn keine Versionen gefunden aber Legacy-Felder treffen
+- test: 8 neue Tests in `tests/pdf/sections/test_technical_top_vuln.py` (318 passed, 9 skipped, 0 failed)
+
 ## 31.03.2026 (4)
 
 - feat: EOL-Findings in Management-Summary und Handlungsempfehlungen integriert

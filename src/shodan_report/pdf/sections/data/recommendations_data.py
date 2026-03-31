@@ -217,8 +217,27 @@ def prepare_recommendations_data(technical_json: Dict[str, Any], evaluation: Any
             if getattr(s, "tls_weakness", False) or getattr(s, "ssl_weakness", False):
                 tls_issues += 1
 
+    # Check ssl_info.versions for actively enabled insecure TLS/SSL protocols
+    _tls_insecure_vers = {"SSLv2", "SSLv3", "TLSv1", "TLSv1.1"}
+    _found_insecure_tls: set = set()
+    for s in _iter_services(technical_json):
+        if isinstance(s, dict):
+            ssl_info = s.get("ssl_info") or {}
+            if isinstance(ssl_info, dict):
+                for ver in (ssl_info.get("versions") or []):
+                    ver_str = str(ver).strip()
+                    if not ver_str.startswith("-") and ver_str in _tls_insecure_vers:
+                        _found_insecure_tls.add(ver_str)
+                        tls_issues += 1
+
     if tls_issues:
-        priority1.append("TLS-Konfiguration überprüfen; Schwachstellen in TLS/SSL gefunden")
+        if _found_insecure_tls:
+            protos = ", ".join(sorted(_found_insecure_tls))
+            priority1.append(
+                f"TLS-Konfiguration: Unsichere Protokolle aktiv ({protos}) — sofort deaktivieren"
+            )
+        else:
+            priority1.append("TLS-Konfiguration überprüfen; Schwachstellen in TLS/SSL gefunden")
 
     # Management ports and other port-based recommendations
     mg_ports = {22: "SSH", 3389: "RDP", 5900: "VNC", 3306: "MySQL", 5432: "Postgres", 23: "Telnet", 21: "FTP"}
