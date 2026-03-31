@@ -123,6 +123,85 @@ def _render_shodan_tags_warning(
         elements.append(Spacer(1, 4))
 
 
+def _render_eol_warnings(
+    elements: List, styles: Dict, technical_json: Dict[str, Any]
+) -> None:
+    """Render warning boxes for EOL/near-EOL software detected in the services list."""
+    try:
+        from shodan_report.evaluation.eol import scan_services_for_eol
+    except Exception:
+        return
+
+    services = list(technical_json.get("services") or technical_json.get("open_ports") or [])
+    if not services:
+        return
+
+    findings = scan_services_for_eol(services)
+    if not findings:
+        return
+
+    _STATUS_SEV = {"eol": "hoch", "near_eol": "mittel"}
+
+    elements.append(Spacer(1, 4))
+    for f in findings:
+        sev = _STATUS_SEV.get(f["eol_status"], "niedrig")
+        bg = HexColor(_TAG_BG[sev])
+        border = HexColor(_TAG_BORDER[sev])
+        sev_label = _TAG_LABEL[sev]
+
+        display_name = f.get("display_name") or "Unbekanntes Produkt"
+        eol_date = f.get("eol_date")
+        note = f.get("note")
+        confidence = f.get("confidence", "medium")
+        port = f.get("port")
+        support_model = f.get("support_model", "official")
+
+        if f["eol_status"] == "eol" and eol_date:
+            if support_model == "mainstream_end":
+                msg = (
+                    f"<b>EOL [{sev_label}]:</b> {display_name} — "
+                    f"Mainstream-Support beendet seit {eol_date} (lizenzabhängig)"
+                )
+            else:
+                msg = (
+                    f"<b>EOL [{sev_label}]:</b> {display_name} — "
+                    f"Sicherheits-Support beendet seit {eol_date}"
+                )
+        elif f["eol_status"] == "near_eol" and eol_date:
+            if support_model == "mainstream_end":
+                msg = (
+                    f"<b>Near-EOL [{sev_label}]:</b> {display_name} — "
+                    f"Mainstream-Support endet {eol_date} (lizenzabhängig)"
+                )
+            else:
+                msg = (
+                    f"<b>Near-EOL [{sev_label}]:</b> {display_name} — "
+                    f"Sicherheits-Support endet {eol_date}"
+                )
+        else:
+            msg = f"<b>EOL [{sev_label}]:</b> {display_name} — nicht mehr unterstützt"
+
+        if note:
+            msg += f". {note}"
+        if confidence == "low":
+            msg += " (Hinweis: Produkt erkannt, Version nicht auflösbar)"
+        if port is not None:
+            msg += f" · Port {port}"
+
+        cell_text = Paragraph(msg, styles["normal"])
+        box = Table([[cell_text]], colWidths=[163 * mm])
+        box.setStyle(TableStyle([
+            ("BACKGROUND",    (0, 0), (-1, -1), bg),
+            ("BOX",           (0, 0), (-1, -1), 1.0, border),
+            ("LEFTPADDING",   (0, 0), (-1, -1), 8),
+            ("RIGHTPADDING",  (0, 0), (-1, -1), 8),
+            ("TOPPADDING",    (0, 0), (-1, -1), 6),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ]))
+        elements.append(box)
+        elements.append(Spacer(1, 4))
+
+
 def _find_insecure_tls(protocols: List[str]) -> List[str]:
     insecure = []
     for p in protocols or []:
@@ -157,6 +236,8 @@ def create_technical_section(elements: List, styles: Dict, *args, **kwargs) -> N
 
     # Show warning box for security-relevant Shodan tags (eol-product, doublepulsar, …)
     _render_shodan_tags_warning(elements, styles, technical_json)
+    # Show EOL/near-EOL warning boxes derived from service banners
+    _render_eol_warnings(elements, styles, technical_json)
 
     if not technical_json:
         elements.append(Paragraph("Keine technischen Details verfügbar.", styles["normal"]))

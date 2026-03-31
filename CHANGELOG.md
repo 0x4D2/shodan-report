@@ -1,5 +1,20 @@
 # Changelog
 
+## 31.03.2026 (3)
+
+- feat: EOL-Erkennungs-Engine als eigenständiges Modul `evaluation/eol/`
+  - `src/shodan_report/evaluation/eol/eol_lookup.py`: statische EOL-Tabelle mit 28 Einträgen — Windows Server 2003–2022, Apache 2.2/1.3, PHP 5/7.0–8.1, MySQL 5.5–5.7, OpenSSL 1.0/1.1.1, ProFTPD 1.3.5, Samba 3/4.0; `NEAR_EOL_DAYS = 365`
+  - `src/shodan_report/evaluation/eol/eol_detector.py`: reines Matching-Engine ohne Seiteneffekte; `detect_eol(product, version)` gibt `{product_id, display_name, eol_status, eol_date, confidence, support_model, note}` zurück; `scan_services_for_eol(services)` filtert auf EOL/near-EOL und dedupliziert nach `product_id`
+  - `support_model`-Feld maschinenlesbar: `"official"` (eindeutiges EOL) vs. `"mainstream_end"` (Extended Support ggf. bei Lizenzierung noch aktiv); Renderer zeigt `(lizenzabhängig)` Hinweis bei Windows Server Einträgen
+  - Confidence: `high` bei Prefix + Version, `medium` bei Version ohne Prefix-Match, `low` ohne Version
+  - Windows Server: `support_end = mainstream_end` (relevant für KMU ohne Software Assurance)
+- feat: EOL-Warn-Boxen im Technischen Anhang
+  - `src/shodan_report/pdf/sections/technical.py`: neue Funktion `_render_eol_warnings` — scannt `services[]` aus dem Snapshot und rendert eine farbige Warn-Box pro EOL/near-EOL-Fund; EOL → HOCH (orange), near-EOL → MITTEL (gelb)
+  - Direkter Aufruf nach `_render_shodan_tags_warning` in `create_technical_section`
+  - Deduplizierung: selbes Produkt auf mehreren Ports erscheint nur einmal; Port-Nummer im Text sichtbar
+- test: 21 neue Tests in `tests/evaluation/test_eol_detector.py` (inkl. 3 Tests für `support_model`)
+  - Ergebnis: **310 passed, 9 skipped, 0 failed**
+
 ## 31.03.2026 (2)
 
 - feat: Shodan-Tags als Warn-Box im Technischen Anhang
