@@ -283,8 +283,13 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
             _has_eol = "eol-product" in [str(t).lower() for t in (technical_json.get("tags") or [])]
     except Exception:
         pass
-    if _has_eol and not _found_insecure_tls:
-        exposure_score = max(exposure_score, 2)
+    if _has_eol:
+        exposure_score = max(exposure_score, 3)
+
+    # CVE baseline boost — any inferred CVE raises risk to at least erhöht
+    _raw_cve_count = int(mdata.get("cve_count", 0) or 0)
+    if _raw_cve_count > 0:
+        exposure_score = max(exposure_score, 3)
 
     # Re-sync display + description after all boosts
     exposure_display = f"{exposure_score}/5"

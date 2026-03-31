@@ -195,3 +195,67 @@ def prepare_management_data(technical_json: Dict[str, Any], evaluation: Any) -> 
         "service_rows": service_rows,
         "top_vulns": top_vulns,
     }
+
+
+def compute_boosted_exposure_score(
+    base_score: int,
+    technical_json: Any,
+    cve_count: int = 0,
+) -> int:
+    """Apply the same post-evaluation boosts used by management.py and return the final score.
+
+    Mirrors management.py boost logic (TLS 1.0/1.1 → max 3, EOL-product → max 3,
+    any CVE → max 3).  Does NOT apply the NVD-live CRITICAL boost (requires live
+    network access / config) — that boost is intentionally left to management.py.
+    """
+    score = int(base_score or 1)
+
+    # Insecure TLS boost
+    _insecure_tls_vers = {"SSLv2", "SSLv3", "TLSv1", "TLSv1.1"}
+    try:
+        services = (
+            technical_json.get("services") or technical_json.get("open_ports") or []
+            if isinstance(technical_json, dict)
+            else []
+        )
+        for svc in (services or []):
+            if not isinstance(svc, dict):
+                continue
+            tls_versions = svc.get("tls_versions") or svc.get("ssl", {}).get("versions") or []
+            for _vs in (tls_versions or []):
+                vs = str(_vs).strip()
+                if not vs.startswith("-") and vs in _insecure_tls_vers:
+                    score = max(score, 3)
+                    break
+    except Exception:
+        pass
+
+    # EOL boost — try eol module first, fall back to Shodan "eol-product" tag
+    try:
+        from shodan_report.evaluation.eol import scan_services_for_eol
+
+        _svc_list = (
+            technical_json.get("services") or []
+            if isinstance(technical_json, dict)
+            else []
+        )
+        _eol_res = scan_services_for_eol(_svc_list)
+        _has_eol = any(f.get("eol_status") in ("eol", "near_eol") for f in _eol_res)
+        if not _has_eol:
+            _has_eol = "eol-product" in [
+                str(t).lower() for t in ((technical_json or {}).get("tags") or [])
+            ]
+    except Exception:
+        _has_eol = "eol-product" in [
+            str(t).lower() for t in ((technical_json or {}).get("tags") or [])
+        ]
+
+    if _has_eol:
+        score = max(score, 3)
+
+    # CVE baseline boost
+    if int(cve_count or 0) > 0:
+        score = max(score, 3)
+
+    return score
+

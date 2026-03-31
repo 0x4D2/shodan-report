@@ -475,8 +475,9 @@ def _text_elevated(
     cve_count: int,
     has_insecure_tls: bool = False,
     has_eol: bool = False,
+    exposure_score: int = 3,
 ) -> str:
-    """Text für Exposure-Level 3/5 — erhöht, aber nicht akut kritisch."""
+    """Text für Exposure-Level ≥ 3/5 — erhöht, aber nicht akut kritisch."""
     risk_factors = []
     if has_insecure_tls:
         risk_factors.append("veraltete TLS-Protokolle (TLS 1.0/1.1) aktiv")
@@ -491,9 +492,11 @@ def _text_elevated(
         else "Mehrere sicherheitsrelevante Konfigurations- und Versionsrisiken wurden identifiziert."
     )
 
+    score_str = f"{exposure_score}/5"
+
     return (
         "Gesamteinschätzung:\n"
-        "Die externe Sicherheitslage ist erhöht (Exposure-Level 3/5). "
+        f"Die externe Sicherheitslage ist erhöht (Exposure-Level {score_str}). "
         f"{factors_line}\n\n"
         "Was das bedeutet:\n"
         "Es wurden keine akut ausnutzbaren Schwachstellen direkt bestätigt, "
@@ -629,23 +632,22 @@ def generate_management_text(
     # ─────────────────────────────────────────────────────────────────────────
     _has_insecure_tls = _detect_insecure_tls(services)
     _has_eol = _detect_eol(services)
-    _score_boosted = (
-        (getattr(evaluation, "exposure_score", 0) or 0) >= 3
-        or _has_insecure_tls
-        or _has_eol
-        or cve_count > 0
-    )
+    _base_score = int(getattr(evaluation, "exposure_score", 2) or 2)
+    _boosted_score = _base_score
+    if _has_insecure_tls or _has_eol or cve_count > 0:
+        _boosted_score = max(_boosted_score, 3)
+    _score_boosted = _boosted_score >= 3
 
     # ── ATTENTION ─────────────────────────────────────────────────────────────
     if business_risk == BusinessRisk.ATTENTION:
         if _score_boosted:
-            return _text_elevated(scenario, cve_count, _has_insecure_tls, _has_eol)
+            return _text_elevated(scenario, cve_count, _has_insecure_tls, _has_eol, _boosted_score)
         return _text_attention(scenario, cve_count)
 
     # ── MONITOR ───────────────────────────────────────────────────────────────
     # Wenn Boost-Signale vorhanden: elevated-Narrative (nie "stabil" bei 3/5)
     if _score_boosted:
-        return _text_elevated(scenario, cve_count, _has_insecure_tls, _has_eol)
+        return _text_elevated(scenario, cve_count, _has_insecure_tls, _has_eol, _boosted_score)
 
     # Webserver ohne kritische Befunde
     if scenario["has_web"] and not scenario["has_rdp"] and not scenario["has_db"] and cve_count == 0:

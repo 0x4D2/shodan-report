@@ -81,10 +81,25 @@ def _add_no_data_view(
         ))
         return
 
-    # Aktuellen Exposure-Score ermitteln für Baseline-Ankündigung
+    # Aktuellen Exposure-Score ermitteln (inkl. Boosts) für Baseline-Ankündigung
     exposure_score = None
-    if evaluation and isinstance(evaluation, dict):
-        exposure_score = evaluation.get("exposure_score")
+    if evaluation is not None:
+        try:
+            from shodan_report.pdf.sections.data.management_data import (
+                compute_boosted_exposure_score,
+                prepare_management_data,
+            )
+            _mdata = prepare_management_data(technical_json or {}, evaluation)
+            _base = _mdata.get("exposure_score", 1)
+            exposure_score = compute_boosted_exposure_score(
+                _base, technical_json or {}, _mdata.get("cve_count", 0)
+            )
+        except Exception:
+            exposure_score = (
+                evaluation.get("exposure_score")
+                if isinstance(evaluation, dict)
+                else getattr(evaluation, "exposure_score", None)
+            )
 
     # Haupttext
     elements.append(Paragraph(
@@ -188,8 +203,23 @@ def _add_comparison_view(
         curr_exposure = None
         if isinstance(technical_json, dict):
             prev_exposure = technical_json.get("previous_exposure_score")
-        if isinstance(evaluation, dict):
-            curr_exposure = evaluation.get("exposure_score")
+        if evaluation is not None:
+            try:
+                from shodan_report.pdf.sections.data.management_data import (
+                    compute_boosted_exposure_score,
+                    prepare_management_data,
+                )
+                _mdata = prepare_management_data(technical_json or {}, evaluation)
+                _base = _mdata.get("exposure_score", 1)
+                curr_exposure = compute_boosted_exposure_score(
+                    _base, technical_json or {}, _mdata.get("cve_count", 0)
+                )
+            except Exception:
+                curr_exposure = (
+                    evaluation.get("exposure_score")
+                    if isinstance(evaluation, dict)
+                    else getattr(evaluation, "exposure_score", None)
+                )
 
         if prev_exposure is not None and curr_exposure is not None:
             elements.append(Paragraph(

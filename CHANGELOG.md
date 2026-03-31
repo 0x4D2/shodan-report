@@ -163,6 +163,10 @@
 
 ## Unreleased
 
+- fix: EOL/CVE exposure-score boost alignment (management.py ↔ management_text.py)
+  - `src/shodan_report/pdf/sections/management.py`: EOL-Boost auf `max(score, 3)` erhöht (war `max(score, 2)`); neuer CVE-Baseline-Boost `max(score, 3)` wenn `cve_count > 0`
+  - `src/shodan_report/reporting/management_text.py`: `_text_elevated()` akzeptiert jetzt `exposure_score`-Parameter statt hardcoded "3/5"; Boost-Score wird lokal gemittelt und übergeben — PDF-Anzeige und Narrative sind jetzt konsistent
+
 - chore: update `.gitignore` — add caches and generated files
  - feat: improve CPE parsing and service pretty-formatting
    - `src/shodan_report/clients/helpers/cpe.py`: alias map and normalization for clearer service names (e.g. MySQL, Apache)
