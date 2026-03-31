@@ -8,7 +8,7 @@
 from dataclasses import dataclass
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.colors import HexColor
-from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
+from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT, TA_JUSTIFY
 from typing import Dict
 
 
@@ -156,6 +156,7 @@ def create_styles(theme: Theme = DEFAULT_THEME) -> Dict[str, ParagraphStyle]:
             textColor=C.text,
             leading=13,
             spaceAfter=2,
+            alignment=TA_JUSTIFY,
         ),
 
         # ── BULLET-PUNKTE ────────────────────────────────────────────────────
@@ -226,7 +227,28 @@ def create_styles(theme: Theme = DEFAULT_THEME) -> Dict[str, ParagraphStyle]:
             leading=10,
             spaceAfter=2,
         ),
-
+        # ── METHODOLOGY (Einordnung-Seite) ──────────────────────────────────
+        "methodology_body": ParagraphStyle(
+            "MethodologyBody",
+            parent=base["Normal"],
+            fontName="Helvetica",
+            fontSize=8,
+            textColor=C.text,
+            leading=11,
+            spaceAfter=2,
+            alignment=TA_JUSTIFY,
+        ),
+        "methodology_bullet": ParagraphStyle(
+            "MethodologyBullet",
+            parent=base["Normal"],
+            fontName="Helvetica",
+            fontSize=8,
+            textColor=C.text,
+            leading=11,
+            spaceAfter=2,
+            leftIndent=12,
+            firstLineIndent=-7,
+        ),
         # ── DISCLAIMER / FOOTER-TEXT ─────────────────────────────────────────
         "disclaimer": ParagraphStyle(
             "Disclaimer",
