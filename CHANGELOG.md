@@ -1,5 +1,20 @@
 # Changelog
 
+## 31.03.2026 (2)
+
+- feat: Shodan-Tags als Warn-Box im Technischen Anhang
+  - `src/shodan_report/pdf/sections/technical.py`: neue Funktion `_render_shodan_tags_warning` — liest `tags[]` aus dem Snapshot und rendert für jeden sicherheitsrelevanten Tag eine farbige Box direkt nach dem Abschnitts-Header
+  - Bekannte Tags mit Severity: `eol-product` → HOCH (orange), `doublepulsar` / `malware` → KRITISCH (rot), `honeypot` / `tor` → MITTEL (gelb), `self-signed` → NIEDRIG (blau)
+  - Reine Informationstags (`cloud`, `vpn`) erscheinen weiterhin im Metadaten-Block, nicht als Warn-Box
+  - EOL-Tag wird nicht mehr doppelt in der Metadaten-Liste angezeigt
+- test: 5 neue Tests für Warning-Box
+  - `test_eol_tag_renders_warning_box` — prüft Box-Erstellung + HOCH-Label
+  - `test_doublepulsar_renders_critical_box` — prüft KRITISCH-Label
+  - `test_no_box_for_unknown_or_informational_tags` — cloud/vpn erzeugen keine Box
+  - `test_no_tags_produces_no_box` — leere Tags-Liste erzeugt nichts
+  - `test_eol_tag_not_duplicated_in_metadata` — eol-product nicht in Metadaten-Text
+  - Ergebnis: **289 passed, 9 skipped, 0 failed**
+
 ## 31.03.2026
 
 - fix: Seite 2 (generischer Boilerplate-Einleitungsblock) entfernt

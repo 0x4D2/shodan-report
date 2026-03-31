@@ -44,6 +44,85 @@ def _limit_list(items: List[str], max_items: int = 4) -> str:
     return ", ".join(trimmed) + suffix
 
 
+# Known Shodan tags with security relevance, mapped to severity and readable label.
+_SHODAN_TAG_MAP = {
+    "eol-product":    ("hoch",    "End-of-Life-Produkt — keine Sicherheits-Patches mehr vom Hersteller"),
+    "doublepulsar":   ("kritisch", "DoublePulsar-Backdoor erkannt (NSA-Exploit)"),
+    "malware":        ("kritisch", "Malware-Aktivität von Shodan erkannt"),
+    "honeypot":       ("mittel",   "Möglicher Honeypot — Ergebnisse mit Vorsicht interpretieren"),
+    "tor":            ("mittel",   "TOR-Exit-Node — anonymisierter Datenverkehr möglich"),
+    "self-signed":    ("niedrig",  "Selbstsigniertes Zertifikat — keine CA-Validierung"),
+    "cloud":          (None,       "Cloud-gehostet"),
+    "vpn":            (None,       "VPN-Dienst erkannt"),
+}
+
+_TAG_BG = {
+    "kritisch": "#fef2f2",
+    "hoch":     "#fff7ed",
+    "mittel":   "#fefce8",
+    "niedrig":  "#f0f9ff",
+}
+_TAG_BORDER = {
+    "kritisch": "#ef4444",
+    "hoch":     "#f97316",
+    "mittel":   "#eab308",
+    "niedrig":  "#3b82f6",
+}
+_TAG_LABEL = {
+    "kritisch": "KRITISCH",
+    "hoch":     "HOCH",
+    "mittel":   "MITTEL",
+    "niedrig":  "NIEDRIG (Info)",
+}
+
+
+def _render_shodan_tags_warning(
+    elements: List, styles: Dict, technical_json: Dict[str, Any]
+) -> None:
+    """Render a warning box for security-relevant Shodan tags.
+    Only shows tags that have a known severity mapping; informational tags
+    (cloud, vpn) are skipped here — they stay in the metadata section.
+    """
+    tags = [str(t).lower().strip() for t in (technical_json.get("tags") or [])]
+    if not tags:
+        return
+
+    # collect only tags with a severity
+    relevant = []
+    for tag in tags:
+        entry = _SHODAN_TAG_MAP.get(tag)
+        if entry and entry[0] is not None:
+            relevant.append((tag, entry[0], entry[1]))
+
+    if not relevant:
+        return
+
+    # sort by severity: kritisch > hoch > mittel > niedrig
+    _order = {"kritisch": 0, "hoch": 1, "mittel": 2, "niedrig": 3}
+    relevant.sort(key=lambda x: _order.get(x[1], 9))
+
+    elements.append(Spacer(1, 6))
+    for tag, sev, label in relevant:
+        bg = HexColor(_TAG_BG[sev])
+        border = HexColor(_TAG_BORDER[sev])
+        sev_label = _TAG_LABEL[sev]
+        cell_text = Paragraph(
+            f"<b>Shodan-Tag [{sev_label}]:</b> {label}",
+            styles["normal"],
+        )
+        box = Table([[cell_text]], colWidths=[163 * mm])
+        box.setStyle(TableStyle([
+            ("BACKGROUND",   (0, 0), (-1, -1), bg),
+            ("BOX",          (0, 0), (-1, -1), 1.0, border),
+            ("LEFTPADDING",  (0, 0), (-1, -1), 8),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+            ("TOPPADDING",   (0, 0), (-1, -1), 6),
+            ("BOTTOMPADDING",(0, 0), (-1, -1), 6),
+        ]))
+        elements.append(box)
+        elements.append(Spacer(1, 4))
+
+
 def _find_insecure_tls(protocols: List[str]) -> List[str]:
     insecure = []
     for p in protocols or []:
@@ -75,6 +154,9 @@ def create_technical_section(elements: List, styles: Dict, *args, **kwargs) -> N
     elements.append(keep_section([Paragraph("<b>3. Technischer Anhang — Technische Detailanalyse (Auszug)</b>", heading_style), Spacer(1, 8)]))
     elements.append(Paragraph("Quelle: Shodan (OSINT, passive Datenerhebung).", styles["normal"]))
     elements.append(Spacer(1, 8))
+
+    # Show warning box for security-relevant Shodan tags (eol-product, doublepulsar, …)
+    _render_shodan_tags_warning(elements, styles, technical_json)
 
     if not technical_json:
         elements.append(Paragraph("Keine technischen Details verfügbar.", styles["normal"]))
@@ -407,10 +489,14 @@ def _extract_metadata_items(technical_json: Dict[str, Any]) -> List[str]:
     if asn:
         meta_items.append(f"Autonomous System: {asn}")
 
-    # Tags
-    tags = technical_json.get("tags", [])
-    if tags:
-        meta_items.append(f"Tags: {', '.join(tags)}")
+    # Tags: only show informational ones here; security-relevant tags
+    # are rendered as a warning box at the top of the section.
+    tags = [str(t).lower().strip() for t in (technical_json.get("tags") or [])]
+    info_tags = [t for t in tags if _SHODAN_TAG_MAP.get(t, (None,))[0] is None and t not in _SHODAN_TAG_MAP]
+    # also include known informational tags (cloud, vpn)
+    info_tags += [t for t in tags if t in _SHODAN_TAG_MAP and _SHODAN_TAG_MAP[t][0] is None]
+    if info_tags:
+        meta_items.append(f"Tags: {', '.join(info_tags)}")
 
     # Vulnerabilities
     vulnerabilities = technical_json.get("vulnerabilities", [])
