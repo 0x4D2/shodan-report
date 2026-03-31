@@ -72,11 +72,20 @@ class TestTrendSection:
 
     def test_create_trend_section_with_comparison(self, mock_elements, mock_styles):
         """Test Trend-Section mit Monatsvergleich."""
+        # Provide a non-zero trend_table so the comparison view is rendered
+        # (all-zero previous values would trigger the first-report guard)
+        trend_table = {
+            "Öffentliche Ports":  (3, 4, "verschlechtert"),
+            "Kritische Services": (1, 1, "stabil"),
+            "Hochrisiko-CVEs":    (2, 3, "verschlechtert"),
+            "TLS-Schwächen":      (0, 0, "stabil"),
+        }
         create_trend_section(
             elements=mock_elements,
             styles=mock_styles,
             trend_text="",
             compare_month="November 2023",
+            trend_table=trend_table,
         )
 
         # Expect a Table to be present for the comparison view

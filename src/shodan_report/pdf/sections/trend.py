@@ -42,10 +42,16 @@ def create_trend_section(elements: List, styles: Dict, *args, **kwargs) -> None:
     if compare_month:
         if not trend_table:
             trend_table = _derive_trend_table(technical_json or {}, evaluation)
-        _add_comparison_view(
-            elements, styles, trend_text, compare_month,
-            trend_table, legacy_mode, theme, technical_json, evaluation,
-        )
+        # Guard: if all previous values are 0 there is no real prior snapshot —
+        # show the first-report baseline view instead of a misleading 0→N table.
+        prev_all_zero = trend_table and all(pv == 0 for pv, _cv, _r in trend_table.values())
+        if prev_all_zero:
+            _add_no_data_view(elements, styles, legacy_mode, technical_json, evaluation)
+        else:
+            _add_comparison_view(
+                elements, styles, trend_text, compare_month,
+                trend_table, legacy_mode, theme, technical_json, evaluation,
+            )
     elif trend_text:
         _add_history_view(elements, styles, trend_text)
     else:

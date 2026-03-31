@@ -60,8 +60,16 @@ def _extract_tls_info(svc: Any) -> Dict[str, Optional[Any]]:
         # accept various possible field names used by different parsers
         cert_expiry = cert.get("not_after") or cert.get("valid_to") or cert.get("expires") or cert.get("expiry")
         cert_valid_from = cert.get("not_before") or cert.get("valid_from") or cert.get("issued") or cert.get("notBefore")
-        cert_subject = cert.get("subject") or cert.get("subject_cn") or cert.get("subject_dn")
-        cert_issuer = cert.get("issuer") or cert.get("issuer_cn") or cert.get("issuer_dn")
+        _raw_subject = cert.get("subject") or cert.get("subject_cn") or cert.get("subject_dn")
+        if isinstance(_raw_subject, dict):
+            cert_subject = _raw_subject.get("CN") or _raw_subject.get("O") or ", ".join(f"{k}={v}" for k, v in _raw_subject.items() if v)
+        else:
+            cert_subject = _raw_subject
+        _raw_issuer = cert.get("issuer") or cert.get("issuer_cn") or cert.get("issuer_dn")
+        if isinstance(_raw_issuer, dict):
+            cert_issuer = _raw_issuer.get("CN") or _raw_issuer.get("O") or _raw_issuer.get("OU") or ", ".join(f"{k}={v}" for k, v in _raw_issuer.items() if v)
+        else:
+            cert_issuer = _raw_issuer
         cert_self_signed = cert.get("self_signed")
         if cert_self_signed is None and cert_subject and cert_issuer:
             cert_self_signed = str(cert_subject) == str(cert_issuer)

@@ -56,21 +56,27 @@ def prepare_recommendations_data(technical_json: Dict[str, Any], evaluation: Any
         for cv in _extract_cves_from(s) or []:
             cves.append(cv)
 
-    # count critical CVEs by cvss if available
-    critical_count = 0
+    # Deduplicate CVEs by ID and count high/critical using thresholds matching cve_overview:
+    # critical >= 9.0, high 7.0–8.9
+    _cve_by_id: dict = {}
     for cv in cves:
         try:
             if isinstance(cv, dict):
-                cvss = cv.get("cvss", 0) or 0
+                cid = cv.get("id") or cv.get("cve") or cv.get("name")
+                cvss = float(cv.get("cvss") or 0)
             else:
-                cvss = getattr(cv, "cvss", 0) or 0
-            if float(cvss) >= 7.0:
-                critical_count += 1
+                cid = str(cv).strip()
+                cvss = 0.0
+            if not cid:
+                continue
+            cid = str(cid).strip()
+            # keep highest CVSS seen for each ID
+            if cid not in _cve_by_id or cvss > _cve_by_id[cid]:
+                _cve_by_id[cid] = cvss
         except Exception:
             continue
 
-    # Also consider any pre-enriched CVE lists that may be present in the
-    # generated `.mdata.json` (e.g. `cve_enriched` / `cve_enriched_sample`).
+    # Also fold in any pre-enriched CVE lists so CVSS values are populated
     try:
         enriched_candidates = []
         if isinstance(technical_json, dict):
@@ -80,23 +86,33 @@ def prepare_recommendations_data(technical_json: Dict[str, Any], evaluation: Any
         for ent in (enriched_candidates or []):
             try:
                 if isinstance(ent, dict):
-                    cvss = ent.get("cvss", None)
+                    cid = ent.get("id") or ent.get("cve") or ent.get("name")
+                    cvss = float(ent.get("cvss") or 0)
                 else:
-                    cvss = getattr(ent, "cvss", None)
-                if cvss is None:
                     continue
-                if float(cvss) >= 7.0:
-                    critical_count += 1
+                if not cid:
+                    continue
+                cid = str(cid).strip()
+                if cid not in _cve_by_id or cvss > _cve_by_id[cid]:
+                    _cve_by_id[cid] = cvss
             except Exception:
                 continue
     except Exception:
         pass
 
-    if critical_count:
-        # initial detection (cvss >= 7)
-        priority1.append(f"Kritische CVE(s) mit CVSS ≥7 identifiziert: {critical_count}")
+    _critical_7_count = sum(1 for v in _cve_by_id.values() if v >= 9.0)
+    _high_count = sum(1 for v in _cve_by_id.values() if 7.0 <= v < 9.0)
+
+    if _critical_7_count or _high_count:
+        priority1.append(
+            f"CVEs patchen: {_critical_7_count} kritisch (CVSS ≥9), {_high_count} hoch (CVSS 7–8.9) – siehe CVE-Übersicht im Anhang."
+        )
+    elif _cve_by_id:
+        # CVEs present but no CVSS data — report count only
+        priority1.append(f"CVEs analysieren: {len(_cve_by_id)} Schwachstellen identifiziert – CVSS-Bewertung ausstehend.")
 
     # Additionally, include CVEs discovered via management data / unique_cves
+    # (kept for fallback enrichment but no longer adds duplicate priority1 items)
     try:
         management_cves = []
         if prepare_management_data:
@@ -108,8 +124,8 @@ def prepare_recommendations_data(technical_json: Dict[str, Any], evaluation: Any
             management_cves = evaluation.get("unique_cves") or evaluation.get("cve_ids") or []
         management_cves = [str(x).strip() for x in (management_cves or []) if x]
 
-        if management_cves:
-            # Enrich locally to get cvss values where possible (no NVD lookup)
+        if management_cves and not _cve_by_id:
+            # Only use management data as fallback when the initial CVE collection was empty
             enriched = []
             if enrich_cves:
                 try:
@@ -144,7 +160,7 @@ def prepare_recommendations_data(technical_json: Dict[str, Any], evaluation: Any
             # If we found any high/critical via management data, ensure a priority1 summary is added
             if critical_count_9 or high_count:
                 priority1.append(
-                    f"Kritische und hohe CVEs patchen ({critical_count_9} kritisch, {high_count} hoch identifiziert) – siehe CVE-Übersicht im Anhang."
+                    f"CVEs patchen: {critical_count_9} kritisch (CVSS ≥9), {high_count} hoch (CVSS 7–8.9) – siehe CVE-Übersicht im Anhang."
                 )
     except Exception:
         # Non-fatal: do not block recommendations if enrichment/prep fails
@@ -300,7 +316,7 @@ def prepare_recommendations_data(technical_json: Dict[str, Any], evaluation: Any
             # meta.critical_cves aggregates all detection paths so the
             # recommendations rendering can decide whether a "no findings"
             # placeholder is appropriate.
-            "critical_cves": int(critical_count + (critical_count_9 if 'critical_count_9' in locals() else 0) + (high_count if 'high_count' in locals() else 0)),
+            "critical_cves": int(_critical_7_count + _high_count),
             "tls_issues": tls_issues,
             "found_management_services": list(sorted(found_mg)),
             "dns_on_53": dns_on_53,

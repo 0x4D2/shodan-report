@@ -203,7 +203,7 @@ class TestManagementSection:
         paragraph_texts = [
             str(e.getPlainText()) for e in elements if isinstance(e, Paragraph)
         ]
-        assert any("Dienste identifiziert" in t for t in paragraph_texts)
+        assert any("Dienste" in t or "Angriffsfläche" in t for t in paragraph_texts)
 
     def test_management_section_with_realistic_services(self):
         """Testet generierte Insights bei gemischten Services."""

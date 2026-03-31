@@ -1,5 +1,23 @@
 # Changelog
 
+## 31.03.2026
+
+- fix: Seite 2 (generischer Boilerplate-Einleitungsblock) entfernt
+  - `src/shodan_report/pdf/sections/management.py`: Block `4. PROFESSIONELLE EINLEITUNGSTEXTE` nach dem PageBreak gelöscht — 5 generische Absätze (OSINT-Einordnung, CVE-Text, Risikotext, Details-Hinweis) die keine kundenspezifischen Informationen transportierten
+- fix: Kernkennzahlen-Tabelle — „Assets" durch analysierte IP ersetzt
+  - `src/shodan_report/pdf/sections/management.py`: Spalte „Assets" mit irreführender Zählung (IP + Hostnames + Domains = 3) ersetzt durch „Analysierte IP" mit der tatsächlichen IP-Adresse aus dem Snapshot; Spaltenbreite angepasst (42 mm IP-Spalte)
+- fix: Zertifikats-Aussteller und -Betreff als Klartext statt Dict-Syntax
+  - `src/shodan_report/pdf/sections/data/technical_data.py`: `cert.issuer` und `cert.subject` werden jetzt korrekt formatiert — aus dem Shodan-Dict wird zuerst `CN`, dann `O`, dann `OU` extrahiert; Fallback auf `k=v`-Darstellung; keine rohen `{'C': 'GB', 'CN': '...'}` mehr im Report
+- fix: Trend-Guard — Trend nur rendern wenn echter Vormonat-Snapshot vorhanden
+  - `src/shodan_report/pdf/sections/trend.py`: wenn `compare_month` gesetzt ist aber alle Vormonat-Werte 0 sind (erster Report war eine Nullmessung), wird jetzt `_add_no_data_view` angezeigt statt einer irreführenden „Verschlechtert von 0 auf N"-Tabelle
+- fix: CVE-Zählung in Empfehlungen dedupliziert und mit cve_overview ausgerichtet
+  - `src/shodan_report/pdf/sections/data/recommendations_data.py`: CVEs werden jetzt nach ID dedupliziert (höchster CVSS-Wert gewinnt) bevor gezählt wird; Schwellwerte jetzt identisch zu `cve_overview.py` (kritisch ≥9.0, hoch 7.0–8.9); ein einziger Priorität-1-Eintrag mit beiden Zahlen statt zwei separater Einträge die sich widersprechen konnten
+- test: 3 Tests an geänderte Ausgaben angepasst
+  - `tests/pdf/sections/test_management.py`: Assertion auf „Dienste identifiziert" auf neuere Formulierung aktualisiert
+  - `tests/pdf/sections/test_recommendations_data.py`: Assertion auf „Kritische CVE" auf neues Format aktualisiert
+  - `tests/pdf/sections/test_trend.py`: `test_create_trend_section_with_comparison` übergibt jetzt explizit eine nicht-leere `trend_table` damit der Trend-Guard nicht greift
+  - Ergebnis: **284 passed, 9 skipped, 0 failed**
+
 ## 30.03.2026 (4)
 
 - test: 4 neue Tests für heutige Änderungen geschrieben

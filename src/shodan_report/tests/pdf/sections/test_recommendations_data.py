@@ -6,7 +6,7 @@ def test_priority1_on_critical_cve():
     evaluation = {"cves": [{"id": "CVE-2024-0001", "cvss": 9.0}]}
     out = prepare_recommendations_data(technical, evaluation, "MEDIUM")
     assert out["meta"]["critical_cves"] == 1
-    assert any("Kritische CVE" in s for s in out["priority1"]) 
+    assert any("CVEs patchen" in s or "kritisch" in s for s in out["priority1"])
 
 
 def test_tls_issues_marked_priority1():

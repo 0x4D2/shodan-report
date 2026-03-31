@@ -325,28 +325,11 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
 
     # ─────────────────────────────────────────────────────────────────────
     # KERNKENNZAHLEN (nur auf Seite 1)
-    # Zeigt kompakt Assets / Ports / CVEs / Status auf der ersten Seite an.
+    # Zeigt kompakt Analysierte IP / Ports / CVEs / Status auf der ersten Seite an.
     # ─────────────────────────────────────────────────────────────────────
     try:
-        # asset_count wurde im oberen Berechnungsabschnitt ermittelt; falls
-        # nicht verfügbar, berechne fallback-Assets aus technical_json.
-        try:
-            assets_num = int(asset_count)
-        except Exception:
-            assets = []
-            ip = technical_json.get("ip")
-            if ip:
-                assets.append(str(ip))
-            domains = technical_json.get("domains") or []
-            hostnames = technical_json.get("hostnames") or []
-            assets.extend([str(d) for d in domains if d])
-            assets.extend([str(h) for h in hostnames if h])
-            # dedupe
-            seen = []
-            for a in assets:
-                if a not in seen:
-                    seen.append(a)
-            assets_num = max(1, len(seen))
+        # Analysierte IP aus technical_json
+        analysed_ip = str(technical_json.get("ip") or "–")
 
         ports_num = int(mdata.get("total_ports", 0) or 0)
         cves_num = int(mdata.get("cve_count", 0) or 0)
@@ -392,11 +375,11 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
 
         kern_rows = [
             [Paragraph("<b>KERNKENNZAHLEN</b>", styles["heading2"]), "", "", ""],
-            [Paragraph("<b>Assets</b>", styles["normal"]), Paragraph("<b>Ports</b>", styles["normal"]), Paragraph("<b>CVEs</b>", styles["normal"]), Paragraph("<b>Status</b>", styles["normal"])],
-            [str(assets_num), str(ports_num), str(cves_num), status_cell],
+            [Paragraph("<b>Analysierte IP</b>", styles["normal"]), Paragraph("<b>Ports</b>", styles["normal"]), Paragraph("<b>CVEs</b>", styles["normal"]), Paragraph("<b>Status</b>", styles["normal"])],
+            [Paragraph(analysed_ip, styles["normal"]), str(ports_num), str(cves_num), status_cell],
         ]
 
-        col_w = [28 * mm, 28 * mm, 28 * mm, 46 * mm]
+        col_w = [42 * mm, 20 * mm, 22 * mm, 46 * mm]
         kern_tbl = Table(kern_rows, colWidths=col_w)
         kern_tbl.setStyle(
             TableStyle(
@@ -625,61 +608,7 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
     # Seite 1 bewusst fokussiert; Rest auf Folgeseiten
     elements.append(PageBreak())
 
-    # ──────────────────────────────────────────────────────────────────────────
-    # ──────────────────────────────────────────────────────────────────────────
-    # 4. PROFESSIONELLE EINLEITUNGSTEXTE
-    # ──────────────────────────────────────────────────────────────────────────
 
-    # Use prepared management data (deduped CVEs, per-service attribution)
-    open_ports = technical_json.get("open_ports", [])
-    total_ports = mdata.get("total_ports", len(open_ports))
-    cve_count = mdata.get("cve_count", 0)
-    unique_cves = mdata.get("unique_cves", [])
-    per_service = mdata.get("per_service", [])
-
-    # 4a. Erster Absatz: Knackige Fakten
-    intro_text = "Auf Basis passiver OSINT-Daten wurden öffentlich erreichbare Dienste identifiziert."
-    elements.append(Paragraph(intro_text, styles["normal"]))
-    elements.append(Spacer(1, 4))
-
-    elements.append(
-        Paragraph(
-            "Einordnung: Externe Sicht; interne Sicherheitsmaßnahmen sind nicht beurteilbar.",
-            styles["normal"],
-        )
-    )
-    elements.append(Spacer(1, 4))
-
-    # 4b. Zweiter Absatz: CVE- und Risiko-Situation
-    if cve_count == 0:
-        cve_text = "Keine kritisch ausnutzbaren, bekannten Schwachstellen festgestellt. Details im technischen Anhang."
-    else:
-        cve_text = "Bekannte Schwachstellen sind im technischen Anhang dokumentiert."
-    elements.append(Paragraph(cve_text, styles["normal"]))
-    elements.append(Spacer(1, 4))
-
-    # 4c. Dritter Absatz: Risiko-Einschätzung und Handlungsempfehlung
-    if risk_level == "critical":
-        risk_text = "Kritische Sicherheitsrisiken erkennbar; Ursachen liegen in extern erreichbaren Diensten."
-    elif risk_level == "high":
-        risk_text = "Erhöhte Sicherheitsrisiken erkennbar; Ursachen liegen in extern erreichbaren Diensten."
-    elif risk_level == "medium":
-        risk_text = "Moderate Risiken erkennbar; Ursache ist die externe Erreichbarkeit einzelner Dienste."
-    else:  # low
-        if critical_cves_count > 0:
-            risk_text = "Moderate Risiken erkennbar; Ursache sind OSINT-Hinweise ohne bestätigte Ausnutzung."
-        else:
-            risk_text = "Keine kritischen Risiken erkennbar; OSINT-Hinweise zeigen keine aktive Ausnutzung."
-
-    elements.append(Paragraph(risk_text, styles["normal"]))
-    elements.append(Spacer(1, 12))
-
-    elements.append(Paragraph("Details zu Diensten und Befunden sind im Technischen Anhang dokumentiert.", styles["normal"]))
-    elements.append(Spacer(1, 12))
-
-    # CVE overview removed from Management section per user request.
-
-    elements.append(Spacer(1, 15))
 
 
 
