@@ -68,6 +68,22 @@ def create_cve_overview_section(
         )
         return
 
+    # Signal-Zeile: was wirklich zählt (vor den Farbboxen)
+    _critical = [c for c in cve_data if c.get("cvss") is not None and c.get("cvss") >= 9.0]
+    _high = [c for c in cve_data if c.get("cvss") is not None and 7.0 <= c.get("cvss") < 9.0]
+    _signal_parts = []
+    if _critical:
+        _signal_parts.append(f"<b>{len(_critical)} kritisch (CVSS ≥ 9)</b>")
+    if _high:
+        _signal_parts.append(f"{len(_high)} hoch (CVSS 7–9)")
+    if _signal_parts:
+        _inferred_note = " — Inferred Findings (Versionszuordnung, keine aktive Verifikation)"
+        elements.append(Paragraph(
+            f"{len(cve_data)} CVEs zugeordnet: {', '.join(_signal_parts)}{_inferred_note}",
+            styles.get("normal"),
+        ))
+        elements.append(Spacer(1, 6))
+
     # 1. RISIKO-ÜBERSICHT (kompakte farbige Boxen)
     _create_risk_overview(elements, styles, cve_data)
 

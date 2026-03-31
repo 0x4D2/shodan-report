@@ -104,13 +104,13 @@ def prepare_pdf_elements(
     create_trend_section(elements=elements, styles=styles, trend_text=trend_text, compare_month=compare_month, trend_table=trend_table, legacy_mode=False, technical_json=technical_json, evaluation=evaluation)
 
     elements.append(_SectionMarker())
-    create_methodology_section(elements=elements, styles=styles)
-
-    elements.append(_SectionMarker())
     create_conclusion_section(elements=elements, styles=styles, customer_name=customer_name, business_risk=business_risk, context=ctx)
 
-    # Keep Conclusion and Footer together — no marker between them so the
-    # renderer will try to place them on the same page when possible.
+    # Einordnung & Bewertungslogik — letzte Seite, nach dem Fazit
+    elements.append(_SectionMarker())
+    create_methodology_section(elements=elements, styles=styles)
+
+    # Keep Footer together with methodology — no extra marker
     create_footer_section(elements=elements, styles=styles)
 
     return elements

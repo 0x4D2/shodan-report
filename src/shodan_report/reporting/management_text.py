@@ -229,26 +229,35 @@ def _text_rdp(
     combo_block = f"\n{combo_sentence}" if combo_sentence else ""
     tls_block = tls_sentence  # inline after CVE note
 
+    # Decision-first structure: verdict → risk factors → action
+    if eol_systems:
+        verdict = (
+            "Bewertung: KRITISCH EXPONIERT — sofortiger Handlungsbedarf."
+        )
+    else:
+        verdict = (
+            "Bewertung: KRITISCH EXPONIERT — erhöhtes Angriffsrisiko."
+        )
+
     return (
-        "Gesamteinschätzung:\n"
+        f"{verdict}\n\n"
         "Ein Remote-Desktop-Dienst (RDP, Port 3389) ist direkt aus dem Internet erreichbar. "
-        "RDP ist einer der meistgenutzten Angriffsvektoren für Ransomware-Kampagnen und "
-        "Brute-Force-Angriffe. Angreifer scannen das Internet automatisiert nach exponierten "
-        f"RDP-Diensten — Ihre Infrastruktur ist damit aktiv einem erhöhten Risiko ausgesetzt."
+        "Angreifer scannen automatisiert nach exponierten RDP-Diensten — "
+        "Ihre Infrastruktur ist aktiv einem erhöhten Angriffs­risiko ausgesetzt."
         f"{combo_block}"
         f"{cve_note}"
         f"{tls_block}\n\n"
         "Was das bedeutet:\n"
-        "Ohne zusätzliche Zugriffskontrollen (VPN, MFA, IP-Whitelist) kann jeder mit "
-        "Internetzugang einen Anmeldeversuch starten."
+        "Ohne Zugriffskontrollen (VPN, MFA, IP-Whitelist) kann jeder mit Internetzugang "
+        "einen Anmeldeversuch starten."
         f"{eol_meaning} "
-        "Erfolgreiche Angriffe führen typischerweise zu vollständiger Systemübernahme, "
-        "Datenverschlüsselung (Ransomware) oder Datenexfiltration.\n\n"
+        "Erfolgreiche Angriffe führen zu Systemübernahme, Datenverschlüsselung (Ransomware) "
+        "oder Datenexfiltration.\n\n"
         "Empfehlung:\n"
-        "RDP-Zugang sofort hinter VPN oder einen dedizierten Jumphost verlagern. "
-        "Direkte Erreichbarkeit aus dem Internet deaktivieren. Zeitrahmen: innerhalb von 48 Stunden."
+        "RDP sofort hinter VPN oder Jumphost verlagern — direkte Erreichbarkeit deaktivieren. "
+        "Zeitrahmen: 48 Stunden."
         f"{eol_recommendation}\n"
-        "Nächste Schritte: IT-Verantwortliche prüfen Zugangskonfiguration (Owner: IT-Sicherheit)."
+        "Nächste Schritte: IT-Sicherheit prüft Zugangskonfiguration."
     )
 
 

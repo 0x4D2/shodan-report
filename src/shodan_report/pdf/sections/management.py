@@ -605,9 +605,6 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
     except Exception:
         pass
 
-    # Seite 1 bewusst fokussiert; Rest auf Folgeseiten
-    elements.append(PageBreak())
-
 
 
 

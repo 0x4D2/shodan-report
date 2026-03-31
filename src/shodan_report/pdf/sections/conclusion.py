@@ -20,7 +20,7 @@ def create_conclusion_section(
         business_risk: Business Risk Level (HIGH/MEDIUM/LOW)
     """
     elements.append(Spacer(1, 20))
-    elements.append(Paragraph("<b>7. Fazit</b>", styles.get("heading1") or styles.get("heading2") or styles["normal"]))
+    elements.append(Paragraph("<b>6. Fazit</b>", styles.get("heading1") or styles.get("heading2") or styles["normal"]))
     elements.append(Spacer(1, 12))
 
     # Determine risk_level: prefer context-derived evaluation/mdata to stay consistent
