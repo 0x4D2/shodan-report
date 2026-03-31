@@ -1,6 +1,42 @@
 # Changelog
 
-## 31.03.2026 (5)
+## 31.03.2026 (9)
+
+- fix: Deterministische Narrative-Zuordnung — Score ↔ Text Konsistenz
+  - `reporting/management_text.py`: neuer Pfad `_text_elevated()` für Exposure-Level 3/5
+    - "stabil"-Narrative nie mehr bei Score ≥ 3: Routing prüft jetzt Boost-Signale direkt aus `technical_json` (TLS/EOL/CVE), unabhängig vom pre-boost `exposure_score`
+    - `_detect_insecure_tls()` + `_detect_eol()` als separate Helper-Funktionen
+    - `_text_monitor()` jetzt explizit mit "(Exposure-Level 1–2/5)" zur Klarheit
+  - `reporting/report_validator.py`: neues Trust-Layer-Modul mit 8 deterministischen Regeln
+    - `STABILITY_SCORE_MISMATCH`: Score ≥ 3 + "stabil"/"kein Handlungsbedarf" im Text
+    - `CRITICAL_SCORE_SOFT_TEXT`: Score ≥ 4 ohne Urgenz-Signal
+    - `RDP_SCORE_MISMATCH`: RDP öffentlich → Score muss ≥ 4 sein
+    - `RDP_MISSING_REMEDIATION`: RDP öffentlich → Text muss VPN/Jumphost/NLA nennen
+    - `EOL_UNDERSCORING`: EOL erkannt → Score muss ≥ 3 sein
+    - `TLS_UNDERSCORING`: TLS 1.0/1.1 aktiv → Score muss ≥ 3 sein
+    - `CVE_WITH_NEGATIVE_CLAIM`: CVEs vorhanden + "keine kritischen Schwachstellen"
+    - `TLS_TEXT_CONTRADICTION`: TLS-Probleme + "keine Konfigurationsrisiken"
+  - `core/runner.py`: Validator läuft nach jeder Report-Generierung automatisch (non-fatal, stdout)
+- feat: PageBreak nach Management-Zusammenfassung
+  - `pdf/pdf_manager.py`: neue `_PageBreakMgmt` nach `create_management_section()` — Empfehlung auf eigener Seite
+- test: 26 neue Tests in `tests/reporting/test_report_validator.py`
+  - Ergebnis: **350 passed, 9 skipped, 0 failed**
+
+## 31.03.2026 (8)
+
+- fix: Risk consistency — Single Master Score, Fazit-Contribution-Factors, Trend-Delta-Erklärung
+  - `pdf/sections/management.py`: Beitragsfaktoren-Block ersetzt verbose Ableitung
+    - Kompakter Block: `"Exposure-Level: 3/5 (erhöht) — Beitragsfaktoren: RDP · 3 CVEs · TLS 1.0/1.1 · EOL"`
+    - Alle Text-Pfade (intro, state_stmt) aus geboosteten `exposure_score`
+    - `version_risk`-Erkennung: "strukturelle Risiken (Version)" als Beitragsfaktor wenn `service.version_risk > 0`
+  - `pdf/sections/conclusion.py`: Contribution Factors inline, risikokalibrierte Bullets
+    - CRITICAL/HIGH: 0–48h + 7-Tage + laufend
+    - MEDIUM: 30 Tage + 60–90 Tage + laufend
+    - LOW: Monitor-only
+  - `pdf/sections/trend.py`: Delta-Erklärung wenn `curr_exposure > prev_exposure`
+  - `pdf/sections/methodology.py`: EOL 4→2 Bullets, Grenzen+Nutzungshinweis zu 3 Bullets zusammengefasst
+- test: 324 passed, 9 skipped, 0 failed
+
 
 - feat: TLS Verified-Finding Warn-Boxen im Technischen Anhang
   - `pdf/sections/technical.py`: neuer `_TLS_INSECURE`-Katalog + `_render_tls_warnings()`

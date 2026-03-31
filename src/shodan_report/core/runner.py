@@ -15,6 +15,7 @@ from shodan_report.evaluation import (
 )  # ⬅️ GEÄNDERT: EvaluationEngine
 from shodan_report.evaluation.risk_prioritization import prioritize_risk
 from shodan_report.reporting.management_text import generate_management_text
+from shodan_report.reporting.report_validator import validate_report as _validate_report
 from shodan_report.reporting.trend import analyze_trend
 from shodan_report.reporting.technical_data import build_technical_data
 from shodan_report.pdf.pdf_generator import generate_pdf
@@ -158,6 +159,20 @@ def generate_report_pipeline(
             business_risk, evaluation_result, technical_json
         )  # ← evaluation_result + technical_json
         management_text = re.sub(r"<[^>]+>", "", management_text)
+
+        # ── Report Logic Validation ───────────────────────────────────────────
+        # Checks score ↔ text ↔ findings consistency. Non-fatal: prints warnings.
+        try:
+            _boosted_score = technical_json.get("exposure_score") or evaluation_result.exposure_score
+            _violations = _validate_report(_boosted_score, management_text, technical_json)
+            if _violations:
+                print(f"\n[REPORT VALIDATOR] {len(_violations)} Konsistenzproblem(e) erkannt:")
+                for _v in _violations:
+                    print(f"  {_v}")
+        except Exception:
+            pass
+        # ─────────────────────────────────────────────────────────────────────
+
         if verbose:
             print("\n--- Management Text (generated) ---\n")
             print(management_text)

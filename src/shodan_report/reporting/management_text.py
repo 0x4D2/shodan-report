@@ -148,6 +148,31 @@ def _tls_issues(services: List[Dict]) -> List[str]:
     return issues
 
 
+def _detect_insecure_tls(services: List[Dict]) -> bool:
+    """True wenn mind. ein Dienst TLS 1.0 oder 1.1 aktiv anbietet."""
+    _insecure = {"SSLv2", "SSLv3", "TLSv1", "TLSv1.1"}
+    for s in services:
+        ssl = s.get("ssl_info") or {}
+        if isinstance(ssl, dict):
+            for v in (ssl.get("versions") or []):
+                vs = str(v).strip()
+                if not vs.startswith("-") and vs in _insecure:
+                    return True
+    return False
+
+
+def _detect_eol(services: List[Dict]) -> bool:
+    """True wenn mind. ein Dienst als EOL markiert ist."""
+    if _scan_eol is None:
+        return False
+    try:
+        flat = _flatten_for_eol(services)
+        findings = _scan_eol(flat)
+        return any(f.get("eol_status") == "eol" for f in findings)
+    except Exception:
+        return False
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # SZENARIO-SPEZIFISCHE TEXTE
 # ─────────────────────────────────────────────────────────────────────────────
@@ -445,11 +470,51 @@ def _text_attention(scenario: Dict, cve_count: int) -> str:
     )
 
 
+def _text_elevated(
+    scenario: Dict,
+    cve_count: int,
+    has_insecure_tls: bool = False,
+    has_eol: bool = False,
+) -> str:
+    """Text für Exposure-Level 3/5 — erhöht, aber nicht akut kritisch."""
+    risk_factors = []
+    if has_insecure_tls:
+        risk_factors.append("veraltete TLS-Protokolle (TLS 1.0/1.1) aktiv")
+    if has_eol:
+        risk_factors.append("End-of-Life-Software ohne Sicherheitsupdates")
+    if cve_count > 0:
+        risk_factors.append(f"{cve_count} potenzielle Schwachstellen (CVE-Indikatoren, Inferred)")
+
+    factors_line = (
+        "Risikofaktoren: " + " · ".join(risk_factors) + "."
+        if risk_factors
+        else "Mehrere sicherheitsrelevante Konfigurations- und Versionsrisiken wurden identifiziert."
+    )
+
+    return (
+        "Gesamteinschätzung:\n"
+        "Die externe Sicherheitslage ist erhöht (Exposure-Level 3/5). "
+        f"{factors_line}\n\n"
+        "Was das bedeutet:\n"
+        "Es wurden keine akut ausnutzbaren Schwachstellen direkt bestätigt, "
+        "jedoch Konfigurationsrisiken und Versionsindikatoren erkannt, "
+        "die das Angriffspotenzial messbar erhöhen. "
+        "Ohne Korrekturmaßnahmen steigt die Wahrscheinlichkeit einer erfolgreichen "
+        "Kompromittierung bei gezielten Angriffen.\n\n"
+        "Empfehlung:\n"
+        "Identifizierte Risikofaktoren innerhalb von 30 Tagen adressieren: "
+        "TLS-Konfiguration härten (TLS 1.2+), EOL-Systeme inventarisieren und "
+        "Migrationsplan erstellen, CVE-Monitoring einrichten.\n"
+        "Nächste Schritte: IT-Betrieb bewertet Konfigurationsrisiken und erstellt "
+        "priorisierte Maßnahmenliste (Owner: IT-Betrieb)."
+    )
+
+
 def _text_monitor(scenario: Dict) -> str:
     """Text für stabile Sicherheitslage — geringster Handlungsbedarf."""
     return (
         "Gesamteinschätzung:\n"
-        "Die externe Sicherheitslage Ihrer Infrastruktur wird aktuell als stabil bewertet. "
+        "Die externe Sicherheitslage ist stabil (Exposure-Level 1–2/5). "
         "Keine kritischen Schwachstellen oder exponierten Administrationsdienste wurden "
         "in dieser OSINT-Analyse identifiziert.\n\n"
         "Aktuelle Lage:\n"
@@ -557,11 +622,31 @@ def generate_management_text(
         # Fallback kritisch
         return _text_critical_generic(cve_count, scenario["port_count"])
 
+    # ─────────────────────────────────────────────────────────────────────────
+    # Boost-Signale direkt aus technical_json bestimmen (unabhängig vom
+    # pre-boost exposure_score, der zum Zeitpunkt des Aufrufs noch nicht
+    # die TLS/EOL-Anpassungen enthält).
+    # ─────────────────────────────────────────────────────────────────────────
+    _has_insecure_tls = _detect_insecure_tls(services)
+    _has_eol = _detect_eol(services)
+    _score_boosted = (
+        (getattr(evaluation, "exposure_score", 0) or 0) >= 3
+        or _has_insecure_tls
+        or _has_eol
+        or cve_count > 0
+    )
+
     # ── ATTENTION ─────────────────────────────────────────────────────────────
     if business_risk == BusinessRisk.ATTENTION:
+        if _score_boosted:
+            return _text_elevated(scenario, cve_count, _has_insecure_tls, _has_eol)
         return _text_attention(scenario, cve_count)
 
     # ── MONITOR ───────────────────────────────────────────────────────────────
+    # Wenn Boost-Signale vorhanden: elevated-Narrative (nie "stabil" bei 3/5)
+    if _score_boosted:
+        return _text_elevated(scenario, cve_count, _has_insecure_tls, _has_eol)
+
     # Webserver ohne kritische Befunde
     if scenario["has_web"] and not scenario["has_rdp"] and not scenario["has_db"] and cve_count == 0:
         return _text_web_clean(scenario["port_count"])

@@ -12,7 +12,7 @@ from shodan_report.evaluation.evaluation import Evaluation, RiskLevel
             BusinessRisk.MONITOR,
             RiskLevel.LOW,
             [],
-            ["stabil bewertet", "Kein unmittelbarer Handlungsbedarf"],
+            ["ist stabil", "Kein unmittelbarer Handlungsbedarf"],
         ),
         (
             BusinessRisk.ATTENTION,
