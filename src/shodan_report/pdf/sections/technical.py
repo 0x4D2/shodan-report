@@ -46,7 +46,7 @@ def _limit_list(items: List[str], max_items: int = 4) -> str:
 
 # Known Shodan tags with security relevance, mapped to severity and readable label.
 _SHODAN_TAG_MAP = {
-    "eol-product":    ("hoch",    "End-of-Life-Produkt — keine Sicherheits-Patches mehr vom Hersteller"),
+    "eol-product":    ("hoch",    "End-of-Life-Produkt (generisches Signal) — kein Sicherheits-Patch-Zyklus mehr aktiv · Produkt-Details siehe EOL-Analyse unten"),
     "doublepulsar":   ("kritisch", "DoublePulsar-Backdoor erkannt (NSA-Exploit)"),
     "malware":        ("kritisch", "Malware-Aktivität von Shodan erkannt"),
     "honeypot":       ("mittel",   "Möglicher Honeypot — Ergebnisse mit Vorsicht interpretieren"),

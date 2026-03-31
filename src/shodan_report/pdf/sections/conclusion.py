@@ -75,41 +75,109 @@ def create_conclusion_section(
     elif critical_cves_count >= 1 and effective_level == "LOW":
         effective_level = "MEDIUM"
 
-    if effective_level == "CRITICAL":
-        state = "kritisch"
-        rec = "sofort priorisierte Maßnahmen"
-    elif effective_level == "HIGH":
-        state = "erhöht"
-        rec = "zeitnahe Maßnahmen"
-    elif effective_level == "MEDIUM":
-        state = "moderat"
-        rec = "geplante Maßnahmen"
-    else:
-        state = "kontrolliert"
-        rec = "kontinuierliche Überwachung"
+    # Apply TLS/EOL awareness — align Fazit with management section boosts
+    # so the conclusion never contradicts the technical findings displayed above.
+    if effective_level in ("LOW", "MONITOR") and context is not None:
+        try:
+            _tj = getattr(context, "technical_json", {}) or {}
+            _insecure_v = {"SSLv2", "SSLv3", "TLSv1", "TLSv1.1"}
+            _has_tls = False
+            for _s in (_tj.get("services") or _tj.get("open_ports") or []):
+                if isinstance(_s, dict):
+                    _ssl = (_s.get("ssl_info") or {})
+                    for _v in ((_ssl.get("versions") or []) if isinstance(_ssl, dict) else []):
+                        if not str(_v).startswith("-") and str(_v).strip() in _insecure_v:
+                            _has_tls = True
+                            break
+                if _has_tls:
+                    break
+            _has_eol_tag = "eol-product" in [str(t).lower() for t in (_tj.get("tags") or [])]
+            _has_eol_svc = False
+            try:
+                from .data.management_data import prepare_management_data as _pm
+                from shodan_report.evaluation.eol import scan_services_for_eol as _se
+                _svcs = [{"port": s.get("port"), "product": s.get("product") or "", "version": s.get("version") or ""}
+                         for s in (_tj.get("services") or _tj.get("open_ports") or []) if isinstance(s, dict)]
+                _has_eol_svc = any(f.get("eol_status") in ("eol", "near_eol") for f in _se(_svcs))
+            except Exception:
+                pass
+            if _has_tls or _has_eol_tag or _has_eol_svc:
+                effective_level = "MEDIUM"
+        except Exception:
+            pass
 
-    conclusion_text = (
-        f"Die externe Angriffsfläche ist {state}; empfohlen wird {rec}."
-    )
+    # Collect contribution factors for conclusion text (mirrors management.py boost logic)
+    _contrib = []
+    if context is not None:
+        try:
+            _tj = getattr(context, "technical_json", {}) or {}
+            _insecure_v = {"SSLv2", "SSLv3", "TLSv1", "TLSv1.1"}
+            for _s in (_tj.get("services") or _tj.get("open_ports") or []):
+                if isinstance(_s, dict):
+                    for _v in ((_s.get("ssl_info") or {}).get("versions") or []):
+                        if not str(_v).startswith("-") and str(_v).strip() in _insecure_v:
+                            _contrib.append("unsichere TLS-Protokolle")
+                            break
+            _has_eol_c = "eol-product" in [str(t).lower() for t in (_tj.get("tags") or [])]
+            if not _has_eol_c:
+                try:
+                    from shodan_report.evaluation.eol import scan_services_for_eol as _sec
+                    _svcs_c = [{"port": s.get("port"), "product": s.get("product") or "",
+                                "version": s.get("version") or ""}
+                               for s in (_tj.get("services") or _tj.get("open_ports") or []) if isinstance(s, dict)]
+                    _has_eol_c = any(f.get("eol_status") in ("eol", "near_eol") for f in _sec(_svcs_c))
+                except Exception:
+                    pass
+            if _has_eol_c:
+                _contrib.append("EOL-Software")
+            if critical_cves_count > 0:
+                _contrib.append(f"{critical_cves_count} kritische CVEs (Inferred)")
+        except Exception:
+            pass
+
+    _contrib_str = ", ".join(_contrib) + " — " if _contrib else ""
+
+    if effective_level == "CRITICAL":
+        conclusion_text = (
+            f"Die externe Angriffsfläche ist <b>kritisch</b>. "
+            f"{_contrib_str}Sofortiger Handlungsbedarf."
+        )
+    elif effective_level == "HIGH":
+        conclusion_text = (
+            f"Die externe Angriffsfläche ist <b>hoch</b>. "
+            f"{_contrib_str}Zeitnahe Absicherung erforderlich."
+        )
+    elif effective_level == "MEDIUM":
+        conclusion_text = (
+            f"Die externe Angriffsfläche ist <b>erhöht</b>. "
+            f"{_contrib_str}Konkrete Handlungsfelder vorhanden — geplante Maßnahmen empfohlen."
+        )
+    else:
+        conclusion_text = (
+            "Die externe Angriffsfläche ist <b>kontrolliert</b>. "
+            "Kein akuter Handlungsbedarf; kontinuierliche Überwachung empfohlen."
+        )
 
     elements.append(Paragraph(conclusion_text, styles["normal"]))
     elements.append(Spacer(1, 8))
 
-    # Erweiterte, management-orientierte Handlungsempfehlungen (kurz)
+    # Empfohlene nächste Schritte — calibrated per risk level
     elements.append(Paragraph("Empfohlene nächste Schritte:", styles.get("heading2") or styles["normal"]))
     elements.append(Spacer(1, 6))
     try:
-        elements.append(Paragraph("• Kurzfristig (innerhalb 30 Tagen): Priorisieren und patchen kritischer CVEs; nicht benötigte Management-/Datenbankdienste abschalten oder per Firewall einschränken; Backups prüfen.", styles["bullet"]))
-        elements.append(Paragraph("• Mittelfristig (30–90 Tage): Zugriffshärtung (MFA, SSH Key-Only, VPN/Jumphost), Netzwerksegmentierung und Rollenbasierte Zugriffskontrollen implementieren.", styles["bullet"]))
-        elements.append(Paragraph("• Laufend: regelmäßige automatisierte Scans, Trendreports, Alerting sowie Benennung eines Owners für Remediation und Reporting.", styles["bullet"]))
+        if effective_level in ("CRITICAL", "HIGH"):
+            elements.append(Paragraph("• Kurzfristig (0–48 h): Kritische Dienste (RDP, Datenbanken) per VPN/Firewall abschirmen; EOL-Systeme inventarisieren und Notfall-Patches prüfen.", styles["bullet"]))
+            elements.append(Paragraph("• Kurzfristig (7 Tage): Priorisierte CVEs patchen; TLS 1.0/1.1 deaktivieren; MFA auf allen Admin-Zugängen aktivieren.", styles["bullet"]))
+            elements.append(Paragraph("• Laufend: Monatliche Exposure-Messung, Alerting bei neuen offenen Ports, Owner für Remediation benennen.", styles["bullet"]))
+        elif effective_level == "MEDIUM":
+            elements.append(Paragraph("• Kurzfristig (30 Tage): Nicht benötigte Dienste abschalten; TLS-Konfiguration härten (TLS 1.2+); CVE-Monitoring einrichten.", styles["bullet"]))
+            elements.append(Paragraph("• Mittelfristig (60–90 Tage): Zugriffshärtung (MFA, Key-Only SSH, VPN/Jumphost); EOL-Ablaufplan erstellen.", styles["bullet"]))
+            elements.append(Paragraph("• Laufend: Monatliche Wiederholung, Trendbeobachtung, Owner benennen.", styles["bullet"]))
+        else:
+            elements.append(Paragraph("• Monatliche Wiederholung der Analyse zur Trendbeobachtung.", styles["bullet"]))
+            elements.append(Paragraph("• TLS-Konfiguration und Security-Header regelmäßig prüfen.", styles["bullet"]))
     except Exception:
-        # Fallback: single-line recommendation if bullet style missing
         elements.append(Paragraph("Empfohlene Schritte: kurzfristige Patches und Zugriffsbeschränkungen; mittelfristig Zugriffshärtung; laufendes Monitoring.", styles["normal"]))
-
-    elements.append(Spacer(1, 8))
-
-    # Verweis auf detaillierte Maßnahmen
-    elements.append(Paragraph("Details und priorisierte Maßnahmen finden sich im Abschnitt 'Priorisierte Handlungsempfehlungen'.", styles["normal"]))
 
 
 def _extract_risk_level(business_risk) -> str:

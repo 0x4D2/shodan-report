@@ -94,6 +94,11 @@ def prepare_pdf_elements(
     # Section 3: Priorisierte Handlungsempfehlungen (directly after Management)
     create_recommendations_section(elements=elements, styles=styles, business_risk=business_risk, technical_json=technical_json, evaluation=evaluation)
 
+    # Hard page break: Management + Empfehlungen gehören zusammen auf die ersten Seiten,
+    # technischer Inhalt beginnt immer auf einer neuen Seite.
+    from reportlab.platypus import PageBreak as _PageBreak
+    elements.append(_PageBreak())
+
     elements.append(_SectionMarker())
     create_technical_section(elements=elements, styles=styles, technical_json=technical_json, config=config)
 

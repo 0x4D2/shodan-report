@@ -200,6 +200,26 @@ def _add_comparison_view(
             elements.append(_build_exposure_trend_chart(
                 prev_exposure, curr_exposure, compare_month, theme
             ))
+            # Explain a score increase so readers understand it's not arbitrary
+            try:
+                _prev = int(prev_exposure)
+                _curr = int(curr_exposure)
+                if _curr > _prev:
+                    elements.append(Paragraph(
+                        f"<i>Hinweis: Der Anstieg von {_prev}/5 auf {_curr}/5 spiegelt "
+                        f"neu erkannte Risikofaktoren in dieser Messung wider "
+                        f"(z.\u202fB. aktive unsichere TLS-Versionen, EOL-Software oder "
+                        f"ver\u00e4nderte Dienstlandschaft). Details in den technischen Findings.</i>",
+                        styles.get("small", styles["normal"])
+                    ))
+                elif _curr < _prev:
+                    elements.append(Paragraph(
+                        f"<i>Positiv: Exposure-Level von {_prev}/5 auf {_curr}/5 gesunken \u2014 "
+                        f"Verbesserung der externen Angriffsfl\u00e4che erkennbar.</i>",
+                        styles.get("small", styles["normal"])
+                    ))
+            except Exception:
+                pass
             elements.append(Spacer(1, 10))
     except Exception:
         pass

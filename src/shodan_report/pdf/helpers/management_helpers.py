@@ -208,6 +208,23 @@ def generate_priority_insights(
         except Exception:
             insecure_count += 1
 
+    # Detect insecure TLS protocols from ssl_info (TLS 1.0/1.1 active = real risk even with ssl_info set)
+    _insecure_tls_vers = {"SSLv2", "SSLv3", "TLSv1", "TLSv1.1"}
+    has_insecure_tls = False
+    try:
+        for _svc in open_ports:
+            _ssl = (_svc.get("ssl_info") or {}) if isinstance(_svc, dict) else {}
+            if isinstance(_ssl, dict):
+                for _v in (_ssl.get("versions") or []):
+                    _vs = str(_v).strip()
+                    if not _vs.startswith("-") and _vs in _insecure_tls_vers:
+                        has_insecure_tls = True
+                        break
+            if has_insecure_tls:
+                break
+    except Exception:
+        pass
+
     # 4. Build insights in expected order
     if open_ports_count > 0:
         insights.append(f"{open_ports_count} öffentliche Dienste")
@@ -218,8 +235,11 @@ def generate_priority_insights(
             insights.append(f"{critical_cve_count} kritische Schwachstellen")
         insights.append(f"{total_cve_count} Sicherheitslücken (CVEs) identifiziert")
     else:
-        # No CVE top-level: state there are no critical findings
-        insights.append("Keine kritischen Schwachstellen")
+        # No CVE top-level: differentiate between truly clean and hidden structural risks
+        if structural_risk or insecure_count > 0 or has_insecure_tls:
+            insights.append("Keine CVEs — Konfigurationsrisiken erkannt")
+        else:
+            insights.append("Keine kritischen Schwachstellen")
 
     # Priorisiere tatsächliche kritische Punkte aus Evaluation; wenn vorhanden, zeige diese,
     # sonst benutze die Anzahl unsicherer Dienste als Indikator.

@@ -192,43 +192,20 @@ def create_methodology_section(elements: List[Any], styles: Dict[str, Any], *arg
 
     # ── EOL ──────────────────────────────────────────────────────────────────
     elements.append(_divider())
-    elements.append(_h2("Bedeutung von EOL-Systemen", styles))
-    elements.append(_body("Systeme ohne aktiven Hersteller-Support:", styles))
-    elements.append(Spacer(1, 4))
+    elements.append(_h2("EOL-Systeme", styles))
     for item in [
-        "Erhalten keine Sicherheitsupdates mehr",
-        "Können bekannte Schwachstellen strukturell nicht mehr schließen",
-        "Stellen ein dauerhaftes, nicht patch-bares Risiko dar",
-        "Werden von Angreifern gezielt als Einstiegspunkt genutzt",
+        "Kein aktiver Hersteller-Support mehr — keine Sicherheitsupdates",
+        "Bekannte Schwachstellen strukturell nicht behebbar — dauerhaftes Risiko",
     ]:
         elements.append(_bullet(item, styles))
 
-    # ── Grenzen ──────────────────────────────────────────────────────────────
+    # ── Grenzen & Hinweis ────────────────────────────────────────────────────
     elements.append(_divider())
-    elements.append(_h2("Grenzen der Analyse", styles))
+    elements.append(_h2("Grenzen & Hinweis", styles))
     for item in [
-        "Ausschließlich passive Datenerhebung — keine aktiven Scans",
-        "Keine interne Netzwerksicht",
-        "Momentaufnahme zum Zeitpunkt des Scans — Lage kann sich täglich ändern",
-        "Keine Garantie auf Vollständigkeit oder Fehlerfreiheit",
-        "CVE-Zuordnungen basieren auf Versionserkennung (Inferred) — keine aktive Verifikation",
+        "Passive Datenerhebung — keine aktiven Scans, keine interne Netzwerksicht",
+        "Momentaufnahme: Lage kann sich täglich ändern; CVE-Zuordnung via Versionserkennung (Inferred)",
+        "Ersetzt keinen Penetrationstest oder eine interne Sicherheitsüberprüfung",
     ]:
         elements.append(_bullet(item, styles))
-
-    # ── Nutzungshinweis ──────────────────────────────────────────────────────
-    elements.append(_divider())
-    elements.append(_h2("Hinweis zur Nutzung", styles))
-    elements.append(_body(
-        "Dieser Bericht dient als Entscheidungsgrundlage zur Priorisierung technischer und "
-        "organisatorischer Sicherheitsmaßnahmen. "
-        "<b>Er ersetzt keinen Penetrationstest oder eine interne Sicherheitsüberprüfung.</b>",
-        styles,
-    ))
-
-    elements.append(Spacer(1, 14))
-    elements.append(_divider())
-    elements.append(_body(
-        "<i>Ende des Dokuments — diese Seite schließt den Bericht ab und stellt die "
-        "Einordnungsgrundlage für alle vorherigen Ergebnisse bereit.</i>",
-        styles,
-    ))
+    elements.append(Spacer(1, 8))

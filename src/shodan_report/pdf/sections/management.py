@@ -222,7 +222,74 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
         4: "hoch",
         5: "sehr hoch",
     }
+    # ── Risk boosts (single source of truth — must run before any rendering) ────
+    # NVD critical CVE boost (optional — only when NVD_LIVE=1 or config.nvd.enabled)
+    _critical_cves_count = 0
+    try:
+        _lookup_nvd = bool(
+            (config or {}).get("nvd", {}).get("enabled", False)
+            if isinstance(config, dict) else False
+        )
+        if os.environ.get("NVD_LIVE") == "1":
+            _lookup_nvd = True
+        _cve_ids = mdata.get("unique_cves", []) or []
+        if _lookup_nvd and _cve_ids:
+            _enriched = enrich_cves(_cve_ids, technical_json, lookup_nvd=True)
+            for _ent in _enriched:
+                try:
+                    _cvss = _ent.get("cvss")
+                    if _cvss is not None and float(_cvss) >= 9.0:
+                        _critical_cves_count += 1
+                except Exception:
+                    continue
+    except Exception:
+        _critical_cves_count = 0
+    if _critical_cves_count >= 3:
+        exposure_score = max(exposure_score, 4)
+    elif _critical_cves_count >= 1:
+        exposure_score = max(exposure_score, 3)
+
+    # Insecure TLS boost — TLS 1.0/1.1 active is a Verified Finding that raises real risk
+    _insecure_tls_vers = {"SSLv2", "SSLv3", "TLSv1", "TLSv1.1"}
+    _found_insecure_tls: set = set()
+    try:
+        for _svc in (technical_json.get("services") or technical_json.get("open_ports") or []):
+            _ssl = ((_svc.get("ssl_info") or {}) if isinstance(_svc, dict) else {})
+            if isinstance(_ssl, dict):
+                for _v in (_ssl.get("versions") or []):
+                    _vs = str(_v).strip()
+                    if not _vs.startswith("-") and _vs in _insecure_tls_vers:
+                        _found_insecure_tls.add(_vs)
+    except Exception:
+        pass
+    if _found_insecure_tls:
+        exposure_score = max(exposure_score, 3)
+
+    # EOL boost — structural patch deficit raises baseline risk
+    _has_eol = False
+    try:
+        from shodan_report.evaluation.eol import scan_services_for_eol
+        _eol_svcs = []
+        for _svc in (technical_json.get("services") or technical_json.get("open_ports") or []):
+            if isinstance(_svc, dict):
+                _eol_svcs.append({
+                    "port": _svc.get("port"),
+                    "product": _svc.get("product") or "",
+                    "version": _svc.get("version") or "",
+                })
+        _eol_res = scan_services_for_eol(_eol_svcs)
+        _has_eol = any(f.get("eol_status") in ("eol", "near_eol") for f in _eol_res)
+        if not _has_eol:
+            _has_eol = "eol-product" in [str(t).lower() for t in (technical_json.get("tags") or [])]
+    except Exception:
+        pass
+    if _has_eol and not _found_insecure_tls:
+        exposure_score = max(exposure_score, 2)
+
+    # Re-sync display + description after all boosts
+    exposure_display = f"{exposure_score}/5"
     exposure_desc = exposure_description_map.get(exposure_score, "nicht bewertet")
+    # ────────────────────────────────────────────────────────────────────────
     risk_level = mdata.get("risk_level", "low")
     critical_points = mdata.get("critical_points", [])
     critical_points_count = mdata.get("critical_points_count", 0)
@@ -305,17 +372,17 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
             if asset_count == 1:
                 intro_line = (
                     f"Erfasst wurde 1 Asset (Host: {primary_asset}); "
-                    f"die externe Angriffsfläche ist auf {exposure_display} bewertet, da {reason}."
+                    f"Exposure-Level {exposure_display} ({exposure_desc}), da {reason}."
                 )
             else:
                 intro_line = (
-                    f"Erfasst wurden {asset_count} Assets; das primär bewertete Asset (Host: {primary_asset}) "
-                    f"ist auf {exposure_display} bewertet, da {reason}."
+                    f"Erfasst wurden {asset_count} Assets; primär bewertetes Asset (Host: {primary_asset}) — "
+                    f"Exposure-Level {exposure_display} ({exposure_desc}), da {reason}."
                 )
         else:
             intro_line = (
-                f"Erfasst wurden {asset_count} Assets; die externe Angriffsfläche ist "
-                f"{exposure_desc} bewertet, da {reason}."
+                f"Erfasst wurden {asset_count} Assets; Exposure-Level {exposure_display} ({exposure_desc}), "
+                f"da {reason}."
             )
     except Exception:
         intro_line = "Erfasst wurde 1 Asset; die externe Angriffsfläche ist erhöht bewertet."
@@ -336,7 +403,7 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
 
         # Simple status emoji mapping based on exposure_score
         try:
-            sc = int(mdata.get("exposure_score", 1) or 1)
+            sc = exposure_score  # use post-boost score for consistent ampel colour
         except Exception:
             sc = 1
         if sc <= 2:
@@ -401,89 +468,55 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
     except Exception:
         # non-fatal: if anything goes wrong, skip table silently
         pass
-    # Exposure-Level mit Beschreibung
-    # Optional: adjust exposure based on critical CVEs (OSINT/NVD)
-    critical_cves_count = 0
-    try:
-        lookup_nvd = False
-        try:
-            if config is not None and isinstance(config, dict):
-                lookup_nvd = bool((config.get("nvd") or {}).get("enabled", False))
-        except Exception:
-            lookup_nvd = False
-        if os.environ.get("NVD_LIVE") == "1":
-            lookup_nvd = True
-
-        cve_ids = mdata.get("unique_cves", []) or []
-        if lookup_nvd and cve_ids:
-            enriched = enrich_cves(cve_ids, technical_json, lookup_nvd=True)
-            for ent in enriched:
-                try:
-                    cvss = ent.get("cvss")
-                    if cvss is not None and float(cvss) >= 9.0:
-                        critical_cves_count += 1
-                except Exception:
-                    continue
-    except Exception:
-        critical_cves_count = 0
-
-    if critical_cves_count >= 3:
-        exposure_score = max(exposure_score, 4)
-    elif critical_cves_count >= 1:
-        exposure_score = max(exposure_score, 3)
-
-    exposure_desc = exposure_description_map.get(exposure_score, "nicht bewertet")
-
-    # Exposure-Level klar benennen (inkl. Bedeutung)
-    elements.append(
-        Paragraph(
-            f"<b>Exposure-Level: {exposure_display}.</b>",
-            styles["normal"],
-        )
-    )
-    # Note: separate small 'Status' ampel below the exposure paragraph removed
-    # Build explicit derivation string: include RDP count as 'kritische Administrationsdienste'
+# ── Exposure-Level + Beitragsfaktoren (ein kompakter Block) ─────────────
     try:
         services = technical_json.get("services") or technical_json.get("open_ports") or []
         rdp_count = 0
         for s in services:
             if isinstance(s, dict):
-                port = s.get("port")
-                prod = (s.get("product") or "").lower()
+                port = s.get("port"); prod = (s.get("product") or "").lower()
             else:
-                port = getattr(s, "port", None)
-                prod = (getattr(s, "product", "") or "").lower()
+                port = getattr(s, "port", None); prod = (getattr(s, "product", "") or "").lower()
             if port == 3389 or "rdp" in prod:
                 rdp_count += 1
     except Exception:
         rdp_count = 0
 
-    # Format CVE count safely
     try:
         cves_disp = int(cve_count)
     except Exception:
         cves_disp = 0
 
-    # Avoid showing a literal '(0)' for critical admin services — prefer
-    # explicit RDP count when present, otherwise show identified critical
-    # points or a neutral phrasing when none are detected.
+    # Beitragsfaktoren — listed only when they actually drive the score
+    _factors = []
     if rdp_count > 0:
-        derivation = (
-            f"Herleitung: Bewertung basiert auf Anzahl öffentlicher Dienste ({total_ports}), "
-            f"kritischen Administrationsdiensten ({rdp_count}: RDP) und CVE-Funden ({cves_disp})."
-        )
+        _factors.append(f"RDP öffentlich erreichbar ({rdp_count}×)")
     elif critical_points_count > 0:
-        derivation = (
-            f"Herleitung: Bewertung basiert auf Anzahl öffentlicher Dienste ({total_ports}), "
-            f"kritischen Administrationsdiensten ({critical_points_count}) und CVE-Funden ({cves_disp})."
+        _factors.append(f"{critical_points_count} kritische Dienste")
+    if cves_disp > 0:
+        _factors.append(f"{cves_disp} CVEs (Inferred)")
+    if _found_insecure_tls:
+        _factors.append(f"TLS 1.0/1.1 aktiv (Verified)")
+    if _has_eol:
+        _factors.append("EOL-Software")
+    try:
+        _has_version_risk = any(
+            (s.get("version_risk", 0) if isinstance(s, dict) else getattr(s, "version_risk", 0))
+            for s in (technical_json.get("services") or technical_json.get("open_ports") or [])
         )
-    else:
-        derivation = (
-            f"Herleitung: Bewertung basiert auf Anzahl öffentlicher Dienste ({total_ports}), "
-            f"kritischen Administrationsdiensten (keine identifiziert) und CVE-Funden ({cves_disp})."
-        )
+    except Exception:
+        _has_version_risk = False
+    if _has_version_risk:
+        _factors.append("strukturelle Risiken (Version)")
+    if not _factors:
+        _factors.append(f"{total_ports} öffentliche Dienste")
 
-    elements.append(Paragraph(derivation, styles["normal"]))
+    _factor_str = " · ".join(_factors)
+    elements.append(Paragraph(
+        f"<b>Exposure-Level: {exposure_display} ({exposure_desc})</b> — "
+        f"Beitragsfaktoren: {_factor_str}.",
+        styles["normal"],
+    ))
     elements.append(Spacer(1, 6))
 
     # 3 Kernaussagen (Risiko, Zustand, Richtung)
@@ -494,7 +527,7 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
     rdp_primary = should_show_rdp_warning(technical_json, mdata)
     risk_stmt, tech_note_candidate = get_management_risk_and_tech_note(technical_json, evaluation, mdata=mdata, config=config)
 
-    state_stmt = f"Zustand: Externe Angriffsfläche: Exposure-Level {exposure_display}."
+    state_stmt = f"Zustand: Exposure-Level {exposure_display} ({exposure_desc}) — Gesamtbewertung stützt sich auf {total_ports} öffentliche Dienste."
 
     trend_note = (
         "Richtung: Trend aktuell nicht verfügbar (zu wenige historische Messungen); "
@@ -515,27 +548,6 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
         elements.append(Paragraph(f"• {stmt}", styles["bullet"]))
 
     elements.append(Spacer(1, 6))
-
-    # Strukturhinweis (für Tests/Management-Signal)
-    try:
-        structural_risk = False
-        for svc in technical_json.get("open_ports", []) or []:
-            try:
-                if isinstance(svc, dict):
-                    if (svc.get("version_risk", 0) or svc.get("_version_risk", 0)):
-                        structural_risk = True
-                        break
-                else:
-                    if (getattr(svc, "version_risk", 0) or getattr(svc, "_version_risk", 0)):
-                        structural_risk = True
-                        break
-            except Exception:
-                continue
-        if structural_risk:
-            elements.append(Paragraph("Hinweis: strukturelle Risiken in der Konfiguration.", styles["normal"]))
-            elements.append(Spacer(1, 6))
-    except Exception:
-        pass
 
     # Technische Kurzbewertung (OSINT-basiert)
     try:
