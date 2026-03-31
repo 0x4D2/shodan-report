@@ -3,6 +3,11 @@
 
 `shodan-report` erzeugt aus Shodan‑Snapshots reproduzierbare PDF‑Reports mit Executive Summary und technischem Anhang.
 
+**Kernfähigkeiten (Stand 2026-03):**
+- **EOL-Erkennung** — identifiziert abgelaufene Betriebssysteme und Software aus Bannerversionen und priorisiert diese als Priorität-1-Risiko
+- **TLS Verified Findings** — liest `ssl_info.versions` direkt aus Shodan-Daten; aktive unsichere Protokolle (SSLv2/3, TLSv1/1.1) erscheinen als farbige Warn-Boxen im Technischen Anhang
+- **Risiko-Narrativ** — Management Summary nennt das höchste Risiko explizit, kombiniert RDP+EOL zum Ransomware-Einstiegspunkt und unterscheidet _Verified Findings_ (direkt beobachtet) von _Inferred Findings_ (Versionszuordnung)
+
 Wichtige Links:
 
 - Detaillierte Entwickler‑ und Architektur‑Dokumentation: [docs/DETAILED_README.md](docs/DETAILED_README.md)
@@ -59,7 +64,7 @@ Hinweise & Empfehlungen:
 - Testbarkeit: Unit‑Tests mocken `NvdClient` und `CisaClient` (siehe `src/shodan_report/tests/`), live NVD‑Tests sind per Env Flag (`NVD_LIVE_TESTS=1`) deaktiviert, es gibt Dummy‑Skripte zum Demo‑Generieren.
 
 Sicherheits‑/Rechtsinfo:
-- NVD und CISA sind öffentliche Datenquellen; Angaben sind OSINT‑Indizien und sollten in Management‑Texten entsprechend als Hinweise und nicht als definitive Aussagen dargestellt werden.
+- NVD und CISA sind öffentliche Datenquellen. CVEs aus Versionszuordnungen werden im Report explizit als **Inferred Findings** (Versionszuordnung, keine direkte Verifikation) ausgewiesen. TLS‑Protokolldaten aus dem Shodan‑Handshake werden als **Verified Findings** (direkt beobachtet) markiert.
 
 ---
 
@@ -69,9 +74,9 @@ Sicherheits‑/Rechtsinfo:
 
 ## Notes / Known issues
 
-- Die Produkt-/Versionserkennung wurde verbessert, befindet sich aber noch in der Feinjustierung. Nicht alle Versionen werden in allen Bannern zuverlässig erkannt.
-- In der Management‑Zusammenfassung werden bewusst nur Versionen mit mittlerer oder hoher Konfidenz angezeigt, um irreführende Angaben zu vermeiden. Das bedeutet, dass einige Versionsinformationen nicht im Executive‑Summary auftauchen, auch wenn sie technisch im Snapshot vorkommen.
-- Die geplante `Top Vulnerability`‑Spalte im Management‑Table ist noch nicht aktiviert; diese wird nach weiterer CVE‑Zuordnung und Verifikation freigeschaltet.
+- Die Produkt-/Versionserkennung befindet sich noch in der Feinjustierung. Nicht alle Versionen werden in allen Bannern zuverlässig erkannt.
+- In der Management‑Zusammenfassung werden bewusst nur Versionen mit mittlerer oder hoher Konfidenz angezeigt, um irreführende Angaben zu vermeiden.
+- EOL‑Erkennung basiert auf einer statischen Tabelle; produktspezifische Extended‑Support‑Verträge (z.B. Windows ESU) werden nicht berücksichtigt — Hinweis `(lizenzabhängig)` ist im Report sichtbar.
 
 
 ## SCHNELLSTART
@@ -103,15 +108,18 @@ Hinweis: Wenn kein `--compare` angegeben ist, wird automatisch der vorherige Mon
 
 Jeder Report enthält automatisch:
 
-1. **Header** - Professionelle Metadaten & Asset-Information
-2. **Management-Zusammenfassung** - Executive Summary mit Exposure-Level
-3. **Trend- & Vergleichsanalyse** - Historische Entwicklung (mit Tabelle bei `--compare`)
-4. **Priorisierte Handlungsempfehlungen** - Konkrete Maßnahmen (Prio 1 + Prio 2)
-5. **Technische Detailanalyse** - Ports, Dienste, Versionen, Risikobewertung
-6. **CVE- & Exploit-Übersicht** - Schwachstellen mit CVSS Scores
-7. **Methodik & Grenzen** - Transparente Dokumentation der Analyse
-8. **Fazit** - Zusammenfassung & Ausblick
-9. **Footer** - Professioneller Disclaimer
+1. **Header** — Professionelle Metadaten & Asset-Information
+2. **Management-Zusammenfassung** — Executive Summary mit Exposure-Level; benennt das höchste Risiko explizit; kombiniert RDP+EOL zum Ransomware-Narrativ; unterscheidet Verified vs. Inferred Findings
+3. **Trend- & Vergleichsanalyse** — Historische Entwicklung (mit Tabelle bei `--compare`)
+4. **Priorisierte Handlungsempfehlungen** — Konkrete Maßnahmen; EOL-Systeme automatisch als erstes Priorität-1-Element
+5. **Technischer Anhang** — Ports, Dienste, Versionen, Risikobewertung; farbige Warn-Boxen für:
+   - Shodan-Tags (doublepulsar, eol-product, …)
+   - EOL/Near-EOL-Systeme aus Banneranalyse
+   - TLS Verified Findings (aktive unsichere Protokolle direkt aus `ssl_info.versions`)
+6. **CVE- & Exploit-Übersicht** — Schwachstellen mit CVSS Scores (als Inferred Findings gekennzeichnet)
+7. **Methodik & Grenzen** — Transparente Dokumentation der Analyse
+8. **Fazit** — Zusammenfassung & Ausblick
+9. **Footer** — Professioneller Disclaimer
 
 ---
 
@@ -336,7 +344,14 @@ archive/
 
 ## TESTSTATUS (AKTUELL)
 
-Tipp: Tests lokal ausführen mit `pytest -q` oder `pytest tests/<file>` und das Ergebnis als Status notieren.
+```
+324 passed, 9 skipped, 0 failed  (Stand 2026-03-31)
+```
+
+Tests lokal ausführen:
+```powershell
+python -m pytest -q
+```
 
 
 ---
@@ -352,38 +367,38 @@ Shodan API → AssetSnapshot → Evaluation → Reporting → PDF → Archiv
 ```
 
 ### Kernfunktionen
-- **Shodan Integration** - Vollständige API-Anbindung
-- **AssetSnapshot Model** - Datenmodell für konsistente Verarbeitung
-- **Risikobewertung** - Regelbasierte Evaluation (niedrig/mittel/hoch)
-- **Trendanalyse** - Automatischer Monatsvergleich
-- **PDF-Generierung** - ReportLab mit Corporate Design
-- **Archivierung** - Revisionssicher mit SHA256 & Versionierung
+- **Shodan Integration** — Vollständige API-Anbindung
+- **AssetSnapshot Model** — Datenmodell für konsistente Verarbeitung
+- **EOL-Erkennungs-Engine** — statische Tabelle (28 Einträge); `evaluation/eol/eol_detector.py`; confidence high/medium/low; EOL als Priorität-1-Risiko
+- **TLS Verified Findings** — `ssl_info.versions` (Shodan-Handshake-Daten); SSLv2/3 KRITISCH, TLSv1 HOCH, TLSv1.1 MITTEL; farbige Warn-Boxen im Technischen Anhang
+- **Risikobewertung** — Regelbasierte Evaluation; RDP+EOL-Kombination als Ransomware-Narrativ in Management Summary
+- **Trendanalyse** — Automatischer Monatsvergleich
+- **PDF-Generierung** — ReportLab mit Corporate Design
+- **Archivierung** — Revisionssicher mit SHA256 & Versionierung
 
 ---
 
 ## 📈 ROADMAP
 
-### ABGESCHLOSSEN (MVP)
+### ABGESCHLOSSEN
 - [x] Shodan API Integration & Daten-Parsing
 - [x] AssetSnapshot Model & Daten-Normalisierung
 - [x] Regelbasierte Evaluation & Risiko-Priorisierung
-- [x] Management-Text Generierung
+- [x] Management-Text Generierung mit Verified/Inferred-Unterscheidung
 - [x] Professionelles PDF-Layout (9 Abschnitte)
 - [x] Revisionssichere Archivierung (SHA256, Versionierung)
 - [x] Vollständige CLI mit allen Parametern
 - [x] Batch-Verarbeitung mit `jobs.txt`
-- [x] Tests vorhanden
-
-### IN ARBEIT
-- [~] PDF-Inhalte dynamisieren (einige Sections noch statisch)
-- [~] CVE-Integration: Parsing & Normalisierung (teilweise umgesetzt)
+- [x] EOL-Erkennungs-Engine (`evaluation/eol/`) — 28 Produkte, Priorität-1-Risiko
+- [x] TLS Verified Findings — Warn-Boxen aus `ssl_info.versions`, 4 Schweregrade
+- [x] RDP+EOL Ransomware-Narrativ in Management Summary
+- [x] CVE-Integration (NVD/CISA, als Inferred Findings gekennzeichnet)
+- [x] 324 Tests (9 skipped)
 
 ### ⏳ NÄCHSTE SCHRITTE (Priorisiert)
-1. **PDF-Inhalte dynamisieren** - Echte Daten statt Beispiele
-2. **CVE-Integration** - Echte Vulnerability Daten
-3. **TLS/SSL Analyse** - Zertifikatsprüfung
-4. **E-Mail-Versand** - Automatischer Report-Versand
-5. **Web-Dashboard** - Übersicht aller Kundenreports
+1. **TLS-Zertifikat-Details** — Ablaufdatum, selbstsigniert als eigene Warn-Box
+2. **E-Mail-Versand** — Automatischer Report-Versand
+3. **Web-Dashboard** — Übersicht aller Kundenreports
 
 ---
 

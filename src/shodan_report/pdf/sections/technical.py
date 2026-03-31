@@ -258,6 +258,33 @@ def _render_tls_warnings(
                     entry.append(port)
 
     if not proto_ports:
+        # TLS data was present but all insecure protocols disabled — show green OK box
+        tls_checked_ports = [
+            svc.get("port") for svc in services
+            if isinstance(svc, dict) and isinstance(svc.get("ssl_info"), dict)
+            and (svc["ssl_info"].get("versions") or [])
+        ]
+        if tls_checked_ports:
+            ports_str = ", ".join(str(p) for p in sorted(set(p for p in tls_checked_ports if p is not None)))
+            msg = (
+                f"<b>TLS [VERIFIED] [OK]:</b> Direkt geprüft — alle unsicheren Protokolle "
+                f"(SSLv2, SSLv3, TLSv1.0, TLSv1.1) deaktiviert · Port(s) {ports_str}"
+            )
+            bg = HexColor("#f0fdf4")       # green-50
+            border = HexColor("#22c55e")   # green-500
+            cell_text = Paragraph(msg, styles["normal"])
+            box = Table([[cell_text]], colWidths=[163 * mm])
+            box.setStyle(TableStyle([
+                ("BACKGROUND",    (0, 0), (-1, -1), bg),
+                ("BOX",           (0, 0), (-1, -1), 1.0, border),
+                ("LEFTPADDING",   (0, 0), (-1, -1), 8),
+                ("RIGHTPADDING",  (0, 0), (-1, -1), 8),
+                ("TOPPADDING",    (0, 0), (-1, -1), 6),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ]))
+            elements.append(Spacer(1, 4))
+            elements.append(box)
+            elements.append(Spacer(1, 4))
         return
 
     _order = {"kritisch": 0, "hoch": 1, "mittel": 2}

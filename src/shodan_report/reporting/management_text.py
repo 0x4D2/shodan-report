@@ -152,9 +152,15 @@ def _tls_issues(services: List[Dict]) -> List[str]:
 # SZENARIO-SPEZIFISCHE TEXTE
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _text_rdp(cve_count: int, port_count: int, eol_findings: Optional[List] = None) -> str:
+def _text_rdp(
+    cve_count: int,
+    port_count: int,
+    eol_findings: Optional[List] = None,
+    tls_verified_protos: Optional[set] = None,
+) -> str:
     """Text für den häufigsten und gefährlichsten Fall: RDP öffentlich exponiert."""
     eol_findings = eol_findings or []
+    tls_verified_protos = tls_verified_protos or set()
     eol_systems = [f for f in eol_findings if f.get("eol_status") == "eol"]
     near_eol_systems = [f for f in eol_findings if f.get("eol_status") == "near_eol"]
     has_eol = bool(eol_systems)
@@ -163,10 +169,9 @@ def _text_rdp(cve_count: int, port_count: int, eol_findings: Optional[List] = No
     if eol_systems:
         names = ", ".join(f.get("display_name", "Unbekannt") for f in eol_systems)
         combo_sentence = (
-            f"Die Kombination aus öffentlich erreichbarem RDP-Dienst und einem nicht mehr "
-            f"unterstützten Betriebssystem ({names}) stellt ein besonders attraktives Ziel "
-            f"für automatisierte Ransomware-Angriffe dar — klassischer Einstiegspunkt bei "
-            f"bekannten Kampagnen."
+            f"Das höchste Risiko ist nicht die Anzahl der CVEs, sondern die Kombination "
+            f"aus öffentlich erreichbarem RDP und dem nicht mehr unterstützten System "
+            f"{names} — dieser Angriffspfad wird aktiv bei Ransomware-Kampagnen ausgenutzt."
         )
     elif near_eol_systems:
         names = ", ".join(f.get("display_name", "Unbekannt") for f in near_eol_systems)
@@ -177,17 +182,29 @@ def _text_rdp(cve_count: int, port_count: int, eol_findings: Optional[List] = No
     else:
         combo_sentence = ""
 
-    # CVE note with OSINT qualifier
+    # TLS verified finding sentence (directly observed from TLS handshake)
+    if tls_verified_protos:
+        protos = ", ".join(sorted(tls_verified_protos))
+        tls_sentence = (
+            f" Zusätzlich wurden veraltete TLS-Protokolle direkt beobachtet "
+            f"(Verified Finding: {protos}) — diese stellen eine kryptographisch überprüfbare "
+            f"Schwachstelle dar, unabhängig von Versionsinformationen."
+        )
+    else:
+        tls_sentence = ""
+
+    # CVE note — Inferred findings (version-based, not directly verified)
     if cve_count > 0:
         cve_note = (
-            f" Zusätzlich wurden {cve_count} potenzielle Schwachstellen (CVEs) als "
-            f"OSINT-Indizien identifiziert, die auf Versionszuordnungen basieren und "
-            f"keine aktiv verifizierten Schwachstellen darstellen."
+            f" Zu den exponierten Diensten wurden {cve_count} potenzielle Schwachstellen "
+            f"als Inferred Findings zugeordnet (Zuordnung über Versionserkennung — "
+            f"keine direkte Verifikation)."
         )
         if eol_systems:
+            names_eol = ", ".join(f.get("display_name", "Unbekannt") for f in eol_systems)
             cve_note += (
-                f" Ein Teil dieser Schwachstellen ist strukturell nicht behebbar, "
-                f"solange das betroffene Betriebssystem nicht ersetzt wird."
+                f" Ein Großteil dieser Schwachstellen betrifft direkt {names_eol} — "
+                f"strukturell nicht behebbar, solange das System nicht ersetzt wird."
             )
     else:
         cve_note = ""
@@ -210,6 +227,7 @@ def _text_rdp(cve_count: int, port_count: int, eol_findings: Optional[List] = No
         eol_recommendation = ""
 
     combo_block = f"\n{combo_sentence}" if combo_sentence else ""
+    tls_block = tls_sentence  # inline after CVE note
 
     return (
         "Gesamteinschätzung:\n"
@@ -218,7 +236,8 @@ def _text_rdp(cve_count: int, port_count: int, eol_findings: Optional[List] = No
         "Brute-Force-Angriffe. Angreifer scannen das Internet automatisiert nach exponierten "
         f"RDP-Diensten — Ihre Infrastruktur ist damit aktiv einem erhöhten Risiko ausgesetzt."
         f"{combo_block}"
-        f"{cve_note}\n\n"
+        f"{cve_note}"
+        f"{tls_block}\n\n"
         "Was das bedeutet:\n"
         "Ohne zusätzliche Zugriffskontrollen (VPN, MFA, IP-Whitelist) kann jeder mit "
         "Internetzugang einen Anmeldeversuch starten."
@@ -495,7 +514,17 @@ def generate_management_text(
                     eol_findings = _scan_eol(flat)
                 except Exception:
                     pass
-            return _text_rdp(cve_count, scenario["port_count"], eol_findings)
+            # Detect enabled insecure TLS protocols (Verified Findings)
+            _tls_insecure_vers = {"SSLv2", "SSLv3", "TLSv1", "TLSv1.1"}
+            tls_verified_protos: set = set()
+            for _s in services:
+                _ssl = _s.get("ssl_info") or {} if isinstance(_s, dict) else {}
+                if isinstance(_ssl, dict):
+                    for _v in (_ssl.get("versions") or []):
+                        _vs = str(_v).strip()
+                        if not _vs.startswith("-") and _vs in _tls_insecure_vers:
+                            tls_verified_protos.add(_vs)
+            return _text_rdp(cve_count, scenario["port_count"], eol_findings, tls_verified_protos)
 
         # Szenario 2: Datenbank exponiert
         if scenario["has_db"]:

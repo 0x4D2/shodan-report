@@ -148,15 +148,20 @@ def test_tls_sslv3_renders_kritisch_box():
     assert "KRITISCH" in text
 
 
-def test_tls_disabled_prefix_no_box():
-    """All insecure protocols have '-' prefix (disabled) → no warning box."""
+def test_tls_disabled_prefix_no_warning_box():
+    """All insecure protocols have '-' prefix (disabled) → green OK box, no warning box."""
     from shodan_report.pdf.sections.technical import _render_tls_warnings
     elements = []
     styles = _make_styles()
     tj = {"services": [{"port": 443, "ssl_info": {"versions": ["-TLSv1", "-TLSv1.1", "-SSLv2", "-SSLv3", "TLSv1.2", "TLSv1.3"]}}]}
     _render_tls_warnings(elements, styles, tj)
     tables = [e for e in elements if isinstance(e, Table)]
-    assert len(tables) == 0
+    # One green OK box expected (TLS data present, all insecure disabled)
+    assert len(tables) == 1
+    text = _flat_box_text(tables)
+    assert "OK" in text
+    assert "HOCH" not in text
+    assert "KRITISCH" not in text
 
 
 def test_tls_no_ssl_info_no_box():
