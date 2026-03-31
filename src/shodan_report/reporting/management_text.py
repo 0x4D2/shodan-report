@@ -12,6 +12,11 @@ from shodan_report.evaluation.risk_prioritization import BusinessRisk
 from typing import Dict, Any, List, Optional
 import re
 
+try:
+    from shodan_report.evaluation.eol import scan_services_for_eol as _scan_eol
+except Exception:
+    _scan_eol = None
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # INTERNE HILFSFUNKTIONEN
@@ -47,6 +52,21 @@ def _normalize_services(technical_json: Optional[Dict[str, Any]]) -> List[Dict[s
             "cves": cves,
         })
     return result
+
+
+def _flatten_for_eol(services: List[Dict]) -> List[Dict]:
+    """Flacht die verschachtelte Service-Struktur für EOL-Erkennung ab."""
+    flat = []
+    for s in services:
+        if not isinstance(s, dict):
+            continue
+        sub = s.get("service") or {}
+        flat.append({
+            "port":    s.get("port"),
+            "product": s.get("product") or sub.get("product") or "",
+            "version": s.get("version") or sub.get("version") or "",
+        })
+    return flat
 
 
 def _clean(value: Optional[str], max_len: int = 80) -> Optional[str]:
@@ -132,28 +152,83 @@ def _tls_issues(services: List[Dict]) -> List[str]:
 # SZENARIO-SPEZIFISCHE TEXTE
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _text_rdp(cve_count: int, port_count: int) -> str:
+def _text_rdp(cve_count: int, port_count: int, eol_findings: Optional[List] = None) -> str:
     """Text für den häufigsten und gefährlichsten Fall: RDP öffentlich exponiert."""
-    cve_note = (
-        f" Zusätzlich wurden {cve_count} bekannte Schwachstellen (CVEs) in den "
-        f"eingesetzten Softwareversionen identifiziert."
-        if cve_count > 0 else ""
-    )
+    eol_findings = eol_findings or []
+    eol_systems = [f for f in eol_findings if f.get("eol_status") == "eol"]
+    near_eol_systems = [f for f in eol_findings if f.get("eol_status") == "near_eol"]
+    has_eol = bool(eol_systems)
+
+    # Combo sentence when RDP + EOL are present together
+    if eol_systems:
+        names = ", ".join(f.get("display_name", "Unbekannt") for f in eol_systems)
+        combo_sentence = (
+            f"Die Kombination aus öffentlich erreichbarem RDP-Dienst und einem nicht mehr "
+            f"unterstützten Betriebssystem ({names}) stellt ein besonders attraktives Ziel "
+            f"für automatisierte Ransomware-Angriffe dar — klassischer Einstiegspunkt bei "
+            f"bekannten Kampagnen."
+        )
+    elif near_eol_systems:
+        names = ", ".join(f.get("display_name", "Unbekannt") for f in near_eol_systems)
+        combo_sentence = (
+            f"Hinweis: Das eingesetzte Betriebssystem ({names}) erreicht in Kürze das "
+            f"End-of-Life — ein Migrations-Zeitfenster sollte jetzt geplant werden."
+        )
+    else:
+        combo_sentence = ""
+
+    # CVE note with OSINT qualifier
+    if cve_count > 0:
+        cve_note = (
+            f" Zusätzlich wurden {cve_count} potenzielle Schwachstellen (CVEs) als "
+            f"OSINT-Indizien identifiziert, die auf Versionszuordnungen basieren und "
+            f"keine aktiv verifizierten Schwachstellen darstellen."
+        )
+        if eol_systems:
+            cve_note += (
+                f" Ein Teil dieser Schwachstellen ist strukturell nicht behebbar, "
+                f"solange das betroffene Betriebssystem nicht ersetzt wird."
+            )
+    else:
+        cve_note = ""
+
+    # EOL-specific 'Was das bedeutet' addendum
+    if eol_systems:
+        names = ", ".join(f.get("display_name", "Unbekannt") for f in eol_systems)
+        eol_meaning = (
+            f" Das eingesetzte Betriebssystem ({names}) erhält keine regulären "
+            f"Sicherheitsupdates mehr — bekannte Schwachstellen können daher "
+            f"strukturell nicht behoben werden."
+        )
+        eol_recommendation = (
+            f" Das Betriebssystem ({names}) sollte zeitnah auf eine unterstützte "
+            f"Version migriert oder bis zur Migration netzwerktechnisch isoliert werden. "
+            f"Zeitrahmen Migration: innerhalb von 90 Tagen."
+        )
+    else:
+        eol_meaning = ""
+        eol_recommendation = ""
+
+    combo_block = f"\n{combo_sentence}" if combo_sentence else ""
+
     return (
         "Gesamteinschätzung:\n"
         "Ein Remote-Desktop-Dienst (RDP, Port 3389) ist direkt aus dem Internet erreichbar. "
         "RDP ist einer der meistgenutzten Angriffsvektoren für Ransomware-Kampagnen und "
         "Brute-Force-Angriffe. Angreifer scannen das Internet automatisiert nach exponierten "
-        "RDP-Diensten — Ihre Infrastruktur ist damit aktiv einem erhöhten Risiko ausgesetzt."
+        f"RDP-Diensten — Ihre Infrastruktur ist damit aktiv einem erhöhten Risiko ausgesetzt."
+        f"{combo_block}"
         f"{cve_note}\n\n"
         "Was das bedeutet:\n"
         "Ohne zusätzliche Zugriffskontrollen (VPN, MFA, IP-Whitelist) kann jeder mit "
-        "Internetzugang einen Anmeldeversuch starten. Erfolgreiche Angriffe führen typischerweise "
-        "zu vollständiger Systemübernahme, Datenverschlüsselung (Ransomware) oder "
-        "Datenexfiltration.\n\n"
+        "Internetzugang einen Anmeldeversuch starten."
+        f"{eol_meaning} "
+        "Erfolgreiche Angriffe führen typischerweise zu vollständiger Systemübernahme, "
+        "Datenverschlüsselung (Ransomware) oder Datenexfiltration.\n\n"
         "Empfehlung:\n"
         "RDP-Zugang sofort hinter VPN oder einen dedizierten Jumphost verlagern. "
-        "Direkte Erreichbarkeit aus dem Internet deaktivieren. Zeitrahmen: innerhalb von 48 Stunden.\n"
+        "Direkte Erreichbarkeit aus dem Internet deaktivieren. Zeitrahmen: innerhalb von 48 Stunden."
+        f"{eol_recommendation}\n"
         "Nächste Schritte: IT-Verantwortliche prüfen Zugangskonfiguration (Owner: IT-Sicherheit)."
     )
 
@@ -413,7 +488,14 @@ def generate_management_text(
 
         # Szenario 1: RDP exponiert — häufigster und gefährlichster Fall
         if scenario["has_rdp"]:
-            return _text_rdp(cve_count, scenario["port_count"])
+            eol_findings = []
+            if _scan_eol:
+                try:
+                    flat = _flatten_for_eol(services)
+                    eol_findings = _scan_eol(flat)
+                except Exception:
+                    pass
+            return _text_rdp(cve_count, scenario["port_count"], eol_findings)
 
         # Szenario 2: Datenbank exponiert
         if scenario["has_db"]:

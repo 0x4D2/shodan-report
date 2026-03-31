@@ -136,7 +136,21 @@ def _render_eol_warnings(
     if not services:
         return
 
-    findings = scan_services_for_eol(services)
+    # Normalise: services may store product/version nested under a "service" sub-dict
+    # (from build_technical_data) or flat (from raw snapshots).  Produce a flat list
+    # that scan_services_for_eol can consume.
+    flat_services = []
+    for svc in services:
+        if not isinstance(svc, dict):
+            continue
+        sub = svc.get("service") or {}
+        flat_services.append({
+            "port":    svc.get("port"),
+            "product": svc.get("product") or sub.get("product") or "",
+            "version": svc.get("version") or sub.get("version") or "",
+        })
+
+    findings = scan_services_for_eol(flat_services)
     if not findings:
         return
 

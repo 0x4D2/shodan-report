@@ -37,6 +37,39 @@ def prepare_recommendations_data(technical_json: Dict[str, Any], evaluation: Any
     priority2: List[str] = []
     priority3: List[str] = []
 
+    # ── EOL-Detection: steht vor CVEs in P1 ───────────────────────────────
+    try:
+        from shodan_report.evaluation.eol import scan_services_for_eol as _scan_eol_rec
+        _flat_for_eol = []
+        for _s in _iter_services(technical_json):
+            if not isinstance(_s, dict):
+                continue
+            _sub = _s.get("service") or {}
+            _flat_for_eol.append({
+                "port":    _s.get("port"),
+                "product": _s.get("product") or _sub.get("product") or "",
+                "version": _s.get("version") or _sub.get("version") or "",
+            })
+        for _f in _scan_eol_rec(_flat_for_eol):
+            _status = _f.get("eol_status", "")
+            _name = _f.get("display_name") or "Unbekanntes Produkt"
+            _eol_date = _f.get("eol_date") or ""
+            _model = _f.get("support_model", "official")
+            _qualifier = " (lizenzabhängig)" if _model == "mainstream_end" else ""
+            if _status == "eol":
+                priority1.append(
+                    f"EOL-System ersetzen oder isolieren: {_name}{_qualifier} — "
+                    "Sicherheits-Support beendet; keine regulären Patches mehr verfügbar. "
+                    "Migration auf unterstützte Version einleiten."
+                )
+            elif _status == "near_eol" and _eol_date:
+                priority1.append(
+                    f"EOL-Migration planen: {_name} — Support endet {_eol_date}. "
+                    "Migrationsprojekt jetzt starten."
+                )
+    except Exception:
+        pass
+
     # collect CVEs
     cves = []
     # top-level vuln lists

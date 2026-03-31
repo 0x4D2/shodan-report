@@ -1,5 +1,20 @@
 # Changelog
 
+## 31.03.2026 (4)
+
+- feat: EOL-Findings in Management-Summary und Handlungsempfehlungen integriert
+  - `reporting/management_text.py`: `_text_rdp()` kennt jetzt EOL-Findings
+    - Combo-Satz wenn RDP + EOL gleichzeitig: „klassischer Ransomware-Einstiegspunkt"
+    - „Was das bedeutet": Erklärung warum EOL = strukturell nicht patchbar
+    - Empfehlung: OS-Migrations-Zeitrahmen (90 Tage) wenn EOL erkannt
+    - CVE-Note mit OSINT-Qualifier: „basieren auf Versionszuordnungen, keine aktiv verifizierten Schwachstellen"
+    - Neue `_flatten_for_eol()` Helper-Funktion für verschachtelte Service-Strukturen
+  - `pdf/sections/data/recommendations_data.py`: EOL-Einträge stehen jetzt in **Priorität 1** vor CVE-Patching
+    - `"EOL-System ersetzen oder isolieren: Windows Server 2016 (lizenzabhängig)"` als erstes P1-Element
+    - near-EOL: `"EOL-Migration planen: ... — Support endet YYYY-MM-DD"`
+  - fix: `_render_eol_warnings` in `technical.py` normalisiert jetzt die verschachtelte `service.product`-Struktur aus `build_technical_data()` → EOL-Box erscheint korrekt im Technischen Anhang
+- test: 310 passed, 9 skipped, 0 failed
+
 ## 31.03.2026 (3)
 
 - feat: EOL-Erkennungs-Engine als eigenständiges Modul `evaluation/eol/`
