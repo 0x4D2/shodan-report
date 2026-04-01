@@ -45,26 +45,28 @@ def load_customer_config(config_path: Optional[Path]) -> dict:
 
 def generate_report_pipeline(
     customer_name: str,
-    ip: str,
+    ip: Optional[str],
     month: str,
     compare_month: Optional[str] = None,
     config_path: Optional[Path] = None,
     output_dir: Path = Path("./reports"),
     archive: bool = True,
     verbose: bool = False,
+    domain: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Generiere einen vollständigen Shodan Report mit NEUER Evaluation Engine.
 
     Args:
         customer_name: Name des Kunden
-        ip: IP-Adresse
+        ip: IP-Adresse. Optional wenn domain angegeben — wird dann automatisch ermittelt.
         month: Zielmonat (YYYY-MM)
         compare_month: Vergleichsmonat (YYYY-MM, optional)
         config_path: Pfad zur Kundenkonfiguration
         output_dir: Verzeichnis für temporäre PDFs
         archive: Ob der Report archiviert werden soll
         verbose: Ausführliche Ausgabe
+        domain: Kundendomain für Attack-Surface-Discovery (passives OSINT)
 
     Returns:
         Dictionary mit Ergebnis und Metadaten
@@ -76,6 +78,38 @@ def generate_report_pipeline(
         trend_text = "Trendanalyse deaktiviert (Kundenkonfiguration)."
 
     load_dotenv()
+
+    # ── Attack Surface Discovery (passives OSINT) ──────────────────────────────────
+    attack_surface = None
+    if domain:
+        try:
+            from shodan_report.clients.domain_scout import scout_domain
+            if verbose:
+                print(f"[Scout] Starte Domain-Discovery für: {domain}")
+            attack_surface = scout_domain(domain, verbose=verbose)
+            # IP aus Scout übernehmen wenn nicht explizit gegeben
+            if not ip:
+                ip = attack_surface.primary_ip
+                if not ip:
+                    return {
+                        "success": False,
+                        "error": f"Domain Scout konnte keine verwertbare IP für '{domain}' ermitteln. "
+                                 "Bitte --ip manuell angeben.",
+                    }
+                if verbose:
+                    print(f"[Scout] Primäre IP ausgewählt: {ip}")
+            # über den Config-Dict an PDF durchreichen (private key)
+            config["_attack_surface"] = attack_surface
+        except Exception as e:
+            if verbose:
+                print(f"[Scout] Warnung: Domain-Discovery fehlgeschlagen: {e}")
+            # Non-fatal — Report läuft ohne Attack-Surface-Sektion weiter
+
+    if not ip:
+        return {
+            "success": False,
+            "error": "IP-Adresse fehlt und Domain-Discovery lieferte kein Ergebnis.",
+        }
 
     api_key = os.getenv("SHODAN_API_KEY")
     if not api_key:

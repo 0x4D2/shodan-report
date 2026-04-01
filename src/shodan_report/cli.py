@@ -17,6 +17,7 @@ Beispiele:
     %(prog)s --customer "CHINANET HUBEI" --ip 0.0.0.0 --month 2025-01
     %(prog)s --customer "MG Solutions" --ip 217.154.224.104 --month 2025-01 --compare 2024-12
     %(prog)s --customer "Example Corp" --ip 192.168.1.1 --month 2025-01 --config config/customers/example.yaml
+    %(prog)s --customer "Example Corp" --domain example.com --month 2026-04
             """,
     )
 
@@ -28,7 +29,18 @@ Beispiele:
         help="Kundenname (z.B. 'CHINANET HUBEI PROVINCE NETWORK')",
     )
 
-    parser.add_argument("--ip", "-i", required=True, help="IP-Adresse (z.B. '0.0.0.0')")
+    parser.add_argument(
+        "--ip", "-i",
+        default=None,
+        help="IP-Adresse (z.B. '0.0.0.0'). Optional wenn --domain angegeben.",
+    )
+
+    parser.add_argument(
+        "--domain", "-d",
+        default=None,
+        help="Kundendomain für Attack-Surface-Discovery (z.B. 'example.com'). "
+             "Ermittelt automatisch alle echten IPs via passivem OSINT.",
+    )
 
     parser.add_argument(
         "--month", "-m", required=True, help="Monat im Format YYYY-MM (z.B. '2025-01')"
@@ -88,6 +100,14 @@ def validate_args(args: argparse.Namespace) -> bool:
             print(f"ERROR: Ungültiges Vergleichsmonat: {args.compare}", file=sys.stderr)
             return False
 
+    # --ip oder --domain muss vorhanden sein
+    if not args.ip and not args.domain:
+        print(
+            "ERROR: Entweder --ip oder --domain muss angegeben werden.",
+            file=sys.stderr,
+        )
+        return False
+
     # Validate output directory
     try:
         args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -109,6 +129,7 @@ def build_pipeline_kwargs(args: argparse.Namespace) -> dict:
         "output_dir": args.output_dir,
         "archive": not args.no_archive,
         "verbose": args.verbose,
+        "domain": args.domain,
     }
 
 
@@ -130,7 +151,10 @@ def main() -> int:
 
     if args.verbose:
         print(f"Generiere Report für Kunde: {args.customer}")
-        print(f"IP: {args.ip}")
+        if args.domain:
+            print(f"Domain: {args.domain} (Attack-Surface-Discovery aktiv)")
+        if args.ip:
+            print(f"IP: {args.ip}")
         print(f"Monat: {args.month}")
         if args.compare:
             print(f"Vergleich mit: {args.compare}")

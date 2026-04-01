@@ -15,6 +15,7 @@ from .sections.recommendations import create_recommendations_section
 from .sections.methodology import create_methodology_section
 from .sections.conclusion import create_conclusion_section
 from .sections.cve_overview import create_cve_overview_section
+from .sections.attack_surface import create_attack_surface_section
 
 
 def prepare_pdf_elements(
@@ -61,6 +62,7 @@ def prepare_pdf_elements(
         compare_month=compare_month,
         show_full_cve_list=config.get("show_full_cve_list", False),
         cve_limit=config.get("cve_limit", 6),
+        attack_surface=config.get("_attack_surface"),
     )
 
     # If a `sections` list was provided, call each section callable in order.
@@ -101,6 +103,11 @@ def prepare_pdf_elements(
     # technischer Inhalt beginnt immer auf einer neuen Seite.
     from reportlab.platypus import PageBreak as _PageBreak
     elements.append(_PageBreak())
+
+    # Attack Surface Discovery — nach Empfehlungen, vor Technical-Detail
+    if ctx.attack_surface is not None:
+        elements.append(_SectionMarker())
+        create_attack_surface_section(elements=elements, styles=styles, context=ctx)
 
     elements.append(_SectionMarker())
     create_technical_section(elements=elements, styles=styles, technical_json=technical_json, config=config)

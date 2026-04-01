@@ -344,7 +344,7 @@ def create_technical_section(elements: List, styles: Dict, *args, **kwargs) -> N
     elements.append(Spacer(1, 12))
     heading_style = styles.get("heading1", styles.get("heading2"))
     # keep legacy header text so existing tests that look for "Technischer Anhang" still match
-    elements.append(keep_section([Paragraph("<b>3. Technischer Anhang — Technische Detailanalyse (Auszug)</b>", heading_style), Spacer(1, 8)]))
+    elements.append(keep_section([Paragraph("<b>4. Technischer Anhang — Technische Detailanalyse (Auszug)</b>", heading_style), Spacer(1, 8)]))
     elements.append(Paragraph("Quelle: Shodan (OSINT, passive Datenerhebung).", styles["normal"]))
     elements.append(Spacer(1, 8))
 

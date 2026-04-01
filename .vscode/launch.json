@@ -1,0 +1,47 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "IP Scout",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/scripts/ip_scout.py",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "Shodan Report – mit Domain",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "shodan_report.cli",
+            "args": [
+                "--customer", "Test GmbH",
+                "--domain", "example.com",
+                "--month", "2026-04",
+                "--verbose"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src"
+            }
+        },
+        {
+            "name": "Shodan Report – mit IP",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "shodan_report.cli",
+            "args": [
+                "--customer", "Test GmbH",
+                "--ip", "1.2.3.4",
+                "--month", "2026-04",
+                "--verbose"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src"
+            }
+        }
+    ]
+}

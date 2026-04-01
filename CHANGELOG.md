@@ -1,5 +1,38 @@
 # Changelog
 
+## 01.04.2026
+
+- feat: Attack Surface Discovery — Domain-zu-IP OSINT-Pipeline
+  - `clients/domain_scout.py` (neu): passives OSINT-Modul ohne aktive Scans
+    - `scout_domain(domain)` → `AttackSurface` mit `relevant_ips`, `cdn_ips`, `subdomains`, `primary_ip`
+    - Quellen: DNS A/MX/NS-Records (`socket` + `nslookup`), crt.sh Zertifikats-Datenbank, HackerTarget Subdomain-API
+    - CDN-Erkennung anhand hardcodierter IP-Ranges: Cloudflare, Akamai, Fastly, AWS CloudFront
+    - `primary_ip`-Logik: A-Record (Hauptdomain) → www-A-Record → MX → erster Treffer
+    - CDN-IPs werden in `cdn_ips` separiert und fließen nicht in Shodan-Analyse
+  - `pdf/sections/attack_surface.py` (neu): Report-Abschnitt "3. Attack Surface — Domain-Discovery"
+    - Summary-Box: Domain, Anzahl exponierter IPs, CDN-IPs, Subdomains, analysierte IP
+    - IP-Tabelle (4 Spalten): IP-Adresse, Typ, Quellen, Reverse DNS — kein externer Link
+    - CDN-IPs mit gelber Warnbox und Erklärung
+    - Subdomain-Liste aus crt.sh (max. 20, Rest "+N weitere")
+  - `cli.py`: `--domain/-d` Parameter hinzugefügt; `--ip/-i` jetzt optional (war required)
+    - Validation: Fehler wenn weder `--ip` noch `--domain` angegeben
+    - Beide gleichzeitig erlaubt — `--ip` überschreibt dann die automatisch gewählte Primary IP
+  - `core/runner.py`: Scout-Block läuft vor Shodan-API-Call
+    - `attack_surface` wird in `config["_attack_surface"]` gespeichert und an PDF-Kontext übergeben
+    - Wenn nur `--domain` ohne `--ip`: IP wird automatisch aus `primary_ip` gewählt
+  - `pdf/context.py`: `attack_surface: Optional[Any] = None` Feld ergänzt
+  - `pdf/pdf_manager.py`: Attack-Surface-Sektion nach Empfehlungen, vor Technischem Anhang eingebunden
+  - `pdf/sections/methodology.py`: neuer Block "Attack Surface Discovery (Abschnitt 3)" mit Erklärung aller 5 Quellen und Primary-IP-Logik; "Grenzen & Hinweis" um OSINT-Bullet erweitert
+- chore: Abschnittsnummerierung angepasst (Management=1, Empfehlungen=2, Attack Surface=3, Technical=4, CVE=5, Trend=6, Fazit=7)
+- docs: README aktualisiert
+  - CLI-Parameter-Tabelle: `--domain` mit Pflicht-Kennzeichnung und Hinweis
+  - Schnellstart: Beispiel mit `--domain`
+  - Report-Aufbau: Abschnitt 3 aufgenommen, Nummerierung korrigiert
+  - Pipeline: Schritt 0 für `scout_domain()` dokumentiert
+- test: 31 neue Tests (43 passed, 0 failed)
+  - `tests/cli/test_cli_args.py`: 11 neue Tests — `--domain` Parsing, Short-Flag, `validate_args` für alle Kombinationen
+  - `tests/clients/test_domain_scout.py` (neu): 32 Tests — CDN-Erkennung, `ScoutedIP` Properties, `primary_ip`-Fallback-Logik, `scout_domain` vollständig gemockt (offline)
+
 ## 31.03.2026 (9)
 
 - fix: Deterministische Narrative-Zuordnung — Score ↔ Text Konsistenz

@@ -17,3 +17,5 @@ class ReportContext:
     # Presentation flags
     show_full_cve_list: bool = False
     cve_limit: int = 6
+    # Attack Surface Discovery (optional — nur wenn --domain verwendet)
+    attack_surface: Optional[Any] = None  # shodan_report.clients.domain_scout.AttackSurface

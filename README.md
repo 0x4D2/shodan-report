@@ -34,7 +34,11 @@ $env:SHODAN_API_KEY = "DEIN_API_KEY"
 3. Run example
 
 ```powershell
+# Mit bekannter IP:
 shodan-report --customer "Testkunde" --ip "8.8.8.8" --month "2025-01"
+
+# Mit Domain (Attack-Surface-Discovery automatisch):
+shodan-report --customer "Testkunde" --domain "testkunde.de" --month "2026-04"
 ```
 
 Konfiguration: siehe `config/example.yaml` für ein minimal Beispiel.
@@ -90,9 +94,15 @@ python -m venv .venv
 pip install -e .
 ```
 
-### Ersten Report generieren
+### Ersten Report generieren (mit IP)
 ```bash
 shodan-report --customer "Testkunde" --ip "8.8.8.8" --month "2025-01" --verbose
+```
+
+### Mit Domain (Attack-Surface-Discovery)
+```bash
+# Ermittelt automatisch alle exponierten IPs, wählt die beste für Shodan:
+shodan-report --customer "Testkunde" --domain "testkunde.de" --month "2026-04" --verbose
 ```
 
 ### Mit Trendanalyse
@@ -108,34 +118,39 @@ Hinweis: Wenn kein `--compare` angegeben ist, wird automatisch der vorherige Mon
 
 Jeder Report enthält automatisch:
 
-1. **Header** — Professionelle Metadaten & Asset-Information
-2. **Management-Zusammenfassung** — Executive Summary mit Exposure-Level; benennt das höchste Risiko explizit; kombiniert RDP+EOL zum Ransomware-Narrativ; unterscheidet Verified vs. Inferred Findings
-3. **Trend- & Vergleichsanalyse** — Historische Entwicklung (mit Tabelle bei `--compare`)
-4. **Priorisierte Handlungsempfehlungen** — Konkrete Maßnahmen; EOL-Systeme automatisch als erstes Priorität-1-Element
-5. **Technischer Anhang** — Ports, Dienste, Versionen, Risikobewertung; farbige Warn-Boxen für:
+1. **Management-Zusammenfassung** — Executive Summary mit Exposure-Level; benennt das höchste Risiko explizit; kombiniert RDP+EOL zum Ransomware-Narrativ; unterscheidet Verified vs. Inferred Findings
+2. **Handlungsempfehlungen** — Konkrete Maßnahmen; EOL-Systeme automatisch als erstes Priorität-1-Element
+3. **Attack Surface — Domain-Discovery** _(nur wenn `--domain` verwendet)_ — Alle passiv ermittelten IPs aus DNS, crt.sh und HackerTarget; CDN-Klassifizierung; Subdomains
+4. **Technischer Anhang** — Ports, Dienste, Versionen, Risikobewertung; farbige Warn-Boxen für:
    - Shodan-Tags (doublepulsar, eol-product, …)
    - EOL/Near-EOL-Systeme aus Banneranalyse
    - TLS Verified Findings (aktive unsichere Protokolle direkt aus `ssl_info.versions`)
-6. **CVE- & Exploit-Übersicht** — Schwachstellen mit CVSS Scores (als Inferred Findings gekennzeichnet)
-7. **Methodik & Grenzen** — Transparente Dokumentation der Analyse
-8. **Fazit** — Zusammenfassung & Ausblick
+5. **CVE- & Exploit-Übersicht** — Schwachstellen mit CVSS Scores (als Inferred Findings gekennzeichnet)
+6. **Trend- & Vergleichsanalyse** — Historische Entwicklung (mit Tabelle bei `--compare`)
+7. **Fazit** — Zusammenfassung & Ausblick
+8. **Methodik & Grenzen** — Transparente Dokumentation der Analyse inkl. Attack-Surface-Discovery-Quellen
 9. **Footer** — Professioneller Disclaimer
+
+> **Nummerierung:** Ohne `--domain` entfällt Abschnitt 3; die restlichen Abschnitte verschieben sich entsprechend.
 
 ---
 
 ## 🛠️ CLI PARAMETER
 
-| Parameter | Beschreibung | Beispiel |
-|-----------|-------------|----------|
-| `--customer`, `-c` | Kundenname | `"CHINANET HUBEI"` |
-| `--ip`, `-i` | IP-Adresse | `"111.170.152.60"` |
-| `--month`, `-m` | Monat (YYYY-MM) | `"2025-01"` |
-| `--compare` | Vergleichsmonat für Trendanalyse | `"2024-12"` |
-| `--config` | Kundenkonfiguration (YAML) | `config/customers/beispiel.yaml` |
-| `--output-dir`, `-o` | Ausgabeverzeichnis für PDFs | `./reports` |
-| `--no-archive` | Deaktiviert revisionssichere Archivierung | |
-| `--verbose`, `-v` | Detaillierte Ausgabe | |
-| `--quiet`, `-q` | Minimale Ausgabe | |
+| Parameter | Beschreibung | Pflicht | Beispiel |
+|-----------|-------------|---------|----------|
+| `--customer`, `-c` | Kundenname | ✅ | `"CHINANET HUBEI"` |
+| `--ip`, `-i` | IP-Adresse. Optional wenn `--domain` gesetzt. | ⚠️ (oder `--domain`) | `"111.170.152.60"` |
+| `--domain`, `-d` | Kundendomain für Attack-Surface-Discovery. Ermittelt alle exponierten IPs passiv via OSINT und wählt automatisch die beste IP für die Shodan-Analyse. | ⚠️ (oder `--ip`) | `"example.com"` |
+| `--month`, `-m` | Monat (YYYY-MM) | ✅ | `"2025-01"` |
+| `--compare` | Vergleichsmonat für Trendanalyse | ❌ | `"2024-12"` |
+| `--config` | Kundenkonfiguration (YAML) | ❌ | `config/customers/beispiel.yaml` |
+| `--output-dir`, `-o` | Ausgabeverzeichnis für PDFs | ❌ | `./reports` |
+| `--no-archive` | Deaktiviert revisionssichere Archivierung | ❌ | |
+| `--verbose`, `-v` | Detaillierte Ausgabe | ❌ | |
+| `--quiet`, `-q` | Minimale Ausgabe | ❌ | |
+
+> **Hinweis:** Entweder `--ip` oder `--domain` muss angegeben werden. Werden beide angegeben, wird `--domain` für Attack-Surface-Discovery genutzt und `--ip` überschreibt die automatisch gewählte IP.
 
 ---
 
@@ -268,6 +283,7 @@ Zweck: `shodan-report` ist ein automatisierter Report-Generator für externe Sic
 
 Pipeline (kurz und präzise, referenziert `src/shodan_report/core/runner.py`):
 
+- 0) **Attack-Surface-Discovery** _(wenn `--domain` angegeben)_ — `scout_domain()` löst die Domain in alle exponierten IPs auf (DNS A/MX/NS, crt.sh, HackerTarget); CDN-IPs werden herausgefiltert; die beste IP wird als Analyse-Ziel gewählt.
 - 1) Kundenkonfiguration laden (`load_customer_config`) — YAML per `config/customers/*`.
 - 2) Shodan API-Key aus Umgebung (`.env`) laden.
 - 3) Shodan-Daten abrufen (`ShodanClient.get_host`) und in ein internes `Snapshot`-Modell parsen (`parse_shodan_host`).
