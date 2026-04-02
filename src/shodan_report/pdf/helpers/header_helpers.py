@@ -24,13 +24,6 @@ def generate_compact_report_id(customer_name: str, month: str, ip: str) -> str:
     return f"{customer_code}{month_code}{ip_code}{day_code}"
 
 
-# ──────────────
-# Assets-Text kompakt
-# ──────────────
-def format_assets_text(ip: str, additional_assets: Optional[List[str]] = None) -> str:
-    total_assets = 1 + (len(additional_assets) if additional_assets else 0)
-    return ip if total_assets == 1 else f"{ip} +{total_assets - 1} assets"
-
 
 # ──────────────
 # Logo Helper

@@ -337,26 +337,16 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
         has_web = bool(ports.intersection({80, 443, 8080, 8443, 8081}) or "http" in prod_text)
         has_file = bool(ports.intersection({21, 20, 139, 445}) or "ftp" in prod_text)
 
-        assets = []
         ip = technical_json.get("ip")
-        if ip:
-            assets.append(str(ip))
+        ip_str = str(ip) if ip else "–"
         domains = technical_json.get("domains") or []
         hostnames = technical_json.get("hostnames") or []
-        assets.extend([str(d) for d in domains if d])
-        assets.extend([str(h) for h in hostnames if h])
-        seen_assets = []
-        for a in assets:
-            if a not in seen_assets:
-                seen_assets.append(a)
-        asset_count = max(1, len(seen_assets))
-        primary_asset = None
-        if domains:
-            primary_asset = str(domains[0])
-        elif hostnames:
-            primary_asset = str(hostnames[0])
-        elif ip:
-            primary_asset = str(ip)
+        # Hostnamen/Domains dedupliziert, ohne die IP selbst — reine Netzwerk-Identitäten
+        _seen_names: list = []
+        for _n in [str(d) for d in domains if d] + [str(h) for h in hostnames if h]:
+            if _n not in _seen_names:
+                _seen_names.append(_n)
+        names_list = _seen_names
 
         if has_ssh and not (has_db or has_web or has_file):
             reason = "ein öffentlich erreichbarer SSH-Dienst Risiken birgt"
@@ -373,24 +363,27 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
         else:
             reason = "öffentlich erreichbare Dienste vorhanden sind"
 
-        if primary_asset:
-            if asset_count == 1:
-                intro_line = (
-                    f"Erfasst wurde 1 Asset (Host: {primary_asset}); "
-                    f"Exposure-Level {exposure_display} ({exposure_desc}), da {reason}."
-                )
-            else:
-                intro_line = (
-                    f"Erfasst wurden {asset_count} Assets; primär bewertetes Asset (Host: {primary_asset}) — "
-                    f"Exposure-Level {exposure_display} ({exposure_desc}), da {reason}."
-                )
-        else:
+        # Intro-Zeile: IP-zentrisch, Hostnamen/Domains als zugeordnete Identitäten
+        if not names_list:
             intro_line = (
-                f"Erfasst wurden {asset_count} Assets; Exposure-Level {exposure_display} ({exposure_desc}), "
-                f"da {reason}."
+                f"Analysierte IP-Adresse: {ip_str} — "
+                f"Exposure-Level {exposure_display} ({exposure_desc}), da {reason}."
+            )
+        elif len(names_list) == 1:
+            intro_line = (
+                f"Analysierte IP-Adresse: {ip_str}  ·  Hostname/Domain: {names_list[0]} — "
+                f"Exposure-Level {exposure_display} ({exposure_desc}), da {reason}."
+            )
+        else:
+            hosts_display = ", ".join(names_list[:2])
+            if len(names_list) > 2:
+                hosts_display += f" (+{len(names_list) - 2} weitere)"
+            intro_line = (
+                f"Analysierte IP-Adresse: {ip_str}  ·  {len(names_list)} zugeordnete Hostnamen/Domains: "
+                f"{hosts_display} — Exposure-Level {exposure_display} ({exposure_desc}), da {reason}."
             )
     except Exception:
-        intro_line = "Erfasst wurde 1 Asset; die externe Angriffsfläche ist erhöht bewertet."
+        intro_line = "Analysierte IP-Adresse: unbekannt — die externe Angriffsfläche ist erhöht bewertet."
 
     elements.append(Paragraph(intro_line, styles["normal"]))
     elements.append(Spacer(1, 8))

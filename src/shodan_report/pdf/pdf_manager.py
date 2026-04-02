@@ -86,7 +86,8 @@ def prepare_pdf_elements(
     # Insert a marker before each section so the renderer can keep the whole
     # section together when producing the PDF.
     elements.append(_SectionMarker())
-    _create_header(elements=elements, styles=styles, theme=theme, customer_name=customer_name, month=month, ip=ip, config=config)
+    _header_domain = ctx.attack_surface.domain if ctx.attack_surface else None
+    _create_header(elements=elements, styles=styles, theme=theme, customer_name=customer_name, month=month, ip=ip, config=config, domain=_header_domain)
 
     # Do NOT insert a section marker between header and management — keep
     # header and the management summary together on the same page when

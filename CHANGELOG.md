@@ -1,5 +1,22 @@
 # Changelog
 
+## 02.04.2026
+
+- fix: Header-Meta-Zeile: "Assets" durch klare IP/Domain-Trennung ersetzt
+  - `pdf/sections/header.py`: `"Assets: {ip} +N assets"` → `"IP: {ip}"` + optional `"| Domain: {domain}"` wenn Domain-Scout gelaufen
+    - Parameter `additional_assets` entfernt; neuer optionaler Parameter `domain: Optional[str]`
+  - `pdf/helpers/header_helpers.py`: `format_assets_text()` entfernt (war Quelle der "3 Assets"-Verwirrung)
+  - `pdf/pdf_manager.py`: `domain` aus `ctx.attack_surface.domain` an `_create_header` übergeben
+  - Semantik: ein Report = eine IP-Adresse (analysiertes Asset); Domain ist Kontext-Information, kein eigenständiges Asset
+- fix: Asset-Terminologie in Management-Summary und Methodik geklärt
+  - `pdf/sections/management.py`: Intro-Zeile nicht mehr "N Assets; primär bewertetes Asset (Host: X)", sondern IP-zentrisch: "Analysierte IP-Adresse: {ip} · {N} zugeordnete Hostnamen/Domains: …"
+    - 0 Hostnamen: "Analysierte IP-Adresse: {ip} — Exposure-Level …"
+    - 1 Hostname: "Analysierte IP-Adresse: {ip} · Hostname/Domain: {name} — Exposure-Level …"
+    - N Hostnamen: "Analysierte IP-Adresse: {ip} · {N} zugeordnete Hostnamen/Domains: {name1}, {name2} (+N weitere) — Exposure-Level …"
+    - Interne Hilfsvariablen `asset_count` / `primary_asset` entfernt; `names_list` als klare Hostnamen-Liste
+  - `pdf/sections/methodology.py`: Glossar-Eintrag "IP-Adresse (analysiertes Asset)" hinzugefügt — erklärt dass Hostnamen/Domains zugeordnete Netzwerk-Identitäten sind, keine eigenständig bewerteten Assets
+  - `pdf/sections/methodology.py`: "primäre Analyse-IP"-Erklärung ergänzt um Abgrenzung: weitere IPs/Hostnamen = Netzwerk-Identitäten in Abschnitt 3, nicht separat von Shodan bewertet
+
 ## 01.04.2026
 
 - feat: Attack Surface Discovery — Domain-zu-IP OSINT-Pipeline

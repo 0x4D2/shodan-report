@@ -42,6 +42,7 @@ def create_methodology_section(elements: List[Any], styles: Dict[str, Any], *arg
     elements.append(_h2("Begriffe", styles))
 
     glossary = [
+        ("IP-Adresse (analysiertes Asset)", "Der konkrete Untersuchungsgegenstand: eine öffentlich erreichbare IPv4-Adresse. Hostnamen und Domains sind dieser IP zugeordnete Netzwerk-Identitäten — sie liefern Kontext, werden aber nicht als eigenständige Assets bewertet."),
         ("Verified Finding",  "Direkt beobachtetes Faktum — z. B. aktives TLS-Protokoll, offener Port. Kein Schluss, sondern Messwert."),
         ("Inferred Finding",  "Abgeleitete Erkenntnis via Versionserkennung — z. B. mögliche CVEs. Nicht aktiv verifiziert."),
         ("CVE / CVSS",        "Dokumentierte Schwachstelle (CVE) mit Schwerebewertung 0–10 (CVSS)."),
@@ -95,9 +96,11 @@ def create_methodology_section(elements: List[Any], styles: Dict[str, Any], *arg
         elements.append(_bullet(item, styles))
     elements.append(Spacer(1, 2))
     elements.append(_body(
-        "Die <b>primäre Analyse-IP</b> wird automatisch nach folgender Priorität gewählt: "
+        "Die <b>primäre Analyse-IP</b> (das zu bewertende Asset) wird automatisch nach folgender Priorität gewählt: "
         "A-Record der Hauptdomain → A-Record von www → Mailserver → erste gefundene IP. "
-        "Bei Bedarf kann die IP manuell überschrieben werden.",
+        "Alle übrigen IPs und Hostnamen werden als <b>weitere Netzwerk-Identitäten</b> in Abschnitt 3 aufgeführt, "
+        "aber nicht separat von Shodan bewertet. "
+        "Bei Bedarf kann die primäre IP manuell überschrieben werden.",
         styles,
     ))
 

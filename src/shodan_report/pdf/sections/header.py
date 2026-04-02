@@ -4,7 +4,6 @@ from typing import List, Dict, Any, Optional
 
 from shodan_report.pdf.helpers.header_helpers import (
     generate_compact_report_id,
-    format_assets_text,
     add_logo_to_elements,
 )
 
@@ -17,7 +16,7 @@ def create_header_section(
     month: str,
     ip: str,
     config: Optional[Dict[str, Any]] = None,
-    additional_assets: Optional[List[str]] = None,
+    domain: Optional[str] = None,
 ) -> None:
     config = config or {}
 
@@ -47,9 +46,10 @@ def create_header_section(
     except ValueError:
         month_formatted = month
 
-    # Assets + Report-ID
-    assets_text = format_assets_text(ip, additional_assets)
+    # IP-Anzeige + optionale Domain
     report_id = generate_compact_report_id(customer_name, month, ip)
+    ip_part = f"<b>IP:</b> {ip}"
+    domain_part = f" &nbsp;&nbsp;|&nbsp;&nbsp; <b>Domain:</b> {domain}" if domain else ""
 
     # ─────────────────────────────────────────────
     # Meta-Zeile
@@ -57,7 +57,7 @@ def create_header_section(
     elements.append(
         Paragraph(
             f"<b>Scan:</b> {month_formatted} &nbsp;&nbsp;|&nbsp;&nbsp; "
-            f"<b>Assets:</b> {assets_text} &nbsp;&nbsp;|&nbsp;&nbsp; "
+            f"{ip_part}{domain_part} &nbsp;&nbsp;|&nbsp;&nbsp; "
             f"<b>Report-ID:</b> {report_id}",
             styles["meta"].clone("meta_theme", textColor=theme.secondary),
         )
