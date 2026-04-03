@@ -2,11 +2,12 @@ from reportlab.platypus import SimpleDocTemplate, PageBreak
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import cm
 from pathlib import Path
+from typing import Optional, Dict, Any
 from .layout import keep_section
 from reportlab.pdfgen import canvas as pdfcanvas
 
 
-def render_pdf(output_path: Path, elements: list):
+def render_pdf(output_path: Path, elements: list, page_meta: Optional[Dict[str, Any]] = None):
 
     try:
         # Pre-process `elements`: transform ranges starting at a lightweight
@@ -138,7 +139,9 @@ def render_pdf(output_path: Path, elements: list):
                 i += 1
 
         class NumberedCanvas(pdfcanvas.Canvas):
-            """Canvas that writes page numbers in the footer as 'Seite X von Y'."""
+            """Canvas that draws page numbers and corner metadata on every page."""
+
+            _meta: Dict[str, Any] = page_meta or {}
 
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
@@ -152,20 +155,56 @@ def render_pdf(output_path: Path, elements: list):
                 num_pages = len(self._saved_page_states)
                 for state in self._saved_page_states:
                     self.__dict__.update(state)
-                    self._draw_page_number(num_pages)
+                    self._draw_page_decorations(num_pages)
                     super().showPage()
                 super().save()
 
-            def _draw_page_number(self, page_count):
+            def _draw_page_decorations(self, page_count):
                 try:
                     page = self._pageNumber
                 except Exception:
                     page = 0
-                text = f"Seite {page} von {page_count}"
-                self.setFont("Helvetica", 8)
-                x = A4[0] / 2.0
-                y = 1.5 * cm
-                self.drawCentredString(x, y, text)
+
+                meta = self.__class__._meta
+                domain = meta.get("domain") or ""
+                month_display = meta.get("month_display") or ""
+                sha256 = meta.get("sha256") or ""
+                confidentiality = meta.get("confidentiality") or "Vertraulich"
+
+                page_label = f"Seite {page} von {page_count}"
+                gray = 0.45  # mid-gray for all corner texts
+
+                left_x = 2 * cm
+                right_x = A4[0] - 2 * cm
+                line_h = 8.5  # pt between lines in top-right block
+
+                # ── Top right: domain / Vertraulich / Seite X von Y ──────────
+                self.saveState()
+                self.setFont("Helvetica", 7.5)
+                self.setFillGray(gray)
+                top_y = A4[1] - 1.05 * cm
+                lines_top = [l for l in [domain, confidentiality, page_label] if l]
+                for i, line in enumerate(lines_top):
+                    self.drawRightString(right_x, top_y - i * line_h, line)
+                self.restoreState()
+
+                # ── Bottom left: Seite X / Vertraulich / Stand ───────────────
+                self.saveState()
+                self.setFont("Helvetica", 7)
+                self.setFillGray(gray)
+                parts = [page_label, confidentiality]
+                if month_display:
+                    parts.append(f"Stand: {month_display}")
+                self.drawString(left_x, 1.1 * cm, " · ".join(parts))
+                self.restoreState()
+
+                # ── Bottom right: SHA256 ─────────────────────────────────────
+                if sha256:
+                    self.saveState()
+                    self.setFont("Helvetica", 6.5)
+                    self.setFillGray(gray)
+                    self.drawRightString(right_x, 1.1 * cm, f"SHA256: {sha256}")
+                    self.restoreState()
 
         doc.build(proc_elements, canvasmaker=NumberedCanvas)
         print(f"PDF erfolgreich erstellt: {output_path}")

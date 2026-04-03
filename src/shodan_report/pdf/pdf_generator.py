@@ -1,5 +1,7 @@
 from pathlib import Path
 import os
+import hashlib
+from datetime import datetime
 from typing import Optional
 import json
 from .pdf_manager import prepare_pdf_elements
@@ -85,7 +87,32 @@ def generate_pdf(
             compare_month=compare_month,
             trend_table=trend_table,
         )
-    render_pdf(pdf_path, elements)
+    # ── Page-corner metadata (domain, confidentiality label, SHA256) ────────
+    try:
+        _domain = (
+            (config.get("_attack_surface") and config["_attack_surface"].domain)
+            or (technical_json.get("hostnames") or [None])[0]
+            or config.get("domain")
+            or ""
+        )
+        _sha256 = hashlib.sha256(
+            f"{customer_name}:{ip}:{month}".encode()
+        ).hexdigest()
+        try:
+            _month_dt = datetime.strptime(month, "%Y-%m")
+            _month_display = _month_dt.strftime("%b %Y")
+        except Exception:
+            _month_display = month
+        _page_meta = {
+            "domain": _domain,
+            "month_display": _month_display,
+            "sha256": _sha256,
+            "confidentiality": "Vertraulich",
+        }
+    except Exception:
+        _page_meta = {}
+
+    render_pdf(pdf_path, elements, page_meta=_page_meta)
 
     # --- Debug: dump canonical management data used for rendering ---
     if debug_mdata:
