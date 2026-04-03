@@ -4,10 +4,11 @@
 # ──────────────────────────────────────────────────────────────────────────────
 
 from reportlab.platypus import Paragraph, Spacer, PageBreak, Table, TableStyle
+from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 import os
 from typing import List, Dict, Any, Optional
-from shodan_report.pdf.styles import Theme
+from shodan_report.pdf.styles import Theme, Colors
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Management-Text & Insights Helpers
@@ -163,6 +164,49 @@ def get_management_risk_and_tech_note(technical_json: Dict[str, Any], evaluation
         tech_note = "Technische Kurzbewertung: OSINT-Perspektive ohne interne Systemprüfung."
 
     return risk_stmt, tech_note
+
+# Total KPI row = 5 cells × _KPI_CELL_W mm = 163 mm (matches other section tables)
+_KPI_CELL_W = 163.0 / 5  # ≈ 32.6 mm
+
+
+def _kpi_cell(label: str, value: str, value_color=None) -> Table:
+    """Rendert eine einzelne KPI-Karte im Management-Stil."""
+    _val_color = value_color if value_color is not None else Colors.text
+    lbl = Paragraph(
+        f'<font size="7">{label}</font>',
+        ParagraphStyle(
+            "_KpiLabel",
+            alignment=1,
+            leading=9,
+            spaceAfter=0,
+            spaceBefore=0,
+            textColor=Colors.text_muted,
+            fontName="Helvetica",
+        ),
+    )
+    val = Paragraph(
+        f'<font size="16"><b>{value}</b></font>',
+        ParagraphStyle(
+            "_KpiValue",
+            alignment=1,
+            leading=18,
+            spaceAfter=0,
+            spaceBefore=0,
+            textColor=_val_color,
+            fontName="Helvetica-Bold",
+        ),
+    )
+    inner = Table([[lbl], [val]], colWidths=[_KPI_CELL_W * mm])
+    inner.setStyle(TableStyle([
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("BACKGROUND", (0, 0), (-1, -1), Colors.bg_light),
+        ("BOX", (0, 0), (-1, -1), 0.3, Colors.border),
+    ]))
+    return inner
+
 
 def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> None:
     """
@@ -388,84 +432,68 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
     elements.append(Paragraph(intro_line, styles["normal"]))
     elements.append(Spacer(1, 8))
 
-    # ─────────────────────────────────────────────────────────────────────
-    # KERNKENNZAHLEN (nur auf Seite 1)
-    # Zeigt kompakt Analysierte IP / Ports / CVEs / Status auf der ersten Seite an.
-    # ─────────────────────────────────────────────────────────────────────
+    # ── Gesamtbewertung: Exposure-Level + visuelle Ampel ─────────────────
+    elements.append(
+        Paragraph("Gesamtbewertung der externen Angriffsfläche", styles["normal"])
+    )
+    elements.append(Spacer(1, 8))
+
     try:
-        # Analysierte IP aus technical_json
-        analysed_ip = str(technical_json.get("ip") or "–")
-
-        ports_num = int(mdata.get("total_ports", 0) or 0)
-        cves_num = int(mdata.get("cve_count", 0) or 0)
-
-        # Simple status emoji mapping based on exposure_score
-        try:
-            sc = exposure_score  # use post-boost score for consistent ampel colour
-        except Exception:
-            sc = 1
-        if sc <= 2:
-            status_dot = "🟢"
-            status_label = "niedrig"
-        elif sc == 3:
-            status_dot = "🟡"
-            status_label = "mittel"
-        else:
-            status_dot = "🔴"
-            status_label = "hoch"
-
-        # Build an exposure ampel flowable for the status column
-        try:
-            ampel = build_horizontal_exposure_ampel(sc, dot_size_mm=4.0, spacing_mm=1.8, theme=theme)
-        except Exception:
-            ampel = Paragraph(f"{status_dot}", styles["normal"])
-
-        # status cell: ampel (zentriert) with smaller label in parentheses below
-        # Do not display textual status labels (niedrig/mittel/hoch) in the table
-        label_display = ""
-        rows = [[ampel]]
-        if label_display:
-            rows.append([Paragraph(label_display, styles["normal"])])
-        status_cell = Table(rows, colWidths=[46 * mm])
-        status_cell.setStyle(
-            TableStyle(
-                [
-                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                    ("LEFTPADDING", (0, 0), (-1, -1), 2),
-                    ("RIGHTPADDING", (0, 0), (-1, -1), 2),
-                ]
-            )
-        )
-
-        kern_rows = [
-            [Paragraph("<b>KERNKENNZAHLEN</b>", styles["heading2"]), "", "", ""],
-            [Paragraph("<b>Analysierte IP</b>", styles["normal"]), Paragraph("<b>Ports</b>", styles["normal"]), Paragraph("<b>CVEs</b>", styles["normal"]), Paragraph("<b>Status</b>", styles["normal"])],
-            [Paragraph(analysed_ip, styles["normal"]), str(ports_num), str(cves_num), status_cell],
-        ]
-
-        col_w = [42 * mm, 20 * mm, 22 * mm, 46 * mm]
-        kern_tbl = Table(kern_rows, colWidths=col_w)
-        kern_tbl.setStyle(
-            TableStyle(
-                [
-                    ("SPAN", (0, 0), (-1, 0)),
-                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                    ("GRID", (0, 1), (-1, -1), 0.5, "#111827"),
-                    ("BACKGROUND", (0, 0), (-1, 0), "#f1f5f9"),
-                    ("LEFTPADDING", (0, 0), (-1, -1), 6),
-                    ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-                    ("TOPPADDING", (0, 0), (-1, -1), 6),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-                ]
-            )
-        )
-        elements.append(kern_tbl)
-        elements.append(Spacer(1, 8))
+        _ampel = build_horizontal_exposure_ampel(exposure_score, theme=theme)
     except Exception:
-        # non-fatal: if anything goes wrong, skip table silently
-        pass
+        _ampel = Paragraph("", styles["normal"])
+
+    exp_tbl = Table(
+        [[
+            Paragraph(
+                f"<b>Exposure-Level:</b> {exposure_score} von 5 ({exposure_desc})",
+                styles["exposure"],
+            ),
+            _ampel,
+        ]],
+        style=TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ("TOPPADDING", (0, 0), (-1, -1), 2),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+        ]),
+    )
+    elements.append(exp_tbl)
+    elements.append(Spacer(1, 10))
+
+    # ── KPI-Zeile: IP · Ports · CVEs gesamt · Kritisch (≥9) · CISA KEV ──
+    _all_cves_kpi = mdata.get("cves", [])
+    _cve_total_kpi = int(mdata.get("cve_count", 0) or 0)
+    _crit_count_kpi = len([
+        c for c in _all_cves_kpi
+        if isinstance(c, dict) and (c.get("cvss") or 0) >= 9.0
+    ])
+    _cisa_count_kpi = sum(
+        1 for c in _all_cves_kpi
+        if isinstance(c, dict) and c.get("exploit_status") in ("public", "kev", "cisa")
+    )
+    _crit_color_kpi = Colors.risk_critical_dot if _crit_count_kpi > 0 else None
+    _cisa_color_kpi = Colors.risk_critical_dot if _cisa_count_kpi > 0 else None
+
+    _ip_display = str(technical_json.get("ip_str") or technical_json.get("ip") or "—")
+    kpi_row = Table(
+        [[
+            _kpi_cell("Analysierte IP", _ip_display),
+            _kpi_cell("Offene Ports", str(int(mdata.get("total_ports", 0) or 0))),
+            _kpi_cell("CVEs gesamt", str(_cve_total_kpi)),
+            _kpi_cell("Kritisch (≥9)", str(_crit_count_kpi), _crit_color_kpi),
+            _kpi_cell("CISA KEV", str(_cisa_count_kpi), _cisa_color_kpi),
+        ]],
+        colWidths=[_KPI_CELL_W * mm] * 5,
+    )
+    kpi_row.setStyle(TableStyle([
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+    ]))
+    elements.append(kpi_row)
+    elements.append(Spacer(1, 12))
 # ── Exposure-Level + Beitragsfaktoren (ein kompakter Block) ─────────────
     try:
         services = technical_json.get("services") or technical_json.get("open_ports") or []
