@@ -50,7 +50,7 @@ def test_end_to_end_report_generation(tmp_path, monkeypatch):
 
     monkeypatch.setattr(pdf_generator, "OUTPUT_DIR", tmp_path / "reports")
 
-    def fake_render(path: Path, elements):
+    def fake_render(path: Path, elements, **kwargs):
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             f.write(mgmt_text)
@@ -100,7 +100,7 @@ def test_pdf_and_archive_integration(tmp_path, monkeypatch):
     technical_json = build_technical_data(curr, None)
 
     # Mock für render_pdf
-    def fake_render(path: Path, elements):
+    def fake_render(path: Path, elements, **kwargs):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("PDF Content", encoding="utf-8")
 
@@ -177,7 +177,7 @@ def test_main_flow_simulation(tmp_path, monkeypatch):
                 "ports": [22, 443],
             }
 
-    def fake_render(path: Path, elements):
+    def fake_render(path: Path, elements, **kwargs):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(f"PDF for {path.name}", encoding="utf-8")
 
