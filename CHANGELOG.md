@@ -1,5 +1,63 @@
 # Changelog
 
+## 04.04.2026 (7)
+
+- feat: Exposure-Box — farbiger linker Akzentbalken je nach Risikostufe
+  - `pdf/sections/management.py`: `LINEBEFORE` (4pt) auf die erste Spalte der `_exp_box` gesetzt
+    - Level 1–2 → grün (`#22c55e`)
+    - Level 3 → orange (`#f97316`)
+    - Level 4–5 → rot (`#dc2626`)
+  - `pdf/sections/management.py`: `HexColor` zu den ReportLab-Importen ergänzt
+  - Left-Padding der Box von 8 auf 10pt erhöht um Platz für den Balken zu schaffen
+
+- refactor: Redundanter Intro-Textblock in der Management-Zusammenfassung entfernt
+  - `pdf/sections/management.py`: Paragraph mit "Analysierte IP-Adresse: … – Exposure-Level …" gestrichen
+    - Information ist vollständig durch KPI-Karten (IP, Ports, CVEs) und Exposure-Box abgedeckt
+    - Spart ca. 2–3 Zeilen Platz auf der Management-Seite
+
+## 04.04.2026 (5)
+
+- feat: Exposure-Level-Anzeige unter KPI eingerahmt (Label + Ampel + Beitragsfaktoren)
+  - `pdf/sections/management.py`: separater `exp_tbl` vor dem KPI entfernt
+    - Vorher: Exposure-Level als eigene Tabellenzeile (Label + Ampel) oberhalb der KPI-Karten + darunter Beitragsfaktoren als Paragraph
+    - Jetzt: eingerahmte Box (`_exp_box`) unterhalb der KPI-Karten mit drei Spalten in einer Zeile
+      - Spalte 1 (68mm): `EXPOSURE-LEVEL: 3/5 (erhöht)` — fett, `exposure`-Style
+      - Spalte 2 (35mm): 5-Dot-Ampel zentriert
+      - Spalte 3 (60mm): Beitragsfaktoren rechtsbündig, grau, 8pt
+    - Box-Design: hellgrauer Hintergrund (`Colors.bg_light`), dünner Rahmen (`Colors.border`, 0.5pt), Innenabstand 6/8pt
+    - Beitragsfaktoren-Paragraph (vorher eigenständig) integriert in die Box — kein separater Element-Append mehr
+
+## 04.04.2026 (4)
+
+- feat: Exposure-Ampel auf 5 Dots mit Farbgradient umgestellt
+  - `pdf/helpers/pdf_helpers.py`: `build_horizontal_exposure_ampel()` neu implementiert
+    - Vorher: 3 Dots, nur der aktive Dot leuchtet (grün / orange / rot je nach Zone)
+    - Jetzt: 5 Dots, die ersten `level` Dots füllen sich auf — Farbgradient pro Position: 1+2 = grün, 3 = orange, 4+5 = rot
+    - Inaktive Dots bleiben grau (`#d1d5db`); `level` wird auf `[1, 5]` geclampt
+    - Konstante `_AMPEL_DOT_COLORS` definiert die Farbe jeder der 5 Positionen
+    - Parameter `dot_size_mm`, `spacing_mm`, `theme` bleiben erhalten (API-kompatibel)
+  - `tests/pdf/helpers/test_pdf_helpers.py`: alle Ampel-Tests auf 5-Dot-Logik aktualisiert
+    - 14 Tests, 23 passed — vollständige Abdeckung aller Level (1–5) + Edge Cases (0, -1, 6, 100)
+
+## 04.04.2026 (3)
+
+- fix: Default-Logo wird immer angezeigt, unabhängig vom Working Directory
+  - `pdf/helpers/header_helpers.py`: Fallback-Pfad für `mg-solutions-logo.png` wird jetzt relativ zur Quelldatei via `__file__` aufgelöst statt via `os.getcwd()`
+    - Vorher: `os.path.join(os.getcwd(), "assets", "mg-solutions-logo.png")` → schlägt fehl wenn CLI vom Workspace-Root (`shodan-report/`) statt vom Paket-Root (`shodan-report/shodan-report/`) ausgeführt wird
+    - Jetzt: `os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "assets", "mg-solutions-logo.png"))` → immer korrekt aufgelöst
+    - Kunden-spezifische `logo_path`-Konfiguration (`styling.logo_path` / `assets.logo_path`) bleibt unverändert vorrangig
+
+## 04.04.2026 (2)
+
+- fix: KPI-Karte "Analysierte IP" — IP-Adresse zu groß und Box zu niedrig
+  - `pdf/sections/management.py`: `_kpi_cell()` erhält neuen Parameter `value_size: int = 16`
+    - Standard-Wert 16 bleibt für alle numerischen KPI-Karten (Ports, CVEs gesamt, Kritisch, CISA KEV) unverändert
+    - IP-Karte wird mit `value_size=9` aufgerufen → auch lange Adressen wie `217.154.224.104` passen einzeilig in die ~32,6mm-Zelle
+    - `leading` wird automatisch aus `value_size` berechnet (`max(value_size + 2, 11)`)
+  - `pdf/sections/management.py`: feste `rowHeights=[14, 26]` im inneren KPI-Card-Table
+    - Label-Zeile: 14 pt, Wert-Zeile: 26 pt — gilt für alle 5 KPI-Karten
+    - Alle Boxen sind nun exakt gleich hoch, unabhängig von Schriftgröße und Inhalt; Box-Design (Hintergrund, Rahmen, Abstände) unverändert
+
 ## 02.04.2026
 
 - fix: Header-Meta-Zeile: "Assets" durch klare IP/Domain-Trennung ersetzt

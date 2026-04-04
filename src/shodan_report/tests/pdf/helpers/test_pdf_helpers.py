@@ -15,107 +15,87 @@ from shodan_report.pdf.helpers.pdf_helpers import (
 class TestBuildHorizontalExposureAmpel:
     """Tests für build_horizontal_exposure_ampel Funktion."""
 
-    def test_ampel_level_1_green(self):
-        """Testet Ampel für Level 1 (nur grün leuchtend)."""
-        drawing = build_horizontal_exposure_ampel(level=1)
+    def _circles(self, drawing):
+        return [obj for obj in drawing.contents if isinstance(obj, Circle)]
 
-        # Typ prüfen
-        assert isinstance(drawing, Drawing)
+    def test_ampel_returns_drawing(self):
+        assert isinstance(build_horizontal_exposure_ampel(level=1), Drawing)
 
-        # Anzahl der Kreise prüfen (sollte 3 sein)
-        circles = [obj for obj in drawing.contents if isinstance(obj, Circle)]
-        assert len(circles) == 3
+    def test_ampel_has_five_dots(self):
+        """5 Dots insgesamt."""
+        circles = self._circles(build_horizontal_exposure_ampel(level=3))
+        assert len(circles) == 5
 
-        # Farben prüfen: Nur erster Kreis sollte grün sein
-        assert circles[0].fillColor == colors.HexColor("#22c55e")  # Green
-        assert circles[1].fillColor == colors.HexColor("#d1d5db")  # Inactive
-        assert circles[2].fillColor == colors.HexColor("#d1d5db")  # Inactive
+    def test_ampel_level_1(self):
+        """Level 1: erster Dot grün, Rest grau."""
+        c = self._circles(build_horizontal_exposure_ampel(level=1))
+        assert c[0].fillColor == colors.HexColor("#22c55e")
+        assert all(ci.fillColor == colors.HexColor("#d1d5db") for ci in c[1:])
 
-    def test_ampel_level_2_green(self):
-        """Testet Ampel für Level 2 (nur grün leuchtend)."""
-        drawing = build_horizontal_exposure_ampel(level=2)
-        circles = [obj for obj in drawing.contents if isinstance(obj, Circle)]
+    def test_ampel_level_2(self):
+        """Level 2: zwei grüne Dots, Rest grau."""
+        c = self._circles(build_horizontal_exposure_ampel(level=2))
+        assert c[0].fillColor == colors.HexColor("#22c55e")
+        assert c[1].fillColor == colors.HexColor("#22c55e")
+        assert all(ci.fillColor == colors.HexColor("#d1d5db") for ci in c[2:])
 
-        assert circles[0].fillColor == colors.HexColor("#22c55e")  # Green
-        assert circles[1].fillColor == colors.HexColor("#d1d5db")  # Inactive
-        assert circles[2].fillColor == colors.HexColor("#d1d5db")  # Inactive
+    def test_ampel_level_3(self):
+        """Level 3: ●●● (grün, grün, orange) + ○○ grau."""
+        c = self._circles(build_horizontal_exposure_ampel(level=3))
+        assert c[0].fillColor == colors.HexColor("#22c55e")
+        assert c[1].fillColor == colors.HexColor("#22c55e")
+        assert c[2].fillColor == colors.HexColor("#f97316")
+        assert c[3].fillColor == colors.HexColor("#d1d5db")
+        assert c[4].fillColor == colors.HexColor("#d1d5db")
 
-    def test_ampel_level_3_yellow(self):
-        """Testet Ampel für Level 3 (nur gelb leuchtend)."""
-        drawing = build_horizontal_exposure_ampel(level=3)
-        circles = [obj for obj in drawing.contents if isinstance(obj, Circle)]
+    def test_ampel_level_4(self):
+        """Level 4: ●●●● (grün, grün, orange, rot) + ○ grau."""
+        c = self._circles(build_horizontal_exposure_ampel(level=4))
+        assert c[0].fillColor == colors.HexColor("#22c55e")
+        assert c[1].fillColor == colors.HexColor("#22c55e")
+        assert c[2].fillColor == colors.HexColor("#f97316")
+        assert c[3].fillColor == colors.HexColor("#dc2626")
+        assert c[4].fillColor == colors.HexColor("#d1d5db")
 
-        assert circles[0].fillColor == colors.HexColor("#d1d5db")  # Inactive
-        assert circles[1].fillColor == colors.HexColor("#f97316")  # Yellow
-        assert circles[2].fillColor == colors.HexColor("#d1d5db")  # Inactive
-
-    def test_ampel_level_4_red(self):
-        """Testet Ampel für Level 4 (nur rot leuchtend)."""
-        drawing = build_horizontal_exposure_ampel(level=4)
-        circles = [obj for obj in drawing.contents if isinstance(obj, Circle)]
-
-        assert circles[0].fillColor == colors.HexColor("#d1d5db")  # Inactive
-        assert circles[1].fillColor == colors.HexColor("#d1d5db")  # Inactive
-        assert circles[2].fillColor == colors.HexColor("#dc2626")  # Red
-
-    def test_ampel_level_5_red(self):
-        """Testet Ampel für Level 5 (nur rot leuchtend)."""
-        drawing = build_horizontal_exposure_ampel(level=5)
-        circles = [obj for obj in drawing.contents if isinstance(obj, Circle)]
-
-        assert circles[0].fillColor == colors.HexColor("#d1d5db")  # Inactive
-        assert circles[1].fillColor == colors.HexColor("#d1d5db")  # Inactive
-        assert circles[2].fillColor == colors.HexColor("#dc2626")  # Red
+    def test_ampel_level_5(self):
+        """Level 5: alle 5 Dots aktiv."""
+        c = self._circles(build_horizontal_exposure_ampel(level=5))
+        assert c[0].fillColor == colors.HexColor("#22c55e")
+        assert c[1].fillColor == colors.HexColor("#22c55e")
+        assert c[2].fillColor == colors.HexColor("#f97316")
+        assert c[3].fillColor == colors.HexColor("#dc2626")
+        assert c[4].fillColor == colors.HexColor("#dc2626")
 
     @pytest.mark.parametrize("level", [0, -1, 6, 100])
     def test_ampel_out_of_range_levels(self, level):
-        """Testet Ampel mit Level außerhalb 1-5."""
+        """Werte außerhalb 1–5 werden auf 1 bzw. 5 geclampt."""
         drawing = build_horizontal_exposure_ampel(level=level)
-        circles = [obj for obj in drawing.contents if isinstance(obj, Circle)]
-
-        # Prüfe je nach Level
+        circles = self._circles(drawing)
+        assert len(circles) == 5
         if level < 1:
-            # Sollte wie Level 1 sein (grün)
             assert circles[0].fillColor == colors.HexColor("#22c55e")
-            assert circles[1].fillColor == colors.HexColor("#d1d5db")
-            assert circles[2].fillColor == colors.HexColor("#d1d5db")
-        elif level > 5:
-            # Sollte wie Level 5 sein (rot)
-            assert circles[0].fillColor == colors.HexColor("#d1d5db")
-            assert circles[1].fillColor == colors.HexColor("#d1d5db")
-            assert circles[2].fillColor == colors.HexColor("#dc2626")
+            assert all(ci.fillColor == colors.HexColor("#d1d5db") for ci in circles[1:])
+        else:
+            assert all(ci.fillColor != colors.HexColor("#d1d5db") for ci in circles)
 
     def test_ampel_custom_dot_size(self):
-        """Testet Ampel mit angepasster Dot-Größe."""
-        custom_size = 5.0  # mm
+        """Breite skaliert mit Dot-Größe."""
+        custom_size = 5.0
         drawing = build_horizontal_exposure_ampel(level=3, dot_size_mm=custom_size)
-
-        # Größe sollte proportional zur Dot-Größe sein
-        expected_width = (custom_size * 3 + 1.8 * 2) * mm  # 3 Dots + 2 Abstände
-        expected_height = custom_size * mm
-
+        expected_width = (custom_size * 5 + 1.8 * 4) * mm
         assert abs(drawing.width - expected_width) < 0.1 * mm
-        assert abs(drawing.height - expected_height) < 0.1 * mm
+        assert abs(drawing.height - custom_size * mm) < 0.1 * mm
 
     def test_ampel_custom_spacing(self):
-        """Testet Ampel mit angepasstem Abstand."""
-        custom_spacing = 3.0  # mm
-        drawing = build_horizontal_exposure_ampel(level=2, spacing_mm=custom_spacing)
-
-        # Breite sollte größer sein mit mehr Abstand
-        assert drawing.width > 0
+        """Größerer Abstand → größere Gesamtbreite."""
+        d_small = build_horizontal_exposure_ampel(level=2, spacing_mm=1.0)
+        d_large = build_horizontal_exposure_ampel(level=2, spacing_mm=4.0)
+        assert d_large.width > d_small.width
 
     def test_ampel_circle_positions(self):
-        """Testet Positionierung der Kreise."""
-        dot_size = 3.2
-        spacing = 1.8
-        drawing = build_horizontal_exposure_ampel(
-            level=1, dot_size_mm=dot_size, spacing_mm=spacing
-        )
-        circles = [obj for obj in drawing.contents if isinstance(obj, Circle)]
-
-        # Prüfe, dass wir 3 Kreise haben
-        assert len(circles) == 3
+        """5 Kreise vorhanden."""
+        circles = self._circles(build_horizontal_exposure_ampel(level=1))
+        assert len(circles) == 5
 
 
 class TestCloneStyleWithColor:

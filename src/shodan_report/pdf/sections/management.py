@@ -6,6 +6,7 @@
 from reportlab.platypus import Paragraph, Spacer, PageBreak, Table, TableStyle
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
+from reportlab.lib.colors import HexColor
 import os
 from typing import List, Dict, Any, Optional
 from shodan_report.pdf.styles import Theme, Colors
@@ -169,9 +170,10 @@ def get_management_risk_and_tech_note(technical_json: Dict[str, Any], evaluation
 _KPI_CELL_W = 163.0 / 5  # ≈ 32.6 mm
 
 
-def _kpi_cell(label: str, value: str, value_color=None) -> Table:
+def _kpi_cell(label: str, value: str, value_color=None, value_size: int = 16) -> Table:
     """Rendert eine einzelne KPI-Karte im Management-Stil."""
     _val_color = value_color if value_color is not None else Colors.text
+    _val_leading = max(value_size + 2, 11)
     lbl = Paragraph(
         f'<font size="7">{label}</font>',
         ParagraphStyle(
@@ -185,18 +187,18 @@ def _kpi_cell(label: str, value: str, value_color=None) -> Table:
         ),
     )
     val = Paragraph(
-        f'<font size="16"><b>{value}</b></font>',
+        f'<font size="{value_size}"><b>{value}</b></font>',
         ParagraphStyle(
             "_KpiValue",
             alignment=1,
-            leading=18,
+            leading=_val_leading,
             spaceAfter=0,
             spaceBefore=0,
             textColor=_val_color,
             fontName="Helvetica-Bold",
         ),
     )
-    inner = Table([[lbl], [val]], colWidths=[_KPI_CELL_W * mm])
+    inner = Table([[lbl], [val]], colWidths=[_KPI_CELL_W * mm], rowHeights=[14, 26])
     inner.setStyle(TableStyle([
         ("ALIGN", (0, 0), (-1, -1), "CENTER"),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
@@ -427,39 +429,7 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
                 f"{hosts_display} — Exposure-Level {exposure_display} ({exposure_desc}), da {reason}."
             )
     except Exception:
-        intro_line = "Analysierte IP-Adresse: unbekannt — die externe Angriffsfläche ist erhöht bewertet."
-
-    elements.append(Paragraph(intro_line, styles["normal"]))
-    elements.append(Spacer(1, 8))
-
-    # ── Gesamtbewertung: Exposure-Level + visuelle Ampel ─────────────────
-    elements.append(
-        Paragraph("Gesamtbewertung der externen Angriffsfläche", styles["normal"])
-    )
-    elements.append(Spacer(1, 8))
-
-    try:
-        _ampel = build_horizontal_exposure_ampel(exposure_score, theme=theme)
-    except Exception:
-        _ampel = Paragraph("", styles["normal"])
-
-    exp_tbl = Table(
-        [[
-            Paragraph(
-                f"<b>Exposure-Level:</b> {exposure_score} von 5 ({exposure_desc})",
-                styles["exposure"],
-            ),
-            _ampel,
-        ]],
-        style=TableStyle([
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-            ("TOPPADDING", (0, 0), (-1, -1), 2),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
-        ]),
-    )
-    elements.append(exp_tbl)
-    elements.append(Spacer(1, 10))
+        pass  # intro_line wird nicht mehr verwendet
 
     # ── KPI-Zeile: IP · Ports · CVEs gesamt · Kritisch (≥9) · CISA KEV ──
     _all_cves_kpi = mdata.get("cves", [])
@@ -478,7 +448,7 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
     _ip_display = str(technical_json.get("ip_str") or technical_json.get("ip") or "—")
     kpi_row = Table(
         [[
-            _kpi_cell("Analysierte IP", _ip_display),
+            _kpi_cell("Analysierte IP", _ip_display, value_size=9),
             _kpi_cell("Offene Ports", str(int(mdata.get("total_ports", 0) or 0))),
             _kpi_cell("CVEs gesamt", str(_cve_total_kpi)),
             _kpi_cell("Kritisch (≥9)", str(_crit_count_kpi), _crit_color_kpi),
@@ -538,11 +508,44 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
         _factors.append(f"{total_ports} öffentliche Dienste")
 
     _factor_str = " · ".join(_factors)
-    elements.append(Paragraph(
-        f"<b>Exposure-Level: {exposure_display} ({exposure_desc})</b> — "
-        f"Beitragsfaktoren: {_factor_str}.",
-        styles["normal"],
-    ))
+
+    # Akzentfarbe linker Rand abhängig vom Exposure-Level
+    _accent_color = (
+        HexColor("#dc2626") if exposure_score >= 4
+        else HexColor("#f97316") if exposure_score == 3
+        else HexColor("#22c55e")
+    )
+
+    try:
+        _ampel_box = build_horizontal_exposure_ampel(exposure_score, theme=theme)
+    except Exception:
+        _ampel_box = Paragraph("", styles["normal"])
+
+    _exp_box = Table(
+        [[
+            Paragraph(
+                f"<b>EXPOSURE-LEVEL:</b> &nbsp; {exposure_display} ({exposure_desc})",
+                styles["exposure"],
+            ),
+            _ampel_box,
+            Paragraph(
+                f"Beitragsfaktoren: {_factor_str}",
+                styles["normal"].clone("_exp_factors", alignment=2, fontSize=8, textColor=Colors.text_muted),
+            ),
+        ]],
+        colWidths=[68 * mm, 35 * mm, 60 * mm],
+    )
+    _exp_box.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 10),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("BOX", (0, 0), (-1, -1), 0.5, Colors.border),
+        ("BACKGROUND", (0, 0), (-1, -1), Colors.bg_light),
+        ("LINEBEFORE", (0, 0), (0, -1), 4, _accent_color),
+    ]))
+    elements.append(_exp_box)
     elements.append(Spacer(1, 6))
 
     # 3 Kernaussagen (Risiko, Zustand, Richtung)

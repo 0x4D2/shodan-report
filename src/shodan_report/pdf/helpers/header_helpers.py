@@ -36,7 +36,10 @@ def add_logo_to_elements(elements: list, config: dict) -> None:
     # Logo-Pfad: styling.logo_path bevorzugen, sonst assets.logo_path
     logo_path = styling.get("logo_path") or assets.get("logo_path")
     if not logo_path:
-        logo_path = os.path.join("assets", "mg-solutions-logo.png")
+        # Pfad relativ zur Quelldatei – unabhängig vom Working Directory
+        logo_path = os.path.normpath(
+            os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "assets", "mg-solutions-logo.png")
+        )
 
     # Normalize path: allow relative paths from project root
     if not os.path.isabs(logo_path):

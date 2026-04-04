@@ -6,30 +6,28 @@ from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.colors import HexColor
 
 
+# Farb-Palette pro Dot-Position (5 Dots, Gradient grün→orange→rot)
+_AMPEL_DOT_COLORS = ["#22c55e", "#22c55e", "#f97316", "#dc2626", "#dc2626"]
+_AMPEL_INACTIVE = "#d1d5db"
+
+
 def build_horizontal_exposure_ampel(
     level: int,
     dot_size_mm: float = 3.2,
     spacing_mm: float = 1.8,
     theme=None,
 ) -> Drawing:
-    # Use centralized theme colors when provided, otherwise fall back to defaults
-    success = getattr(theme, "success", colors.HexColor("#22c55e")) if theme else colors.HexColor("#22c55e")
-    warn = getattr(theme, "warn", colors.HexColor("#f97316")) if theme else colors.HexColor("#f97316")
-    danger = getattr(theme, "danger", colors.HexColor("#dc2626")) if theme else colors.HexColor("#dc2626")
-    inactive = getattr(theme, "muted", colors.HexColor("#d1d5db")) if theme else colors.HexColor("#d1d5db")
+    """5-Dot-Ampel: die ersten `level` Dots leuchten auf (grün→orange→rot)."""
+    n_dots = 5
+    level = max(1, min(5, level))
+    inactive = colors.HexColor(_AMPEL_INACTIVE)
 
-    active_color = danger if level >= 4 else warn if level == 3 else success
-
-    width = (dot_size_mm * 3 + spacing_mm * 2) * mm
+    width = (dot_size_mm * n_dots + spacing_mm * (n_dots - 1)) * mm
     height = dot_size_mm * mm
     d = Drawing(width, height)
-    colors_map = [
-        success if active_color == success else inactive,
-        warn if active_color == warn else inactive,
-        danger if active_color == danger else inactive,
-    ]
 
-    for i, color in enumerate(colors_map):
+    for i in range(n_dots):
+        color = colors.HexColor(_AMPEL_DOT_COLORS[i]) if i < level else inactive
         x = (dot_size_mm / 2 + i * (dot_size_mm + spacing_mm)) * mm
         y = (dot_size_mm / 2) * mm
         d.add(Circle(x, y, (dot_size_mm / 2) * mm, fillColor=color, strokeColor=color))
