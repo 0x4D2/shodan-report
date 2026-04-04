@@ -77,8 +77,9 @@ class TestCornerDecorations:
     """
 
     def test_domain_appears_in_pdf(self, tmp_path):
+        # domain is hardcoded to ichwillsicherheit.de in pdf_renderer.py
         content = _pdf_bytes(tmp_path, {"domain": "example.de"})
-        assert b"example.de" in content
+        assert b"ichwillsicherheit.de" in content
 
     def test_confidentiality_label_in_pdf(self, tmp_path):
         content = _pdf_bytes(tmp_path, {"confidentiality": "Vertraulich"})
@@ -156,8 +157,9 @@ class TestCornerDecorations:
     """
 
     def test_domain_appears_in_pdf(self, tmp_path):
+        # domain is hardcoded to ichwillsicherheit.de in pdf_renderer.py
         content = _pdf_bytes(tmp_path, {"domain": "example.de"})
-        assert b"example.de" in content
+        assert b"ichwillsicherheit.de" in content
 
     def test_confidentiality_label_in_pdf(self, tmp_path):
         content = _pdf_bytes(tmp_path, {"confidentiality": "Vertraulich"})
