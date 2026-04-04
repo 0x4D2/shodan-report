@@ -1,5 +1,21 @@
 # Changelog
 
+## 04.04.2026 (15) — `feature/report-polish`
+
+- feat: Recommendations-Section — neues Badge-Design mit Akzentstreifen
+  - `pdf/sections/recommendations.py`: Prioritäts-Header als farbige Pill-Badges (links-ausgerichtet, 8pt, abgerundete Ecken)
+  - `pdf/sections/recommendations.py`: Jede Empfehlung als Zeile mit 3pt farbigem Akzentstreifen links statt `• text`
+  - `pdf/sections/recommendations.py`: Badge-Breite dynamisch via `stringWidth()` — immer einzeilig, unabhängig von Textlänge
+  - `pdf/sections/recommendations.py`: `_CONTENT_W = 170 * mm` für exakte Spaltenbreite (A4 − 2×2 cm Ränder)
+  - `pdf/sections/recommendations.py`: `_has_rdp()` als Modulfunktion (war inline-Closure)
+  - `pdf/sections/recommendations.py`: Whitespace zwischen P2 und P3 von `Spacer(12)` auf `Spacer(6)` reduziert
+  - `tests/pdf/sections/test_recommendations.py`: 36 neue Tests in 5 Klassen
+    - `TestPriorityBadge`: Rückgabetyp, `hAlign="LEFT"`, Breite < `_CONTENT_W`, Label-Text, alle 3 Farb-Varianten
+    - `TestItemRow`: 2 Spalten, Streifen 3pt, Gesamtbreite = `_CONTENT_W`, Paragraph, HTML passiert durch
+    - `TestHasRdp`: Port 3389, Produktname, Case-insensitive, kein RDP, leer, Objekt-Attribut
+    - `TestHelpers`: `_extract_risk_level` (str/dict/missing/other), `_extract_port` (int/dict/missing)
+    - `TestCreateRecommendationsSection`: Heading in KeepTogether, P1-Badge immer gerendert + linksbündig, Fallback-Paragraph, RDP-Fallback, kritischer CVE, context-DI, kwargs-DI
+
 ## 04.04.2026 (14)
 
 - refactor: "Einordnung & Bewertungslogik" — Attack Surface Discovery Sektion gekürzt
