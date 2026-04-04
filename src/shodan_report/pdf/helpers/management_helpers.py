@@ -1159,5 +1159,54 @@ def generate_priority_recommendations_legacy(
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# KPI CVE-Zählung
+# ──────────────────────────────────────────────────────────────────────────────
+
+_KEV_STATUSES = ("public", "kev", "cisa")
+
+
+def count_critical_cves(enriched: List[Dict[str, Any]]) -> int:
+    """Zählt CVEs mit CVSS ≥ 9.0 aus einer enriched-CVE-Liste.
+
+    Args:
+        enriched: Liste von CVE-Dicts wie von ``enrich_cves()`` zurückgegeben.
+                  Jedes Item kann ``{"cvss": float|None, ...}`` enthalten.
+
+    Returns:
+        Anzahl der CVEs mit CVSS-Score ≥ 9.0.
+    """
+    count = 0
+    for c in enriched:
+        if not isinstance(c, dict):
+            continue
+        raw = c.get("cvss")
+        if raw is None:
+            continue
+        try:
+            if float(raw) >= 9.0:
+                count += 1
+        except (TypeError, ValueError):
+            continue
+    return count
+
+
+def count_kev_cves(enriched: List[Dict[str, Any]]) -> int:
+    """Zählt CVEs mit CISA-KEV-Status aus einer enriched-CVE-Liste.
+
+    Args:
+        enriched: Liste von CVE-Dicts wie von ``enrich_cves()`` zurückgegeben.
+                  Relevante Statuses: ``"public"``, ``"kev"``, ``"cisa"``.
+
+    Returns:
+        Anzahl der CVEs mit bekanntem Exploit-/KEV-Status.
+    """
+    return sum(
+        1 for c in enriched
+        if isinstance(c, dict) and c.get("exploit_status") in _KEV_STATUSES
+    )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # ENDE DER DATEI
 # ──────────────────────────────────────────────────────────────────────────────
+

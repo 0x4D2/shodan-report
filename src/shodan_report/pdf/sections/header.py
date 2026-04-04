@@ -1,4 +1,5 @@
 from reportlab.platypus import Paragraph, Spacer
+from reportlab.lib.colors import HexColor
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 
@@ -30,9 +31,26 @@ def create_header_section(
     # ─────────────────────────────────────────────
     elements.append(
         Paragraph(
-            f"<i>Analyse der externen Angriffsfläche</i><br/>{customer_name}",
+            "Analyse der externen Angriffsfläche",
             styles["title"].clone(
-                "title_theme", textColor=theme.primary  # Theme Farbe nutzen
+                "title_subtitle",
+                textColor=theme.muted,
+                fontSize=11,
+                leading=14,
+                fontName="Helvetica",
+                spaceAfter=2,
+            ),
+        )
+    )
+    elements.append(
+        Paragraph(
+            customer_name,
+            styles["title"].clone(
+                "title_customer",
+                textColor=HexColor("#111827"),
+                fontSize=22,
+                leading=26,
+                spaceAfter=6,
             ),
         )
     )

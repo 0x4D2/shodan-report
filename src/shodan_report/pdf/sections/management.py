@@ -17,6 +17,8 @@ from shodan_report.pdf.styles import Theme, Colors
 from shodan_report.pdf.helpers.management_helpers import (
     _build_top_risks,
     _build_service_flags,
+    count_critical_cves,
+    count_kev_cves,
 )
 from .data.cve_enricher import enrich_cves
 
@@ -432,16 +434,15 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
         pass  # intro_line wird nicht mehr verwendet
 
     # ── KPI-Zeile: IP · Ports · CVEs gesamt · Kritisch (≥9) · CISA KEV ──
-    _all_cves_kpi = mdata.get("cves", [])
     _cve_total_kpi = int(mdata.get("cve_count", 0) or 0)
-    _crit_count_kpi = len([
-        c for c in _all_cves_kpi
-        if isinstance(c, dict) and (c.get("cvss") or 0) >= 9.0
-    ])
-    _cisa_count_kpi = sum(
-        1 for c in _all_cves_kpi
-        if isinstance(c, dict) and c.get("exploit_status") in ("public", "kev", "cisa")
-    )
+    # Enrich CVEs with CVSS — same logic as cve_overview.py so counts are consistent
+    _lookup_nvd_kpi = bool((config.get("nvd") or {}).get("enabled", False))
+    if os.environ.get("NVD_LIVE") == "1":
+        _lookup_nvd_kpi = True
+    _kpi_cve_ids = sorted(mdata.get("unique_cves") or [])
+    _enriched_kpi = enrich_cves(_kpi_cve_ids, technical_json, lookup_nvd=_lookup_nvd_kpi) if _kpi_cve_ids else []
+    _crit_count_kpi = count_critical_cves(_enriched_kpi)
+    _cisa_count_kpi = count_kev_cves(_enriched_kpi)
     _crit_color_kpi = Colors.risk_critical_dot if _crit_count_kpi > 0 else None
     _cisa_color_kpi = Colors.risk_critical_dot if _cisa_count_kpi > 0 else None
 

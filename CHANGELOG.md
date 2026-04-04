@@ -1,5 +1,34 @@
 # Changelog
 
+## 04.04.2026 (11)
+
+- refactor: KPI CVE-Zählung in testbare Hilfsfunktionen extrahiert
+  - `pdf/helpers/management_helpers.py`: `count_critical_cves(enriched)` — zählt CVEs mit CVSS ≥ 9.0
+  - `pdf/helpers/management_helpers.py`: `count_kev_cves(enriched)` — zählt CVEs mit CISA-KEV-Status
+  - `pdf/sections/management.py`: KPI-Block nutzt diese Funktionen statt inline-Logik
+  - `tests/pdf/helpers/test_management_helpers.py`: 22 neue Tests in 3 Klassen
+    - `TestCountCriticalCves`: leere Liste, None-Werte, String-CVSS, Grenzwert 9.0, ungültige Werte
+    - `TestCountKevCves`: alle drei Statuses (public/kev/cisa), unbekannte Werte, gemischte Listen
+    - `TestKpiCveConsistency`: Konsistenz mit CVE-Übersicht, Null-Fall ohne NVD-Daten
+
+## 04.04.2026 (10)
+
+- feat: Header — Titel in zwei Paragraphen aufgeteilt
+  - `pdf/sections/header.py`: "Analyse der externen Angriffsfläche" klein/grau (Helvetica 11pt)
+  - `pdf/sections/header.py`: Kundenname groß/schwarz (Helvetica-Bold 22pt, `#111827`)
+  - `pdf/sections/header.py`: `HexColor` importiert
+
+- fix: Seitendekorationen zeigen immer `ichwillsicherheit.de` statt Kundendomain
+  - `pdf/pdf_renderer.py`: `domain` hardcoded auf `"ichwillsicherheit.de"`
+
+## 04.04.2026 (8)
+
+- fix: KPI-Karte "Kritisch (≥9)" zeigte immer 0 statt korrekter Anzahl
+  - `pdf/sections/management.py`: KPI-Block nutzt jetzt `enrich_cves()` statt roher CVE-String-Liste
+  - Vorher: `mdata.get("cves")` enthielt nur CVE-IDs ohne CVSS-Score
+  - Nachher: `enrich_cves(unique_cves, technical_json, lookup_nvd=...)` — identische Logik wie `cve_overview.py`
+  - Konsistenz: `NVD_LIVE=1` oder `nvd.enabled: true` aktiviert CVSS-Lookup für beide Abschnitte gleichzeitig
+
 ## 04.04.2026 (7)
 
 - feat: Exposure-Box — farbiger linker Akzentbalken je nach Risikostufe

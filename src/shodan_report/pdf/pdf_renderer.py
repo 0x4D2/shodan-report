@@ -166,7 +166,7 @@ def render_pdf(output_path: Path, elements: list, page_meta: Optional[Dict[str, 
                     page = 0
 
                 meta = self.__class__._meta
-                domain = meta.get("domain") or ""
+                domain = "ichwillsicherheit.de"
                 month_display = meta.get("month_display") or ""
                 sha256 = meta.get("sha256") or ""
                 confidentiality = meta.get("confidentiality") or "Vertraulich"

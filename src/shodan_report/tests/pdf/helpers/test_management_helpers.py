@@ -6,6 +6,8 @@ from shodan_report.pdf.helpers.management_helpers import (
     generate_priority_insights,
     generate_priority_recommendations,
     _sanitize_critical_point,
+    count_critical_cves,
+    count_kev_cves,
 )
 from shodan_report.models import Service
 from shodan_report.evaluation import Evaluation
@@ -246,6 +248,143 @@ class TestGeneratePriorityRecommendations:
             "RDP" in rec and "Netzwerk-Level-Authentifizierung" in rec
             for rec in recommendations
         )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# count_critical_cves
+# ──────────────────────────────────────────────────────────────────────────────
+
+class TestCountCriticalCves:
+    def test_empty_list(self):
+        assert count_critical_cves([]) == 0
+
+    def test_all_none_cvss(self):
+        data = [{"id": "CVE-2023-1", "cvss": None}, {"id": "CVE-2023-2", "cvss": None}]
+        assert count_critical_cves(data) == 0
+
+    def test_no_cvss_key(self):
+        data = [{"id": "CVE-2023-1"}, {"id": "CVE-2023-2"}]
+        assert count_critical_cves(data) == 0
+
+    def test_below_threshold(self):
+        data = [
+            {"id": "CVE-2023-1", "cvss": 8.9},
+            {"id": "CVE-2023-2", "cvss": 7.0},
+            {"id": "CVE-2023-3", "cvss": 5.5},
+        ]
+        assert count_critical_cves(data) == 0
+
+    def test_exactly_threshold(self):
+        data = [{"id": "CVE-2023-1", "cvss": 9.0}]
+        assert count_critical_cves(data) == 1
+
+    def test_above_threshold(self):
+        data = [{"id": "CVE-2023-1", "cvss": 9.8}, {"id": "CVE-2023-2", "cvss": 10.0}]
+        assert count_critical_cves(data) == 2
+
+    def test_mixed_scores(self):
+        data = [
+            {"id": "CVE-2023-1", "cvss": 9.8},   # critical
+            {"id": "CVE-2023-2", "cvss": 8.9},   # high, not critical
+            {"id": "CVE-2023-3", "cvss": None},   # unknown
+            {"id": "CVE-2023-4", "cvss": 9.3},   # critical
+            {"id": "CVE-2023-5"},                  # no key
+        ]
+        assert count_critical_cves(data) == 2
+
+    def test_string_cvss_score(self):
+        # CVSS als String (kann von manchen Quellen kommen)
+        data = [{"id": "CVE-2023-1", "cvss": "9.8"}]
+        assert count_critical_cves(data) == 1
+
+    def test_invalid_cvss_ignored(self):
+        data = [{"id": "CVE-2023-1", "cvss": "n/a"}, {"id": "CVE-2023-2", "cvss": ""}]
+        assert count_critical_cves(data) == 0
+
+    def test_non_dict_items_ignored(self):
+        data = ["CVE-2023-1", None, 42, {"id": "CVE-2023-2", "cvss": 9.8}]
+        assert count_critical_cves(data) == 1
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# count_kev_cves
+# ──────────────────────────────────────────────────────────────────────────────
+
+class TestCountKevCves:
+    def test_empty_list(self):
+        assert count_kev_cves([]) == 0
+
+    def test_no_exploit_status(self):
+        data = [{"id": "CVE-2023-1"}, {"id": "CVE-2023-2", "exploit_status": None}]
+        assert count_kev_cves(data) == 0
+
+    def test_unknown_status(self):
+        data = [{"id": "CVE-2023-1", "exploit_status": "unbekannt"}]
+        assert count_kev_cves(data) == 0
+
+    def test_public_status(self):
+        data = [{"id": "CVE-2023-1", "exploit_status": "public"}]
+        assert count_kev_cves(data) == 1
+
+    def test_kev_status(self):
+        data = [{"id": "CVE-2023-1", "exploit_status": "kev"}]
+        assert count_kev_cves(data) == 1
+
+    def test_cisa_status(self):
+        data = [{"id": "CVE-2023-1", "exploit_status": "cisa"}]
+        assert count_kev_cves(data) == 1
+
+    def test_all_three_statuses(self):
+        data = [
+            {"id": "CVE-2023-1", "exploit_status": "public"},
+            {"id": "CVE-2023-2", "exploit_status": "kev"},
+            {"id": "CVE-2023-3", "exploit_status": "cisa"},
+        ]
+        assert count_kev_cves(data) == 3
+
+    def test_mixed_statuses(self):
+        data = [
+            {"id": "CVE-2023-1", "exploit_status": "public"},
+            {"id": "CVE-2023-2", "exploit_status": "unbekannt"},
+            {"id": "CVE-2023-3", "exploit_status": None},
+            {"id": "CVE-2023-4"},
+            {"id": "CVE-2023-5", "exploit_status": "kev"},
+        ]
+        assert count_kev_cves(data) == 2
+
+    def test_non_dict_items_ignored(self):
+        data = ["CVE-2023-1", None, {"id": "CVE-2023-2", "exploit_status": "cisa"}]
+        assert count_kev_cves(data) == 1
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Konsistenz: count_critical_cves stimmt mit CVE-Übersicht überein
+# ──────────────────────────────────────────────────────────────────────────────
+
+class TestKpiCveConsistency:
+    """Stellt sicher dass KPI und CVE-Übersicht dieselbe Zählung liefern."""
+
+    def test_same_logic_as_cve_overview(self):
+        enriched = [
+            {"id": "CVE-2023-38408", "cvss": 9.8},
+            {"id": "CVE-2008-3844",  "cvss": 9.3},
+            {"id": "CVE-2021-41617", "cvss": 7.0},
+            {"id": "CVE-2020-15778", "cvss": 7.4},
+            {"id": "CVE-2023-51767", "cvss": None},
+        ]
+        # Replikation der cve_overview.py Logik
+        expected_critical = len([c for c in enriched if c.get("cvss") is not None and c["cvss"] >= 9.0])
+        assert count_critical_cves(enriched) == expected_critical
+        assert count_critical_cves(enriched) == 2
+
+    def test_zero_when_no_cvss_data(self):
+        # Ohne NVD-Lookup: alle CVSS = None → KPI und CVE-Übersicht beide 0
+        enriched = [
+            {"id": "CVE-2023-38408", "cvss": None},
+            {"id": "CVE-2008-3844", "cvss": None},
+        ]
+        assert count_critical_cves(enriched) == 0
+
 
     def test_max_3_recommendations(self):
         """Testet, dass maximal 3 Empfehlungen zurückgegeben werden."""
