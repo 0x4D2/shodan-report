@@ -227,7 +227,8 @@ def generate_priority_insights(
 
     # 4. Build insights in expected order
     if open_ports_count > 0:
-        insights.append(f"{open_ports_count} öffentliche Dienste")
+        _dienste = "öffentlicher Dienst" if open_ports_count == 1 else "öffentliche Dienste"
+        insights.append(f"{open_ports_count} {_dienste}")
 
     if total_cve_count > 0:
         # Show critical CVEs first for emphasis

@@ -161,8 +161,8 @@ class TestGeneratePriorityInsights:
 
         insights = generate_priority_insights(technical_json, mock_evaluation, "HIGH")
 
-        # Erste Insight sollte über Dienste sein
-        assert "öffentliche Dienste" in insights[0]
+        # Erste Insight sollte über Dienst(e) sein (Singular oder Plural)
+        assert "öffentlicher Dienst" in insights[0] or "öffentliche Dienste" in insights[0]
         # Zweite über Schwachstellen
         assert "kritische Schwachstellen" in insights[1]
 

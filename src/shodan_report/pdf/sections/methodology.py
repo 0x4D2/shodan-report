@@ -77,30 +77,10 @@ def create_methodology_section(elements: List[Any], styles: Dict[str, Any], *arg
     elements.append(_divider())
     elements.append(_h2("Attack Surface Discovery (Abschnitt 3)", styles))
     elements.append(_body(
-        "Sofern eine Domain analysiert wurde, ermittelt das System automatisch alle "
-        "öffentlich erreichbaren IP-Adressen via passivem OSINT — ausschließlich aus bereits "
-        "öffentlich verfügbaren Quellen, ohne aktive Scans oder Verbindungsaufbau zum Kundensystem.",
-        styles,
-    ))
-    elements.append(Spacer(1, 2))
-    for item in [
-        "<b>DNS A-Records:</b> Direkte IP-Auflösung der Domain und www-Subdomain",
-        "<b>MX-Records:</b> Mailserver-IPs — häufig direkt exponiert, selten in Sicherheitsanalysen berücksichtigt",
-        "<b>NS-Records:</b> Nameserver-IPs des Hostinganbieters",
-        "<b>crt.sh (Zertifikats-Historie):</b> Alle jemals ausgestellten TLS-Zertifikate der Domain — "
-        "enthüllt vergessene Subdomains und historische Infrastruktur",
-        "<b>HackerTarget API:</b> Passiver Subdomain-Lookup aus öffentlichen DNS-Datenbanken",
-        "<b>CDN-Erkennung:</b> IPs in bekannten Cloudflare-, Akamai-, Fastly- und AWS CloudFront-Ranges "
-        "werden automatisch gefiltert — der eigentliche Server ist dahinter verborgen",
-    ]:
-        elements.append(_bullet(item, styles))
-    elements.append(Spacer(1, 2))
-    elements.append(_body(
-        "Die <b>primäre Analyse-IP</b> (das zu bewertende Asset) wird automatisch nach folgender Priorität gewählt: "
-        "A-Record der Hauptdomain → A-Record von www → Mailserver → erste gefundene IP. "
-        "Alle übrigen IPs und Hostnamen werden als <b>weitere Netzwerk-Identitäten</b> in Abschnitt 3 aufgeführt, "
-        "aber nicht separat von Shodan bewertet. "
-        "Bei Bedarf kann die primäre IP manuell überschrieben werden.",
+        "Automatische passive OSINT-Ermittlung aller öffentlich erreichbaren IPs einer Domain "
+        "(DNS A/MX/NS-Records, Zertifikats-Historie, CDN-Filterung) — "
+        "kein aktiver Scan, kein Verbindungsaufbau zum Kundensystem. "
+        "Details siehe Abschnitt 3.",
         styles,
     ))
 

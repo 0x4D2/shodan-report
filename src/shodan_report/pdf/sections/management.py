@@ -506,7 +506,8 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
     if _has_version_risk:
         _factors.append("strukturelle Risiken (Version)")
     if not _factors:
-        _factors.append(f"{total_ports} öffentliche Dienste")
+        _dienste_label = "öffentlicher Dienst" if total_ports == 1 else "öffentliche Dienste"
+        _factors.append(f"{total_ports} {_dienste_label}")
 
     _factor_str = " · ".join(_factors)
 
@@ -557,7 +558,8 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
     rdp_primary = should_show_rdp_warning(technical_json, mdata)
     risk_stmt, tech_note_candidate = get_management_risk_and_tech_note(technical_json, evaluation, mdata=mdata, config=config)
 
-    state_stmt = f"Zustand: Exposure-Level {exposure_display} ({exposure_desc}) — Gesamtbewertung stützt sich auf {total_ports} öffentliche Dienste."
+    _state_dienste = "öffentlicher Dienst" if total_ports == 1 else "öffentliche Dienste"
+    state_stmt = f"Zustand: Exposure-Level {exposure_display} ({exposure_desc}) — Gesamtbewertung stützt sich auf {total_ports} {_state_dienste}."
 
     trend_note = (
         "Richtung: Trend aktuell nicht verfügbar (zu wenige historische Messungen); "

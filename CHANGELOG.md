@@ -1,5 +1,24 @@
 # Changelog
 
+## 04.04.2026 (14)
+
+- refactor: "Einordnung & Bewertungslogik" — Attack Surface Discovery Sektion gekürzt
+  - `pdf/sections/methodology.py`: 6 Bullets + 2 Absätze durch einen kompakten Satz ersetzt
+  - Spart ~12 Druckzeilen; Inhalt weiterhin vollständig in Abschnitt 3 des Reports
+
+## 04.04.2026 (13)
+
+- fix: Grammatik — "X öffentliche Dienste" nutzt jetzt Singular bei X=1
+  - `pdf/sections/management.py`: Beitragsfaktoren-String (`_factors`) → "1 öffentlicher Dienst"
+  - `pdf/sections/management.py`: Kernaussagen-Zustandssatz (`state_stmt`) → "1 öffentlicher Dienst"
+  - `pdf/helpers/management_helpers.py`: `generate_priority_insights()` → "1 öffentlicher Dienst"
+  - `tests/pdf/helpers/test_management_helpers.py`: Testassertion auf Singular/Plural-flexible Prüfung angepasst
+
+- fix: Fazit-Abschnitt — Beitragsfaktoren-Präfix nach Satzpunkt großgeschrieben
+  - `pdf/sections/conclusion.py`: Erstes Zeichen von `_contrib_str` wird kapitalisiert
+  - Vorher: "Die Angriffsfläche ist erhöht. unsichere TLS-Protokolle — …"
+  - Nachher: "Die Angriffsfläche ist erhöht. Unsichere TLS-Protokolle — …"
+
 ## 04.04.2026 (11)
 
 - refactor: KPI CVE-Zählung in testbare Hilfsfunktionen extrahiert

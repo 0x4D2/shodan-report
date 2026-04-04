@@ -135,7 +135,11 @@ def create_conclusion_section(
         except Exception:
             pass
 
-    _contrib_str = ", ".join(_contrib) + " — " if _contrib else ""
+    if _contrib:
+        _raw_contrib = ", ".join(_contrib) + " — "
+        _contrib_str = _raw_contrib[0].upper() + _raw_contrib[1:]
+    else:
+        _contrib_str = ""
 
     if effective_level == "CRITICAL":
         conclusion_text = (
