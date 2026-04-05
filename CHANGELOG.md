@@ -1,3 +1,13 @@
+## 2026-04-05 (Ergänzung)
+
+- Typ-Spalte in der IP-Tabelle zeigt jetzt ein farbiges Badge (Label) für Server/Mailserver/Nameserver statt kompletter Zellenfärbung. Die Zelle bleibt weiß, nur das Label ist farbig hinterlegt und umrahmt.
+## 2026-04-05
+
+- KPI-Zeile im Abschnitt "Attack Surface — Domain-Discovery" optisch und strukturell überarbeitet:
+  - KPI-Kacheln (Exponierte IPs, CDN gefiltert, Subdomains) werden jetzt sauber zentriert und gleichmäßig dargestellt.
+  - Die linke Spalte (DOMAIN + Domainname) ist nun bündig, linksbündig und mit verbessertem Abstand.
+  - Spaltenbreiten und Padding für ein symmetrisches, modernes Layout angepasst.
+  - Beschriftungen überschreiben keine Boxen mehr.
 # Changelog
 
 ## 04.04.2026 (15) — `feature/report-polish`

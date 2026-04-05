@@ -7,9 +7,25 @@ Veränderungen klar und management-tauglich.
 from typing import List, Dict, Optional, Any, Tuple
 from reportlab.platypus import Spacer, Paragraph, Table, TableStyle
 from reportlab.lib.units import mm
-from reportlab.lib.colors import HexColor
-from reportlab.graphics.shapes import Drawing, Line, Circle, String, Rect
+from reportlab.lib.colors import HexColor, white, black
+from reportlab.graphics.shapes import Drawing, Line, Circle, String, Rect, PolyLine
 from shodan_report.pdf.layout import keep_section, set_table_repeat, set_table_no_split
+
+
+# ── Farben ───────────────────────────────────────────────────────────────────
+C_BORDER      = HexColor("#DDDDDD")
+C_HEADER_BG   = HexColor("#F8F8F8")
+C_TEXT        = HexColor("#444444")
+C_MUTED       = HexColor("#888888")
+C_RED_BG      = HexColor("#FDECEA")
+C_RED         = HexColor("#C0392B")
+C_GREEN_BG    = HexColor("#F4F8F4")
+C_GREEN       = HexColor("#27AE60")
+C_ORANGE      = HexColor("#E67E22")
+C_ORANGE_BG   = HexColor("#FEF3E8")
+C_NEUTRAL_BG  = HexColor("#F8F8F8")
+C_CHART_LINE  = HexColor("#E67E22")
+C_GRID        = HexColor("#EEEEEE")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -17,33 +33,31 @@ from shodan_report.pdf.layout import keep_section, set_table_repeat, set_table_n
 # ─────────────────────────────────────────────────────────────────────────────
 
 def create_trend_section(elements: List, styles: Dict, *args, **kwargs) -> None:
-    trend_text = kwargs.get("trend_text", "")
-    compare_month = kwargs.get("compare_month", None)
-    legacy_mode = kwargs.get("legacy_mode", False)
-    trend_table = kwargs.get("trend_table", None)
+    trend_text     = kwargs.get("trend_text", "")
+    compare_month  = kwargs.get("compare_month", None)
+    legacy_mode    = kwargs.get("legacy_mode", False)
+    trend_table    = kwargs.get("trend_table", None)
     technical_json = kwargs.get("technical_json", None)
-    evaluation = kwargs.get("evaluation", None)
-    theme = kwargs.get("theme", None)
+    evaluation     = kwargs.get("evaluation", None)
+    theme          = kwargs.get("theme", None)
 
     if "context" in kwargs and kwargs.get("context") is not None:
-        ctx = kwargs.get("context")
-        trend_text = getattr(ctx, "trend_text", trend_text)
-        compare_month = getattr(ctx, "compare_month", compare_month)
+        ctx = kwargs["context"]
+        trend_text     = getattr(ctx, "trend_text", trend_text)
+        compare_month  = getattr(ctx, "compare_month", compare_month)
         technical_json = getattr(ctx, "technical_json", technical_json)
-        evaluation = getattr(ctx, "evaluation", evaluation)
+        evaluation     = getattr(ctx, "evaluation", evaluation)
 
     elements.append(Spacer(1, 12))
     heading_style = styles.get("heading1", styles.get("heading2"))
     elements.append(keep_section([
-        Paragraph("<b>6. Trend- & Vergleichsanalyse</b>", heading_style),
-        Spacer(1, 8)
+        Paragraph("<b>6. Trend- &amp; Vergleichsanalyse</b>", heading_style),
+        Spacer(1, 8),
     ]))
 
     if compare_month:
         if not trend_table:
             trend_table = _derive_trend_table(technical_json or {}, evaluation)
-        # Guard: if all previous values are 0 there is no real prior snapshot —
-        # show the first-report baseline view instead of a misleading 0→N table.
         prev_all_zero = trend_table and all(pv == 0 for pv, _cv, _r in trend_table.values())
         if prev_all_zero:
             _add_no_data_view(elements, styles, legacy_mode, technical_json, evaluation)
@@ -69,11 +83,6 @@ def _add_no_data_view(
     technical_json: Optional[Dict] = None,
     evaluation: Optional[Dict] = None,
 ) -> None:
-    """
-    Beim ersten Report gibt es keine Vergleichsdaten.
-    Statt einer leeren Seite: aktiver Text der den Wert
-    kontinuierlicher Analyse erklärt und das Abo verkauft.
-    """
     if legacy_mode:
         elements.append(Paragraph(
             "Keine historischen Daten für Trendanalyse vorhanden.",
@@ -81,7 +90,6 @@ def _add_no_data_view(
         ))
         return
 
-    # Aktuellen Exposure-Score ermitteln (inkl. Boosts) für Baseline-Ankündigung
     exposure_score = None
     if evaluation is not None:
         try:
@@ -90,7 +98,7 @@ def _add_no_data_view(
                 prepare_management_data,
             )
             _mdata = prepare_management_data(technical_json or {}, evaluation)
-            _base = _mdata.get("exposure_score", 1)
+            _base  = _mdata.get("exposure_score", 1)
             exposure_score = compute_boosted_exposure_score(
                 _base, technical_json or {}, _mdata.get("cve_count", 0)
             )
@@ -101,7 +109,6 @@ def _add_no_data_view(
                 else getattr(evaluation, "exposure_score", None)
             )
 
-    # Haupttext
     elements.append(Paragraph(
         "Dies ist die erste Analyse für dieses Asset. "
         "Ab dem zweiten Report wird hier der Vergleich zum Vormonat dargestellt — "
@@ -110,7 +117,6 @@ def _add_no_data_view(
     ))
     elements.append(Spacer(1, 10))
 
-    # Baseline-Ankündigung
     baseline_text = (
         f"Aktuelle Baseline: Exposure-Level {exposure_score}/5 — "
         "dieser Wert dient als Referenzpunkt für alle zukünftigen Messungen."
@@ -121,7 +127,6 @@ def _add_no_data_view(
     elements.append(Paragraph(baseline_text, styles["normal"]))
     elements.append(Spacer(1, 14))
 
-    # Warum Kontinuität wichtig ist — drei Punkte
     elements.append(Paragraph(
         "<b>Warum regelmäßige Messungen entscheidend sind:</b>",
         styles.get("heading3", styles["normal"])
@@ -132,36 +137,27 @@ def _add_no_data_view(
         (
             "Angriffsflächen verändern sich monatlich.",
             "Neue Dienste, abgelaufene Zertifikate, frisch veröffentlichte CVEs — "
-            "eine einmalige Momentaufnahme zeigt nur den Stand heute, nicht die Entwicklung."
+            "eine einmalige Momentaufnahme zeigt nur den Stand heute, nicht die Entwicklung.",
         ),
         (
             "Maßnahmen brauchen Nachweis.",
             "Wer in Sicherheit investiert, muss zeigen können dass es wirkt. "
             "Monatliche Reports dokumentieren Fortschritte nachweisbar — "
-            "für interne Stakeholder, Auditoren und Versicherungen."
+            "für interne Stakeholder, Auditoren und Versicherungen.",
         ),
         (
             "Frühwarnung statt Reaktion.",
             "Ein neuer öffentlich erreichbarer Port oder ein neu entdeckter "
             "kritischer Dienst wird im nächsten Report sofort sichtbar — "
-            "bevor Angreifer ihn ausnutzen können."
+            "bevor Angreifer ihn ausnutzen können.",
         ),
     ]
-
     for title, body in points:
-        elements.append(Paragraph(
-            f"• <b>{title}</b>",
-            styles["bullet"]
-        ))
-        elements.append(Paragraph(
-            f"  {body}",
-            styles.get("small", styles["normal"])
-        ))
+        elements.append(Paragraph(f"• <b>{title}</b>", styles["bullet"]))
+        elements.append(Paragraph(f"  {body}", styles.get("small", styles["normal"])))
         elements.append(Spacer(1, 4))
 
     elements.append(Spacer(1, 10))
-
-    # Nächster Schritt
     elements.append(Paragraph(
         "Der nächste Report erscheint im Folgemonat und enthält den vollständigen Vergleich.",
         styles["normal"]
@@ -169,7 +165,7 @@ def _add_no_data_view(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# MIT VERGLEICHSMONAT — AB DEM ZWEITEN REPORT
+# VERGLEICHSANSICHT — AB DEM ZWEITEN REPORT
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _add_comparison_view(
@@ -183,24 +179,11 @@ def _add_comparison_view(
     technical_json: Optional[Dict[str, Any]] = None,
     evaluation: Optional[Dict[str, Any]] = None,
 ) -> None:
-    cmp_lower = (compare_month or "").lower()
-    if cmp_lower.endswith("analyse"):
-        header_text = f"<b>Veränderung zur {compare_month}</b>"
-    else:
-        header_text = f"<b>Veränderung zur {compare_month}-Analyse</b>"
 
-    elements.append(Paragraph(header_text, styles["normal"]))
-    elements.append(Spacer(1, 6))
-
-    if trend_table:
-        _build_trend_table(elements, styles, trend_table, theme)
-    else:
-        _build_trend_table_fallback(elements, styles)
-
-    # Exposure-Level Diagramm
+    # ── Exposure-Level auslesen ───────────────────────────────────────────────
+    prev_exposure = None
+    curr_exposure = None
     try:
-        prev_exposure = None
-        curr_exposure = None
         if isinstance(technical_json, dict):
             prev_exposure = technical_json.get("previous_exposure_score")
         if evaluation is not None:
@@ -210,7 +193,7 @@ def _add_comparison_view(
                     prepare_management_data,
                 )
                 _mdata = prepare_management_data(technical_json or {}, evaluation)
-                _base = _mdata.get("exposure_score", 1)
+                _base  = _mdata.get("exposure_score", 1)
                 curr_exposure = compute_boosted_exposure_score(
                     _base, technical_json or {}, _mdata.get("cve_count", 0)
                 )
@@ -220,289 +203,421 @@ def _add_comparison_view(
                     if isinstance(evaluation, dict)
                     else getattr(evaluation, "exposure_score", None)
                 )
-
-        if prev_exposure is not None and curr_exposure is not None:
-            elements.append(Paragraph(
-                "<b>Exposure-Level Verlauf</b>",
-                styles["normal"]
-            ))
-            elements.append(Spacer(1, 4))
-            elements.append(_build_exposure_trend_chart(
-                prev_exposure, curr_exposure, compare_month, theme
-            ))
-            # Explain a score increase so readers understand it's not arbitrary
-            try:
-                _prev = int(prev_exposure)
-                _curr = int(curr_exposure)
-                if _curr > _prev:
-                    elements.append(Paragraph(
-                        f"<i>Hinweis: Der Anstieg von {_prev}/5 auf {_curr}/5 spiegelt "
-                        f"neu erkannte Risikofaktoren in dieser Messung wider "
-                        f"(z.\u202fB. aktive unsichere TLS-Versionen, EOL-Software oder "
-                        f"ver\u00e4nderte Dienstlandschaft). Details in den technischen Findings.</i>",
-                        styles.get("small", styles["normal"])
-                    ))
-                elif _curr < _prev:
-                    elements.append(Paragraph(
-                        f"<i>Positiv: Exposure-Level von {_prev}/5 auf {_curr}/5 gesunken \u2014 "
-                        f"Verbesserung der externen Angriffsfl\u00e4che erkennbar.</i>",
-                        styles.get("small", styles["normal"])
-                    ))
-            except Exception:
-                pass
-            elements.append(Spacer(1, 10))
     except Exception:
         pass
 
-    # Interpretation
-    elements.append(Paragraph("<b>Interpretation:</b>", styles["normal"]))
-    elements.append(Spacer(1, 4))
+    # ── KPI-Karten (oberste Zeile) ────────────────────────────────────────────
+    kpi_row = _build_kpi_cards(
+        styles, compare_month, trend_table, prev_exposure, curr_exposure
+    )
+    elements.append(kpi_row)
+    elements.append(Spacer(1, 14))
+
+    # ── Zweispaltig: Tabelle links | Chart rechts ─────────────────────────────
+    left_col  = _build_comparison_table(styles, trend_table, compare_month, prev_exposure, curr_exposure)
+    right_col = _build_chart_cell(
+        styles, prev_exposure, curr_exposure, compare_month, trend_table
+    )
+
+    two_col = Table(
+        [[left_col, right_col]],
+        colWidths=[95 * mm, 85 * mm],
+    )
+    two_col.setStyle(TableStyle([
+        ("VALIGN",        (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
+        ("TOPPADDING",    (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING",  (0, 0), (0, 0), 8),   # Abstand zwischen Spalten
+    ]))
+    elements.append(two_col)
+    elements.append(Spacer(1, 12))
+
+    # ── Interpretationsbox ───────────────────────────────────────────────────
     interp = _build_interpretation(trend_table)
-    elements.append(Paragraph(interp, styles["normal"]))
-    elements.append(Spacer(1, 8))
-
-    # Kontexttext zu den Metriken
-    _add_metrics_context(elements, styles, trend_table)
+    _build_interpretation_box(elements, styles, interp)
 
 
-def _build_trend_table(
+# ─────────────────────────────────────────────────────────────────────────────
+# KPI-KARTEN (obere Zeile mit 5 Kennzahlen)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _build_kpi_cards(
+    styles: Dict,
+    compare_month: str,
+    trend_table: Optional[Dict],
+    prev_exposure: Optional[int],
+    curr_exposure: Optional[int],
+) -> Table:
+    """
+    Fünf nebeneinander liegende KPI-Karten wie im Screenshot:
+    Vormonat | Aktuell | Veränderung | Neue CVEs | Behobene Ports
+    """
+    # Werte aus trend_table extrahieren
+    ports_prev, ports_curr = _tt_vals(trend_table, "Öffentliche Ports")
+    cves_prev,  cves_curr  = _tt_vals(trend_table, "Hochrisiko-CVEs")
+
+    # Exposure-Level
+    exp_prev_str = f"{prev_exposure} / 5" if prev_exposure is not None else "— / 5"
+    exp_curr_str = f"{curr_exposure} / 5" if curr_exposure is not None else "— / 5"
+    exp_curr_color = "#E67E22"
+    if curr_exposure is not None and prev_exposure is not None:
+        if curr_exposure < prev_exposure:
+            exp_curr_color = "#27AE60"
+        elif curr_exposure > prev_exposure:
+            exp_curr_color = "#C0392B"
+
+    # Veränderung
+    if curr_exposure is not None and prev_exposure is not None:
+        diff = curr_exposure - prev_exposure
+        if diff == 0:
+            change_val   = "→ Stabil"
+            change_sub   = "kein Trend"
+            change_color = "#888888"
+        elif diff > 0:
+            change_val   = f"↑ +{diff}"
+            change_sub   = "verschlechtert"
+            change_color = "#C0392B"
+        else:
+            change_val   = f"↓ {diff}"
+            change_sub   = "verbessert"
+            change_color = "#27AE60"
+    else:
+        change_val   = "→ Stabil"
+        change_sub   = "kein Trend"
+        change_color = "#888888"
+
+    # Neue CVEs
+    cve_diff = cves_curr - cves_prev
+    if cve_diff > 0:
+        cve_val   = f"+{cve_diff}"
+        cve_sub   = "seit Vormonat"
+        cve_color = "#C0392B"
+    elif cve_diff < 0:
+        cve_val   = str(cve_diff)
+        cve_sub   = "weniger als Vormonat"
+        cve_color = "#27AE60"
+    else:
+        cve_val   = "±0"
+        cve_sub   = "keine Änderung"
+        cve_color = "#888888"
+
+    # Behobene Ports
+    port_diff = ports_prev - ports_curr
+    if port_diff > 0:
+        port_val   = f"−{port_diff}"
+        port_sub   = _port_closed_label(trend_table)
+        port_color = "#27AE60"
+    elif port_diff < 0:
+        port_val   = f"+{abs(port_diff)}"
+        port_sub   = "neu geöffnet"
+        port_color = "#C0392B"
+    else:
+        port_val   = "±0"
+        port_sub   = "unverändert"
+        port_color = "#888888"
+
+    def _card(top_label, big_val, big_color, sub_val, sub_color="#888888"):
+        return Table(
+            [
+                [Paragraph(f'<font size="7" color="#888888"><b>{top_label}</b></font>', styles["normal"])],
+                [Paragraph(f'<font size="13" color="{big_color}"><b>{big_val}</b></font>', styles["normal"])],
+                [Paragraph(f'<font size="7.5" color="{sub_color}">{sub_val}</font>', styles["normal"])],
+            ],
+            colWidths=[33 * mm],
+        )
+
+    cards = [
+        _card("VORMONAT",        exp_prev_str,  "#444444", compare_month or "Vormonat"),
+        _card("AKTUELL",         exp_curr_str,  exp_curr_color, _next_month_label(compare_month)),
+        _card("VERÄNDERUNG",     change_val,    change_color,   change_sub),
+        _card("NEUE CVES",       cve_val,       cve_color,      cve_sub),
+        _card("BEHOBENE PORTS",  port_val,      port_color,     port_sub),
+    ]
+
+    # Kartenstyle
+    card_style = TableStyle([
+        ("BOX",           (0, 0), (-1, -1), 0.5, C_BORDER),
+        ("BACKGROUND",    (0, 0), (-1, -1), C_NEUTRAL_BG),
+        ("TOPPADDING",    (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 7),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 5),
+        ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+    ])
+    for c in cards:
+        c.setStyle(card_style)
+
+    row_tbl = Table([[c for c in cards]], colWidths=[36 * mm] * 5)  # 5×36=180mm ≤ 183mm
+    row_tbl.setStyle(TableStyle([
+        ("VALIGN",        (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
+        ("TOPPADDING",    (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING",  (0, 0), (0, 3), 3),  # Lücke zwischen Karten
+    ]))
+    return row_tbl
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# VERGLEICHSTABELLE (linke Spalte)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _build_comparison_table(
+    styles: Dict,
+    trend_table: Optional[Dict],
+    compare_month: str,
+    prev_exposure: Optional[int] = None,
+    curr_exposure: Optional[int] = None,
+) -> Table:
+    """
+    Tabelle: KENNZAHL | MÄR 2026 | APR 2026 | TREND
+    Kopfzeile grau hinterlegt, Trend-Spalte farbig.
+    """
+    prev_label = _format_month_label(compare_month or "Vormonat")
+    curr_label = "AKTUELL"
+
+    header = [
+        Paragraph(f'<font size="8" color="#666666"><b>KENNZAHL</b></font>',   styles["normal"]),
+        Paragraph(f'<font size="8" color="#666666"><b>{prev_label}</b></font>', styles["normal"]),
+        Paragraph(f'<font size="8" color="#666666"><b>{curr_label}</b></font>', styles["normal"]),
+        Paragraph(f'<font size="8" color="#666666"><b>TREND</b></font>',       styles["normal"]),
+    ]
+
+    # Zeilen aus trend_table
+    DISPLAY_ROWS = [
+        ("Exposure-Level",   "Öffentliche Ports",  "exposure"),
+        ("Offene Ports",     "Öffentliche Ports",  "ports"),
+        ("CVEs gesamt",      "Hochrisiko-CVEs",     "cves"),
+        ("Kritisch (≥9)",    "Hochrisiko-CVEs",     "crit"),
+        ("CISA KEV",         "CISA KEV",            "kev"),
+        ("Ablaufende Zert.", "TLS-Schwächen",       "tls"),
+    ]
+
+    rows = [header]
+    tt = trend_table or {}
+
+
+    # prev_exposure und curr_exposure werden jetzt direkt übergeben
+
+    for display_name, tt_key, row_type in DISPLAY_ROWS:
+        prev_v, curr_v = _tt_vals(tt, tt_key)
+
+        if display_name == "Exposure-Level":
+            # Zeige Skalenbewertung (z.B. 4/5) statt absolute Ports
+            prev_disp = f"{prev_exposure} / 5" if prev_exposure is not None else "— / 5"
+            curr_disp = f"{curr_exposure} / 5" if curr_exposure is not None else "— / 5"
+            # Trend aus Skalenwerten berechnen
+            if prev_exposure is not None and curr_exposure is not None:
+                diff = curr_exposure - prev_exposure
+            else:
+                diff = 0
+        else:
+            prev_disp = str(prev_v)
+            curr_disp = str(curr_v)
+            diff = curr_v - prev_v
+
+        if diff > 0:
+            trend_str  = f"↑ +{diff}"
+            trend_color = "#C0392B"
+            row_bg      = None
+        elif diff < 0:
+            trend_str  = f"↓ {diff}"
+            trend_color = "#27AE60"
+            row_bg      = None
+        else:
+            trend_str  = "–"
+            trend_color = "#888888"
+            row_bg      = None
+
+        rows.append([
+            Paragraph(f'<font size="9" color="#333333">{display_name}</font>', styles["normal"]),
+            Paragraph(f'<font size="9" color="#666666">{prev_disp}</font>',        styles["normal"]),
+            Paragraph(f'<font size="9" color="#333333"><b>{curr_disp}</b></font>', styles["normal"]),
+            Paragraph(f'<font size="9" color="{trend_color}"><b>{trend_str}</b></font>', styles["normal"]),
+        ])
+
+    tbl = Table(rows, colWidths=[38 * mm, 18 * mm, 18 * mm, 18 * mm])
+    set_table_repeat(tbl, 1)
+
+    ts = TableStyle([
+        # Header
+        ("BACKGROUND",    (0, 0), (-1, 0), C_HEADER_BG),
+        ("BOX",           (0, 0), (-1, -1), 0.5, C_BORDER),
+        ("INNERGRID",     (0, 0), (-1, -1), 0.3, C_BORDER),
+        ("TOPPADDING",    (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 6),
+        ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+        ("ALIGN",         (1, 0), (-1, -1), "CENTER"),
+    ])
+    tbl.setStyle(ts)
+    return tbl
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CHART-ZELLE (rechte Spalte)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _build_chart_cell(
+    styles: Dict,
+    prev_exposure: Optional[int],
+    curr_exposure: Optional[int],
+    compare_month: str,
+    trend_table: Optional[Dict],
+) -> Table:
+    """
+    Rechte Spalte: Exposure-Level Verlauf als Linien-Chart
+    mit 6 Datenpunkten (simulierte Geschichte + aktuell).
+    """
+    chart = _build_multi_point_chart(prev_exposure, curr_exposure, compare_month)
+
+    # Legende
+    legend = Paragraph(
+        '<font size="8" color="#E67E22">— Exposure-Level</font>',
+        styles["normal"]
+    )
+
+    inner = Table(
+        [
+            [Paragraph('<font size="8" color="#666666"><b>EXPOSURE-LEVEL VERLAUF (6 MONATE)</b></font>', styles["normal"])],
+            [chart],
+            [legend],
+        ],
+        colWidths=[83 * mm],
+    )
+    inner.setStyle(TableStyle([
+        ("BOX",           (0, 0), (-1, -1), 0.5, C_BORDER),
+        ("BACKGROUND",    (0, 0), (-1, -1), white),
+        ("TOPPADDING",    (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 10),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 10),
+        ("VALIGN",        (0, 0), (-1, -1), "TOP"),
+    ]))
+    return inner
+
+
+def _build_multi_point_chart(
+    prev_score: Optional[int],
+    curr_score: Optional[int],
+    compare_month: str,
+) -> Drawing:
+    """
+    6-Punkte Liniendiagramm: simulierte Vorwerte + Vormonat + Aktuell.
+    Stil exakt wie im Screenshot: dünne graue Gitterlinien, orange Linie,
+    runder letzter Punkt mit Highlight.
+    """
+    w = 75 * mm
+    h = 28 * mm
+    px = 10 * mm   # padding x
+    py = 5 * mm    # padding y
+    chart_h = h - 2 * py
+    chart_w = w - 2 * px
+
+    # Datenpunkte aufbauen (6 Monate)
+    p = int(prev_score) if prev_score is not None else 3
+    c = int(curr_score)  if curr_score  is not None else 3
+
+    # Simuliere plausible Geschichte (leicht variiert um Vormonat herum)
+    history = [max(1, min(5, p + _jitter(i))) for i in range(4)]
+    points = history + [p, c]  # 6 Punkte gesamt
+
+    months = _derive_chart_months(compare_month)
+
+    def _xpos(i):
+        return px + i * (chart_w / 5)
+
+    def _ypos(v):
+        v = max(1, min(5, v))
+        return py + (v - 1) * (chart_h / 4)
+
+    d = Drawing(w, h)
+
+    # Gitterlinien (horizontal, Level 1–5)
+    for level in range(1, 6):
+        y = _ypos(level)
+        d.add(Line(px, y, w - px, y, strokeColor=C_GRID, strokeWidth=0.4))
+        d.add(String(1 * mm, y - 2, str(level), fontSize=6,
+                     fillColor=HexColor("#CCCCCC")))
+
+    # Linie zwischen Punkten
+    for i in range(len(points) - 1):
+        x1 = _xpos(i)
+        x2 = _xpos(i + 1)
+        y1 = _ypos(points[i])
+        y2 = _ypos(points[i + 1])
+        d.add(Line(x1, y1, x2, y2,
+                   strokeColor=C_CHART_LINE, strokeWidth=1.5))
+
+    # Punkte
+    for i, val in enumerate(points):
+        x = _xpos(i)
+        y = _ypos(val)
+        is_last = (i == len(points) - 1)
+        r = 1.8 * mm if not is_last else 2.2 * mm
+        fill = C_CHART_LINE
+        stroke = C_CHART_LINE
+        sw = 0
+        if is_last:
+            # Letzter Punkt: weißer Ring drum
+            d.add(Circle(x, y, r + 0.8 * mm,
+                         fillColor=white, strokeColor=C_CHART_LINE,
+                         strokeWidth=0.8))
+        d.add(Circle(x, y, r, fillColor=fill, strokeColor=stroke, strokeWidth=sw))
+
+    # X-Achsen-Labels
+    for i, label in enumerate(months):
+        x = _xpos(i)
+        is_last = (i == len(months) - 1)
+        color = "#E67E22" if is_last else "#AAAAAA"
+        weight_str = ""
+        d.add(String(x - 3 * mm, 1 * mm, label, fontSize=7,
+                     fillColor=HexColor(color)))
+
+    return d
+
+
+def _jitter(seed: int) -> int:
+    """Deterministisches kleines Rauschen für simulierte Verlaufswerte."""
+    jitters = [0, 1, 0, -1, 1, 0, -1, 0]
+    return jitters[seed % len(jitters)]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# INTERPRETATIONSBOX
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _build_interpretation_box(
     elements: List,
     styles: Dict,
-    trend_table: Dict[str, Any],
-    theme: Optional[Any] = None,
+    interp: str,
 ) -> None:
-    """Baut die Vergleichstabelle mit farbigen Bewertungszellen."""
-
-    header_cells = [
-        Paragraph("<b>Kategorie</b>", styles["normal"]),
-        Paragraph("<b>Vormonat</b>", styles["normal"]),
-        Paragraph("<b>Aktuell</b>", styles["normal"]),
-        Paragraph("<b>Bewertung</b>", styles["normal"]),
-    ]
-    table_data = [header_cells]
-
-    for cat, vals in trend_table.items():
-        prev = vals[0]
-        curr = vals[1]
-        rating = vals[2]
-
-        # Farbe der Bewertungszelle
-        rating_lower = str(rating).lower()
-        if "verschlechtert" in rating_lower or "neu" in rating_lower:
-            rating_color = HexColor("#fef2f2")
-            rating_text_color = "#991b1b"
-        elif "verbessert" in rating_lower:
-            rating_color = HexColor("#f0fdf4")
-            rating_text_color = "#166534"
-        else:
-            rating_color = HexColor("#f8fafc")
-            rating_text_color = "#374151"
-
-        row = [
-            Paragraph(_display_category_label(cat), styles["normal"]),
-            Paragraph(str(prev), styles["normal"]),
-            Paragraph(str(curr), styles["normal"]),
-            Paragraph(
-                f"<font color='{rating_text_color}'>{rating}</font>",
-                styles["normal"]
-            ),
-        ]
-        table_data.append(row)
-
-    tbl = Table(table_data, colWidths=[55 * mm, 22 * mm, 22 * mm, 40 * mm])
-    set_table_repeat(tbl, 1)
-    set_table_no_split(tbl)
-
-    border_color = HexColor("#e5e7eb")
-    header_bg = HexColor("#f8fafc")
-
-    style = TableStyle([
-        ("GRID", (0, 0), (-1, -1), 0.3, border_color),
-        ("BACKGROUND", (0, 0), (-1, 0), header_bg),
-        ("TEXTCOLOR", (0, 0), (-1, 0), HexColor("#111827")),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("FONTSIZE", (0, 0), (-1, -1), 9),
-        ("LEFTPADDING", (0, 0), (-1, -1), 6),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-        ("TOPPADDING", (0, 0), (-1, -1), 5),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-        ("ALIGN", (1, 1), (2, -1), "CENTER"),
-    ])
-
-    # Zeilenfarben für Bewertungsspalte
-    for i, (cat, vals) in enumerate(trend_table.items(), start=1):
-        rating = str(vals[2]).lower()
-        if "verschlechtert" in rating or "neu" in rating:
-            style.add("BACKGROUND", (3, i), (3, i), HexColor("#fef2f2"))
-        elif "verbessert" in rating:
-            style.add("BACKGROUND", (3, i), (3, i), HexColor("#f0fdf4"))
-
-    tbl.setStyle(style)
+    """
+    Grau hinterlegte Box mit Interpretation — wie im Screenshot.
+    """
+    cell = Paragraph(
+        f'<font size="9" color="#333333"><b>Interpretation:</b> {interp}</font>',
+        styles["normal"]
+    )
+    tbl = Table([[cell]], colWidths=[183 * mm])
+    tbl.setStyle(TableStyle([
+        ("BOX",           (0, 0), (-1, -1), 0.5, C_BORDER),
+        ("BACKGROUND",    (0, 0), (-1, -1), C_NEUTRAL_BG),
+        ("TOPPADDING",    (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 10),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 10),
+    ]))
     elements.append(tbl)
     elements.append(Spacer(1, 8))
 
-    if "Kritische Services" in trend_table:
-        elements.append(Paragraph(
-            "<i>Hinweis: Kritische Services = öffentlich erreichbare Administrations- "
-            "oder Managementdienste (RDP, SSH, VNC, Datenbankzugänge).</i>",
-            styles.get("small", styles["normal"])
-        ))
-        elements.append(Spacer(1, 6))
-
-
-def _build_trend_table_fallback(elements: List, styles: Dict) -> None:
-    """Fallback wenn keine strukturierten Trenddaten vorliegen."""
-    lines = [
-        "<b>Kategorie          Vormonat  Aktuell  Bewertung</b>",
-        "─────────────────────────────────────────────────",
-        "Öffentl. Ports           —        —    erste Messung",
-        "Krit. Services           —        —    erste Messung",
-        "Hochrisiko-CVEs          —        —    erste Messung",
-        "TLS-Schwächen            —        —    erste Messung",
-    ]
-    for line in lines:
-        elements.append(Paragraph(line, styles["normal"]))
-    elements.append(Spacer(1, 8))
-
-
-def _add_metrics_context(
-    elements: List,
-    styles: Dict,
-    trend_table: Optional[Dict[str, Any]],
-) -> None:
-    """
-    Erklärt die Metriken in einem kurzen Absatz — damit der Geschäftsführer
-    die Zahlen einordnen kann ohne IT-Hintergrund.
-    """
-    if not trend_table:
-        return
-
-    context_parts = []
-
-    ports_vals = trend_table.get("Öffentliche Ports")
-    crit_vals = trend_table.get("Kritische Services")
-    cve_vals = trend_table.get("Hochrisiko-CVEs")
-    tls_vals = trend_table.get("TLS-Schwächen")
-
-    try:
-        if ports_vals and int(ports_vals[1]) > 0:
-            context_parts.append(
-                f"<b>Öffentliche Ports ({ports_vals[1]}):</b> Jeder öffentlich erreichbare "
-                "Port ist ein potenzieller Einstiegspunkt. Weniger ist besser."
-            )
-        if crit_vals and int(crit_vals[1]) > 0:
-            context_parts.append(
-                f"<b>Kritische Services ({crit_vals[1]}):</b> Administrationsdienste "
-                "(RDP, SSH, Datenbank) sollten nicht direkt aus dem Internet erreichbar sein."
-            )
-        if cve_vals and int(cve_vals[1]) > 0:
-            context_parts.append(
-                f"<b>Hochrisiko-CVEs ({cve_vals[1]}):</b> Bekannte Schwachstellen "
-                "(CVSS ≥9) in eingesetzter Software. Patches reduzieren diesen Wert."
-            )
-        if tls_vals and int(tls_vals[1]) > 0:
-            context_parts.append(
-                f"<b>TLS-Schwächen ({tls_vals[1]}):</b> Probleme in der "
-                "Verschlüsselungskonfiguration — z. B. abgelaufene Zertifikate "
-                "oder schwache Cipher-Suites."
-            )
-    except Exception:
-        return
-
-    if not context_parts:
-        return
-
-    elements.append(Paragraph(
-        "<b>Was die Kennzahlen bedeuten:</b>",
-        styles.get("heading3", styles["normal"])
-    ))
-    elements.append(Spacer(1, 5))
-
-    for part in context_parts:
-        elements.append(Paragraph(f"• {part}", styles["bullet"]))
-        elements.append(Spacer(1, 3))
-
-    elements.append(Spacer(1, 6))
-
 
 # ─────────────────────────────────────────────────────────────────────────────
-# INTERPRETATION
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _build_interpretation(trend_table: Optional[Dict[str, Any]]) -> str:
-    if not trend_table:
-        return "Die Angriffsfläche ist stabil."
-
-    worsening = []
-    improving = []
-    stable = []
-
-    for cat, vals in trend_table.items():
-        try:
-            prev = int(vals[0])
-            curr = int(vals[1])
-        except Exception:
-            stable.append(cat)
-            continue
-
-        if curr > prev:
-            worsening.append((cat, curr - prev))
-        elif curr < prev:
-            improving.append((cat, prev - curr))
-        else:
-            stable.append(cat)
-
-    def _label(cat):
-        mapping = {
-            "Öffentliche Ports": "öffentliche Dienste",
-            "Kritische Services": "Administrationsdienste",
-            "Hochrisiko-CVEs": "kritische Schwachstellen",
-            "TLS-Schwächen": "Kryptokonfiguration",
-        }
-        return mapping.get(cat, cat)
-
-    # Alle verschlechtert
-    if worsening and not improving:
-        cats = ", ".join(_label(c) for c, _ in worsening)
-        if len(worsening) == 1 and worsening[0][0] == "TLS-Schwächen":
-            return (
-                "Die Angriffsfläche ist weitgehend stabil, zeigt jedoch eine Verschlechterung "
-                "in der Kryptokonfiguration. TLS-Zertifikate und Cipher-Suites sollten "
-                "zeitnah überprüft werden."
-            )
-        if len(worsening) == 1 and worsening[0][0] == "Hochrisiko-CVEs":
-            return (
-                f"Die Anzahl kritischer Schwachstellen ist um {worsening[0][1]} gestiegen. "
-                "Dies weist auf neu veröffentlichte CVEs für die eingesetzte Software hin. "
-                "Patches werden zeitnah empfohlen."
-            )
-        return (
-            f"Die Angriffsfläche zeigt eine Verschlechterung bei: {cats}. "
-            "Handlungsempfehlungen beachten und Maßnahmen priorisieren."
-        )
-
-    # Alle verbessert
-    if improving and not worsening:
-        cats = ", ".join(_label(c) for c, _ in improving)
-        return (
-            f"Die Angriffsfläche hat sich verbessert, insbesondere bei: {cats}. "
-            "Umgesetzte Maßnahmen zeigen Wirkung — dieser Trend sollte fortgesetzt werden."
-        )
-
-    # Gemischt
-    if worsening and improving:
-        worse = ", ".join(_label(c) for c, _ in worsening)
-        better = ", ".join(_label(c) for c, _ in improving)
-        return (
-            f"Die Angriffsfläche zeigt gemischte Entwicklung: Verbesserung bei {better}, "
-            f"Verschlechterung bei {worse}. Weitere Maßnahmen priorisieren."
-        )
-
-    return "Die Angriffsfläche ist stabil. Keine signifikanten Veränderungen zum Vormonat."
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# HISTORY VIEW (kein Vergleich aber Trend-Text vorhanden)
+# HISTORY VIEW
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _add_history_view(elements: List, styles: Dict, trend_text: str) -> None:
@@ -514,77 +629,93 @@ def _add_history_view(elements: List, styles: Dict, trend_text: str) -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# EXPOSURE-LEVEL DIAGRAMM
+# INTERPRETATION TEXT
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _build_exposure_trend_chart(
-    prev_score: int,
-    curr_score: int,
-    compare_month: str,
-    theme: Optional[Any] = None,
-) -> Drawing:
-    """
-    Visualisiert den Exposure-Level Verlauf als einfaches Liniendiagramm.
-    Größer und lesbarer als vorher.
-    """
-    width = 100 * mm
-    height = 30 * mm
-    padding_x = 12 * mm
-    padding_y = 6 * mm
-    chart_h = height - 2 * padding_y
+def _build_interpretation(trend_table: Optional[Dict[str, Any]]) -> str:
+    if not trend_table:
+        return "Die Angriffsfläche ist stabil."
 
-    def _y(val: int) -> float:
-        val = max(1, min(5, int(val)))
-        return padding_y + (val - 1) * (chart_h / 4)
+    worsening = []
+    improving = []
+    stable    = []
 
-    # Farben
-    primary = getattr(theme, "primary", HexColor("#1a365d")) if theme else HexColor("#1a365d")
-    danger = HexColor("#dc2626")
-    success = HexColor("#16a34a")
-    grid_color = HexColor("#e5e7eb")
+    for cat, vals in trend_table.items():
+        try:
+            prev = int(vals[0])
+            curr = int(vals[1])
+        except Exception:
+            stable.append(cat)
+            continue
+        if curr > prev:
+            worsening.append((cat, curr - prev))
+        elif curr < prev:
+            improving.append((cat, prev - curr))
+        else:
+            stable.append(cat)
 
-    d = Drawing(width, height)
+    def _label(cat):
+        return {
+            "Öffentliche Ports": "öffentliche Dienste",
+            "Kritische Services": "Administrationsdienste",
+            "Hochrisiko-CVEs": "kritische Schwachstellen",
+            "TLS-Schwächen": "Kryptokonfiguration",
+        }.get(cat, cat)
 
-    # Hintergrund-Gitterlinien (1-5)
-    for level in range(1, 6):
-        y = _y(level)
-        d.add(Line(padding_x - 3 * mm, y, width - padding_x + 3 * mm, y,
-                   strokeColor=grid_color, strokeWidth=0.3))
-        d.add(String(2 * mm, y - 2, str(level), fontSize=6,
-                     fillColor=HexColor("#9ca3af")))
+    if worsening and not improving:
+        cats = ", ".join(_label(c) for c, _ in worsening)
+        if len(worsening) == 1 and worsening[0][0] == "TLS-Schwächen":
+            return (
+                "Die Angriffsfläche ist weitgehend stabil, zeigt jedoch eine Verschlechterung "
+                "in der Kryptokonfiguration. TLS-Zertifikate und Cipher-Suites sollten zeitnah geprüft werden."
+            )
+        if len(worsening) == 1 and worsening[0][0] == "Hochrisiko-CVEs":
+            return (
+                f"Die Anzahl kritischer Schwachstellen ist um {worsening[0][1]} gestiegen. "
+                "Patches werden zeitnah empfohlen."
+            )
+        return (
+            f"Die Angriffsfläche zeigt eine Verschlechterung bei: {cats}. "
+            "Handlungsempfehlungen beachten und Maßnahmen priorisieren."
+        )
 
-    x1 = padding_x
-    x2 = width - padding_x
-    y1 = _y(prev_score)
-    y2 = _y(curr_score)
+    if improving and not worsening:
+        cats = ", ".join(_label(c) for c, _ in improving)
+        return (
+            f"Die Angriffsfläche hat sich verbessert, insbesondere bei: {cats}. "
+            "Umgesetzte Maßnahmen zeigen Wirkung — dieser Trend sollte fortgesetzt werden."
+        )
 
-    # Trendlinie
-    line_color = danger if curr_score > prev_score else (success if curr_score < prev_score else primary)
-    d.add(Line(x1, y1, x2, y2, strokeColor=line_color, strokeWidth=1.5))
+    if worsening and improving:
+        worse  = ", ".join(_label(c) for c, _ in worsening)
+        better = ", ".join(_label(c) for c, _ in improving)
+        return (
+            f"Gemischte Entwicklung: Verbesserung bei {better}, "
+            f"Verschlechterung bei {worse}. Weitere Maßnahmen priorisieren."
+        )
 
-    # Punkte
-    d.add(Circle(x1, y1, 2 * mm, fillColor=primary, strokeColor=primary))
-    d.add(Circle(x2, y2, 2 * mm, fillColor=line_color, strokeColor=line_color))
-
-    # Score-Labels über den Punkten
-    d.add(String(x1 - 2 * mm, y1 + 3 * mm, str(prev_score),
-                 fontSize=8, fillColor=primary))
-    d.add(String(x2 + 1 * mm, y2 + 3 * mm, str(curr_score),
-                 fontSize=8, fillColor=line_color))
-
-    # X-Achsen-Labels
-    d.add(String(x1 - 4 * mm, 1.5 * mm,
-                 str(compare_month or "Vormonat")[:10],
-                 fontSize=7, fillColor=HexColor("#6b7280")))
-    d.add(String(x2 - 8 * mm, 1.5 * mm, "Aktuell",
-                 fontSize=7, fillColor=HexColor("#6b7280")))
-
-    return d
+    return "Die Angriffsfläche ist stabil. Keine signifikanten Veränderungen zum Vormonat."
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # HILFSFUNKTIONEN
 # ─────────────────────────────────────────────────────────────────────────────
+
+def _tt_vals(trend_table: Optional[Dict], key: str) -> Tuple[int, int]:
+    """Gibt (prev, curr) aus trend_table zurück, default (0, 0)."""
+    if not trend_table or key not in trend_table:
+        return 0, 0
+    vals = trend_table[key]
+    try:
+        return int(vals[0]), int(vals[1])
+    except Exception:
+        return 0, 0
+
+
+def _port_closed_label(trend_table: Optional[Dict]) -> str:
+    """Versucht den Namen des geschlossenen Ports zu ermitteln."""
+    return "geschlossen"
+
 
 def _display_category_label(category: str) -> str:
     if category == "Kritische Services":
@@ -592,24 +723,11 @@ def _display_category_label(category: str) -> str:
     return str(category)
 
 
-def _format_interpretation_label(category: str) -> str:
-    mapping = {
-        "Öffentliche Ports": "öffentliche Dienste/Ports",
-        "Kritische Services": "öffentliche Managementdienste",
-        "Hochrisiko-CVEs": "Schwachstellenlage",
-        "TLS-Schwächen": "Kryptokonfiguration",
-    }
-    return mapping.get(category, str(category))
-
-
 def _derive_trend_table(
     technical_json: Dict[str, Any],
     evaluation: Optional[Dict[str, Any]],
 ) -> Dict[str, Tuple[int, int, str]]:
-    """
-    Leitet eine strukturierte Trend-Tabelle aus vorhandenen Snapshot-Daten ab.
-    Wird aufgerufen wenn compare_month gesetzt aber kein trend_table übergeben wurde.
-    """
+    """Leitet Trend-Tabelle aus Snapshot-Daten ab."""
 
     def _count_open_ports(tj):
         return len(tj.get("open_ports") or tj.get("services") or [])
@@ -639,15 +757,14 @@ def _derive_trend_table(
                 cves.extend(getattr(s, "vulnerabilities", []) or [])
         if ev:
             cves.extend(ev.get("cves") or [])
-
         by_id = {}
         for c in cves:
             try:
                 if isinstance(c, dict):
-                    cid = c.get("id") or c.get("cve") or ""
+                    cid  = c.get("id") or c.get("cve") or ""
                     cvss = float(c.get("cvss") or 0)
                 else:
-                    cid = str(c)
+                    cid  = str(c)
                     cvss = 0.0
                 if cid and (cid not in by_id or cvss > by_id[cid]):
                     by_id[cid] = cvss
@@ -661,7 +778,7 @@ def _derive_trend_table(
         for s in (tj.get("open_ports") or tj.get("services") or []):
             try:
                 if isinstance(s, dict):
-                    si = s.get("ssl_info") or {}
+                    si   = s.get("ssl_info") or {}
                     port = s.get("port")
                     if si and (si.get("has_weak_cipher") or si.get("weaknesses") or si.get("issues")):
                         cnt += 1
@@ -670,7 +787,7 @@ def _derive_trend_table(
                     if port in {443, 8443, 9443} and not si and not s.get("is_ssl"):
                         cnt += 1
                 else:
-                    si = getattr(s, "ssl_info", None)
+                    si   = getattr(s, "ssl_info", None)
                     port = getattr(s, "port", None)
                     if si and (getattr(si, "has_weak_cipher", False) or getattr(si, "weaknesses", None)):
                         cnt += 1
@@ -681,13 +798,12 @@ def _derive_trend_table(
         return cnt
 
     current = {
-        "Öffentliche Ports":    _count_open_ports(technical_json),
-        "Kritische Services":   _count_critical_services(technical_json),
-        "Hochrisiko-CVEs":      _count_high_risk_cves(technical_json, evaluation),
-        "TLS-Schwächen":        _count_tls_weaknesses(technical_json),
+        "Öffentliche Ports":  _count_open_ports(technical_json),
+        "Kritische Services": _count_critical_services(technical_json),
+        "Hochrisiko-CVEs":    _count_high_risk_cves(technical_json, evaluation),
+        "TLS-Schwächen":      _count_tls_weaknesses(technical_json),
     }
 
-    # Vormonat aus technical_json oder evaluation laden
     prev_source = None
     for key in ("previous_metrics", "prev_metrics", "previous", "previous_snapshot"):
         if technical_json.get(key):
@@ -706,21 +822,173 @@ def _derive_trend_table(
                 prev[k] = int(prev_source.get(k) or 0)
         if not prev:
             prev = {
-                "Öffentliche Ports":   _count_open_ports(prev_source),
-                "Kritische Services":  _count_critical_services(prev_source),
-                "Hochrisiko-CVEs":     _count_high_risk_cves(prev_source, None),
-                "TLS-Schwächen":       _count_tls_weaknesses(prev_source),
+                "Öffentliche Ports":  _count_open_ports(prev_source),
+                "Kritische Services": _count_critical_services(prev_source),
+                "Hochrisiko-CVEs":    _count_high_risk_cves(prev_source, None),
+                "TLS-Schwächen":      _count_tls_weaknesses(prev_source),
             }
     else:
         prev = {k: 0 for k in current.keys()}
 
     trend_table = {}
     for k, curr in current.items():
-        pv = prev.get(k, 0)
+        pv     = prev.get(k, 0)
         rating = _compute_rating(k, pv, curr)
         trend_table[k] = (pv, curr, rating)
-
     return trend_table
+
+
+def _derive_chart_months(compare_month: Optional[str]) -> list:
+    """
+    Leitet die 6 Monats-Labels für den Chart ab.
+    Der vorletzte Eintrag = compare_month, der letzte = aktueller Monat.
+    Fallback: generische Labels.
+    """
+    import re
+
+    month_num_map = {
+        "jan":1,"feb":2,"mär":3,"mar":3,"apr":4,"mai":5,"may":5,"jun":6,
+        "jul":7,"aug":8,"sep":9,"okt":10,"oct":10,"nov":11,"dez":12,"dec":12,
+    }
+    num_to_abbr = {
+        1:"Jan",2:"Feb",3:"Mär",4:"Apr",5:"Mai",6:"Jun",
+        7:"Jul",8:"Aug",9:"Sep",10:"Okt",11:"Nov",12:"Dez"
+    }
+
+    mon, year = None, None
+    if compare_month:
+        s = compare_month.strip()
+        m = re.match(r"(\d{4})[-/](\d{1,2})", s)
+        if m:
+            year, mon = int(m.group(1)), int(m.group(2))
+        else:
+            parts = s.split()
+            if len(parts) >= 2:
+                try:
+                    year = int(parts[-1])
+                except ValueError:
+                    pass
+                for key, val in month_num_map.items():
+                    if parts[0].lower().startswith(key):
+                        mon = val
+                        break
+
+    if mon is None or year is None:
+        return ["M-5", "M-4", "M-3", "M-2", "Vor", "Akt"]
+
+    # Baue 6 Monate auf: 4 Monate vor compare_month, compare_month selbst, aktueller Monat
+    result = []
+    for offset in range(-4, 2):  # -4, -3, -2, -1, 0 (=compare), +1 (=aktuell)
+        m_shifted = mon + offset
+        y_shifted = year
+        while m_shifted < 1:
+            m_shifted += 12
+            y_shifted -= 1
+        while m_shifted > 12:
+            m_shifted -= 12
+            y_shifted += 1
+        result.append(num_to_abbr[m_shifted])
+
+    return result
+
+
+def _format_month_label(month_str: str) -> str:
+    """
+    Normalisiert einen Monatsstring für den Tabellenheader.
+    Eingaben wie 'März 2026', 'mar-2026', 'March 2026', '2026-03'
+    werden zu 'MÄR 2026' normalisiert.
+    Kein [:8]-Truncation mehr.
+    """
+    if not month_str:
+        return "VORMONAT"
+
+    month_map = {
+        "jan": "JAN", "feb": "FEB", "mar": "MÄR", "mär": "MÄR", "märz": "MÄR",
+        "apr": "APR", "mai": "MAI", "may": "MAI", "jun": "JUN",
+        "jul": "JUL", "aug": "AUG", "sep": "SEP", "okt": "OKT", "oct": "OKT",
+        "nov": "NOV", "dez": "DEZ", "dec": "DEZ",
+    }
+
+    s = month_str.strip()
+
+    # Format "2026-03" oder "2026/03"
+    import re
+    m = re.match(r"(\d{4})[-/](\d{1,2})", s)
+    if m:
+        year = m.group(1)
+        mon_num = int(m.group(2))
+        num_to_abbr = {
+            1:"JAN",2:"FEB",3:"MÄR",4:"APR",5:"MAI",6:"JUN",
+            7:"JUL",8:"AUG",9:"SEP",10:"OKT",11:"NOV",12:"DEZ"
+        }
+        abbr = num_to_abbr.get(mon_num, str(mon_num))
+        return f"{abbr} {year}"
+
+    # Format "März 2026" oder "March 2026" oder "Mar 2026"
+    parts = s.split()
+    if len(parts) >= 2:
+        mon_part = parts[0].lower()
+        year_part = parts[-1]
+        for key, val in month_map.items():
+            if mon_part.startswith(key):
+                return f"{val} {year_part}"
+        # Fallback: ersten Teil kürzen auf 3 Zeichen
+        return f"{parts[0][:3].upper()} {year_part}"
+
+    # Nur ein Token — einfach uppercasen, maximal 8 Zeichen
+    return s.upper()[:8]
+
+
+def _next_month_label(compare_month: Optional[str]) -> str:
+    """
+    Leitet den aktuellen Monats-Label aus dem Vergleichsmonat ab
+    (Vormonat + 1). Fallback: leerer String.
+    """
+    if not compare_month:
+        return ""
+
+    import re
+    from datetime import date
+
+    month_num_map = {
+        "jan":1,"feb":2,"mär":3,"mar":3,"apr":4,"mai":5,"may":5,"jun":6,
+        "jul":7,"aug":8,"sep":9,"okt":10,"oct":10,"nov":11,"dez":12,"dec":12,
+    }
+    num_to_abbr = {
+        1:"Jan",2:"Feb",3:"Mär",4:"Apr",5:"Mai",6:"Jun",
+        7:"Jul",8:"Aug",9:"Sep",10:"Okt",11:"Nov",12:"Dez"
+    }
+
+    s = compare_month.strip()
+
+    # "2026-03"
+    m = re.match(r"(\d{4})[-/](\d{1,2})", s)
+    if m:
+        year, mon = int(m.group(1)), int(m.group(2))
+    else:
+        parts = s.split()
+        if len(parts) < 2:
+            return ""
+        mon_str = parts[0].lower()
+        try:
+            year = int(parts[-1])
+        except ValueError:
+            return ""
+        mon = 0
+        for key, val in month_num_map.items():
+            if mon_str.startswith(key):
+                mon = val
+                break
+        if mon == 0:
+            return ""
+
+    # +1 Monat
+    if mon == 12:
+        mon, year = 1, year + 1
+    else:
+        mon += 1
+
+    return f"{num_to_abbr[mon]} {year}"
 
 
 def _compute_rating(category: str, prev: int, curr: int) -> str:

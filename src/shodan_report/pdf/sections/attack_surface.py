@@ -1,11 +1,12 @@
 """
 Attack Surface Section — zeigt alle via Domain-Scout entdeckten IPs und Subdomains.
-Wird nur gerendert wenn eine AttackSurface im ReportContext vorhanden ist.
+Design: Summary-Bar mit 3 KPI-Zahlen, Typ-Badges, analysiertes Asset markiert (✦),
+        Fußnoten-Box am Ende. Hochformat-optimiert.
 """
 
 from typing import List, Dict, Any, Optional, TYPE_CHECKING
 
-from reportlab.lib.colors import HexColor
+from reportlab.lib.colors import HexColor, white
 from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, Spacer, Table, TableStyle
 
@@ -14,6 +15,33 @@ from shodan_report.pdf.styles import Colors
 
 if TYPE_CHECKING:
     from shodan_report.clients.domain_scout import AttackSurface
+
+
+# ── Farben ────────────────────────────────────────────────────────────────────
+C_BORDER        = HexColor("#DDDDDD")
+C_HEADER_BG     = HexColor("#F8F8F8")
+C_ROW_ALT       = HexColor("#FAFAFA")
+C_SUMMARY_BG    = HexColor("#F8F8F8")
+C_NOTE_BG       = HexColor("#F8F8F8")
+
+C_SERVER_BG     = HexColor("#EEF4FF")
+C_SERVER_BD     = HexColor("#B8D0F0")
+C_SERVER_TX     = HexColor("#2563A8")
+
+C_MAIL_BG       = HexColor("#FEF9ED")
+C_MAIL_BD       = HexColor("#E8D090")
+C_MAIL_TX       = HexColor("#A06010")
+
+C_NS_BG         = HexColor("#F4F4F4")
+C_NS_BD         = HexColor("#D0D0D0")
+C_NS_TX         = HexColor("#666666")
+
+# Spaltenbreiten Hochformat (nutzbare Breite ~175mm)
+COL_IP   = 38 * mm
+COL_TYPE = 26 * mm
+COL_SRC  = 68 * mm
+COL_RDNS = 43 * mm
+FULL_W   = COL_IP + COL_TYPE + COL_SRC + COL_RDNS  # 175mm
 
 
 def create_attack_surface_section(
@@ -25,192 +53,366 @@ def create_attack_surface_section(
 ) -> None:
     """
     Rendert die Attack-Surface-Sektion in den PDF-Elements-Stream.
-
     Erwartet entweder `attack_surface` direkt oder liest es aus `context.attack_surface`.
     Rendert nichts wenn keine Daten vorhanden.
     """
-    # Daten aus context oder direktem Parameter
     if attack_surface is None and context is not None:
         attack_surface = getattr(context, "attack_surface", None)
 
     if attack_surface is None:
         return
 
-    relevant = attack_surface.relevant_ips
-    cdn = attack_surface.cdn_ips
-    subdomains = attack_surface.subdomains
-    domain = attack_surface.domain
+    relevant   = attack_surface.relevant_ips or []
+    cdn        = attack_surface.cdn_ips or []
+    subdomains = attack_surface.subdomains or []
+    domain     = attack_surface.domain or "—"
+    primary_ip = getattr(attack_surface, "primary_ip", None)
 
-    col_w = [35 * mm, 30 * mm, 70 * mm, 40 * mm]
-    full_w = sum(col_w)
-
-    # ── Sektion sammeln für KeepTogether ─────────────────────────────────────
     sec: List = []
 
-    # Überschrift
-    sec.append(
-        Paragraph(
-            "<b>3. Attack Surface — Domain-Discovery</b>",
-            styles.get("heading1", styles.get("Heading1")),
-        )
-    )
-    sec.append(Spacer(1, 6))
+    # ── 1. Überschrift ────────────────────────────────────────────────────────
+    sec.append(Paragraph(
+        "<b>3. Attack Surface — Domain-Discovery</b>",
+        styles.get("heading1", styles.get("Heading1")),
+    ))
+    sec.append(Spacer(1, 8))
 
-    # Summary-Box
-    summary_lines = [
-        f"Domain: <b>{domain}</b>",
-        f"{len(relevant)} direkt exponierte IP(s)  ·  "
-        f"{len(cdn)} CDN/Proxy IP(s) gefiltert  ·  "
-        f"{len(subdomains)} Subdomains aus Zertifikats-Historie",
-    ]
-    if attack_surface.primary_ip:
-        summary_lines.append(
-            f"Analysierte IP: <b>{attack_surface.primary_ip}</b>"
-        )
+    # ── 2. Summary-Bar ────────────────────────────────────────────────────────
+    sec.append(_build_summary_bar(styles, domain, relevant, cdn, subdomains))
+    sec.append(Spacer(1, 12))
 
-    summary_data = [[Paragraph(line, styles.get("body", styles.get("Normal"))) for line in summary_lines[i:i+1]] for i in range(len(summary_lines))]
+    # ── 3. Tabellen-Subheader ─────────────────────────────────────────────────
+    sec.append(Paragraph(
+        "Direkt exponierte IPs — öffentlich erreichbar &amp; passiv ermittelt",
+        styles.get("table_label", styles.get("Normal")),
+    ))
+    sec.append(Spacer(1, 5))
 
-    summary_tbl = Table([[Paragraph(line, styles.get("body", styles.get("Normal")))] for line in summary_lines], colWidths=[full_w])
-    summary_tbl.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, -1), HexColor("#f0f4ff")),
-        ("LEFTPADDING",  (0, 0), (-1, -1), 10),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 10),
-        ("TOPPADDING",   (0, 0), (-1, -1), 6),
-        ("BOTTOMPADDING",(0, 0), (-1, -1), 6),
-        ("ROWBACKGROUNDS", (0, 0), (-1, -1), [HexColor("#f0f4ff")]),
-        ("BOX", (0, 0), (-1, -1), 0.5, HexColor("#1a365d")),
-    ]))
-    sec.append(summary_tbl)
-    sec.append(Spacer(1, 10))
-
-    # ── Relevante IPs ─────────────────────────────────────────────────────────
+    # ── 4. IP-Tabelle ─────────────────────────────────────────────────────────
     if relevant:
-        sec.append(
-            Paragraph(
-                "Direkt exponierte IPs — öffentlich erreichbar &amp; passiv ermittelt",
-                styles.get("heading2", styles.get("Heading2")),
-            )
-        )
-        sec.append(Spacer(1, 4))
+        sec.append(_build_ip_table(styles, relevant, primary_ip))
+        sec.append(Spacer(1, 10))
 
-        col_w_ips = [35 * mm, 25 * mm, 70 * mm, 45 * mm]
-        header = [
-            Paragraph("<b>IP-Adresse</b>",  styles.get("table_header", styles.get("Normal"))),
-            Paragraph("<b>Typ</b>",          styles.get("table_header", styles.get("Normal"))),
-            Paragraph("<b>Quellen</b>",      styles.get("table_header", styles.get("Normal"))),
-            Paragraph("<b>Reverse DNS</b>",  styles.get("table_header", styles.get("Normal"))),
-        ]
-
-        rows = [header]
-        for idx, sip in enumerate(relevant):
-            ip_type = "Mailserver" if sip.is_mail else ("Nameserver" if sip.is_nameserver else "Server")
-            rdns = sip.reverse_dns or "—"
-            sources_text = "\n".join(f"• {s}" for s in sip.sources[:4])
-            if len(sip.sources) > 4:
-                sources_text += f"\n  … +{len(sip.sources)-4} weitere"
-
-            row_style = styles.get("body_small", styles.get("Normal"))
-            rows.append([
-                Paragraph(sip.ip, row_style),
-                Paragraph(ip_type, row_style),
-                Paragraph(sources_text.replace("\n", "<br/>"), row_style),
-                Paragraph(rdns, row_style),
-            ])
-
-        ip_tbl = Table(rows, colWidths=col_w_ips)
-        bg_colors = [
-            ("BACKGROUND", (0, 0), (-1, 0), Colors.primary),
-            ("TEXTCOLOR",  (0, 0), (-1, 0), Colors.white),
-            ("FONTNAME",   (0, 0), (-1, 0), "Helvetica-Bold"),
-        ]
-        for i in range(1, len(rows)):
-            bg = HexColor("#f8fafc") if i % 2 == 0 else Colors.white
-            bg_colors.append(("BACKGROUND", (0, i), (-1, i), bg))
-
-        ip_tbl.setStyle(TableStyle([
-            *bg_colors,
-            ("FONTSIZE",      (0, 0), (-1, -1), 8),
-            ("LEFTPADDING",   (0, 0), (-1, -1), 6),
-            ("RIGHTPADDING",  (0, 0), (-1, -1), 6),
-            ("TOPPADDING",    (0, 0), (-1, -1), 4),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-            ("GRID",          (0, 0), (-1, -1), 0.3, HexColor("#e5e7eb")),
-            ("LINEBELOW",     (0, 0), (-1, 0),  0.8, Colors.primary),
-            ("VALIGN",        (0, 0), (-1, -1), "TOP"),
-        ]))
-        sec.append(ip_tbl)
-        sec.append(Spacer(1, 8))
-
-    # ── CDN IPs ───────────────────────────────────────────────────────────────
+    # ── 5. CDN-Hinweis ────────────────────────────────────────────────────────
     if cdn:
-        sec.append(
-            Paragraph(
-                "CDN / Proxy IPs (gefiltert — kein direkter Serverkontakt)",
-                styles.get("heading2", styles.get("Heading2")),
-            )
-        )
-        sec.append(Spacer(1, 4))
-
-        cdn_parts = [f"{sip.ip} ({sip.cdn})" for sip in cdn]
-        cdn_text = " · ".join(cdn_parts)
-        sec.append(
-            Paragraph(
-                f'<font color="#6b7280">{cdn_text}</font>',
-                styles.get("body_small", styles.get("Normal")),
-            )
-        )
-        sec.append(Spacer(1, 4))
-
-        note_tbl = Table(
-            [[Paragraph(
-                "ℹ Diese IPs zeigen auf CDN-Infrastruktur (Cloudflare, Akamai o.ä.). "
-                "Der eigentliche Webserver ist dahinter verborgen und ggf. nicht direkt analysierbar. "
-                "Weitere Maßnahmen: Origin-IP-Leaks prüfen (DNS-History, E-Mail-Header, crt.sh).",
-                styles.get("body_small", styles.get("Normal")),
-            )]],
-            colWidths=[full_w],
-        )
-        note_tbl.setStyle(TableStyle([
-            ("BACKGROUND",    (0, 0), (-1, -1), HexColor("#fefce8")),
-            ("LEFTPADDING",   (0, 0), (-1, -1), 8),
-            ("RIGHTPADDING",  (0, 0), (-1, -1), 8),
-            ("TOPPADDING",    (0, 0), (-1, -1), 5),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-            ("BOX",           (0, 0), (-1, -1), 0.5, HexColor("#eab308")),
-        ]))
-        sec.append(note_tbl)
+        sec.append(_build_cdn_note(styles, cdn))
         sec.append(Spacer(1, 8))
 
-    # ── Subdomains (kompakt) ──────────────────────────────────────────────────
+    # ── 6. Subdomains ─────────────────────────────────────────────────────────
     if subdomains:
-        shown = subdomains[:20]
-        remaining = len(subdomains) - len(shown)
+        sec.append(_build_subdomain_block(styles, subdomains))
+        sec.append(Spacer(1, 8))
 
-        subdomain_text = " · ".join(shown)
-        if remaining > 0:
-            subdomain_text += f" · … +{remaining} weitere"
+    # ── 7. Fußnoten-Box ───────────────────────────────────────────────────────
+    sec.append(_build_footer_note(styles))
 
-        sub_rows = [
-            [Paragraph("<b>Subdomains aus Zertifikats-Historie (crt.sh)</b>",
-                       styles.get("body", styles.get("Normal")))],
-            [Paragraph(
-                f'<font color="#374151" size="7">{subdomain_text}</font>',
-                styles.get("body_small", styles.get("Normal")),
-            )],
-        ]
-        sub_tbl = Table(sub_rows, colWidths=[full_w])
-        sub_tbl.setStyle(TableStyle([
-            ("BACKGROUND",    (0, 0), (-1, 0), HexColor("#f8fafc")),
-            ("BACKGROUND",    (0, 1), (-1, 1), Colors.white),
-            ("LEFTPADDING",   (0, 0), (-1, -1), 8),
-            ("RIGHTPADDING",  (0, 0), (-1, -1), 8),
-            ("TOPPADDING",    (0, 0), (-1, -1), 5),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-            ("BOX",           (0, 0), (-1, -1), 0.3, HexColor("#e5e7eb")),
-            ("LINEBELOW",     (0, 0), (-1, 0),  0.3, HexColor("#e5e7eb")),
-        ]))
-        sec.append(sub_tbl)
-
-    # Alles zusammen als Block einbetten
     elements.append(keep_section(sec))
     elements.append(Spacer(1, 12))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SUMMARY-BAR
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _build_summary_bar(
+    styles: Dict,
+    domain: str,
+    relevant: list,
+    cdn: list,
+    subdomains: list,
+) -> Table:
+    """
+    Zweispaltige Bar:
+    Links:  DOMAIN  <bold domain>
+    Rechts: 3 KPI-Zahlen (exponierte IPs | CDN gefiltert | Subdomains)
+    """
+    s = styles.get("Normal")
+
+    # Linke Seite: eine Zelle, zwei Zeilen, linksbündig, mehr Padding
+    left = Table(
+        [
+            [
+                Paragraph('<font size="8" color="#888888"><b>DOMAIN</b></font>', s)
+            ],
+            [
+                Paragraph(f'<font size="12" color="#1a1a1a"><b>{domain}</b></font>', s)
+            ]
+        ],
+        colWidths=[60 * mm],
+    )
+    left.setStyle(TableStyle([
+        ("VALIGN",        (0, 0), (-1, -1), "LEFT"),
+        ("ALIGN",         (0, 0), (-1, -1), "LEFT"),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 8),
+        ("TOPPADDING",    (0, 0), (0, 0), 0),    # DOMAIN label
+        ("BOTTOMPADDING", (0, 0), (0, 0), 0),
+        ("TOPPADDING",    (0, 1), (0, 1), 0),    # Domainname
+        ("BOTTOMPADDING", (0, 1), (0, 1), 0),
+    ]))
+
+    # Rechte Seite — 3 KPI-Zahlen (flache Tabelle, keine verschachtelten Tabellen)
+    kpi_data = [
+        [
+            Paragraph(f'<font size="14" color="#1a1a1a"><b>{len(relevant)}</b></font>', s),
+            Paragraph(f'<font size="14" color="#1a1a1a"><b>{len(cdn)}</b></font>', s),
+            Paragraph(f'<font size="14" color="#1a1a1a"><b>{len(subdomains)}</b></font>', s),
+        ],
+        [
+            Paragraph('<font size="7" color="#888888">EXPONIERTE IPS</font>', s),
+            Paragraph('<font size="7" color="#888888">CDN GEFILTERT</font>', s),
+            Paragraph('<font size="7" color="#888888">SUBDOMAINS (CRT.SH)</font>', s),
+        ]
+    ]
+    right = Table(
+        kpi_data,
+        colWidths=[32 * mm, 32 * mm, 35 * mm],
+    )
+    right.setStyle(TableStyle([
+        ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+        ("ALIGN",         (0, 0), (-1, -1), "CENTER"),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
+        ("TOPPADDING",    (0, 0), (-1, -1), 2),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+        ("LINEBEFORE",    (1, 0), (1, 1), 0.5, C_BORDER),
+        ("LINEBEFORE",    (2, 0), (2, 1), 0.5, C_BORDER),
+    ]))
+
+    # Neue Spaltenbreiten: links 60mm, rechts 99mm (Summe 159mm, mit Padding 175mm)
+    bar = Table(
+        [[left, right]],
+        colWidths=[60 * mm, 99 * mm],
+    )
+    bar.setStyle(TableStyle([
+        ("BACKGROUND",    (0, 0), (-1, -1), C_SUMMARY_BG),
+        ("BOX",           (0, 0), (-1, -1), 0.5, C_BORDER),
+        ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 12),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 12),
+        ("TOPPADDING",    (0, 0), (-1, -1), 10),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+        ("LINEBEFORE",    (1, 0), (1, 0), 0.5, C_BORDER),
+    ]))
+    return bar
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# IP-TABELLE
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _build_ip_table(
+    styles: Dict,
+    relevant: list,
+    primary_ip: Optional[str],
+) -> Table:
+    """
+    Spalten: IP-ADRESSE | TYP | QUELLEN | REVERSE DNS
+    - Analysierte IP: ✦ Markierung + leicht blauer Hintergrund
+    - Typ-Spalte: farbiger Hintergrund je nach Server/Mail/NS
+    - Alternierende Zeilenfarben
+    """
+    s_hdr  = styles.get("Normal")
+    s_body = styles.get("body_small", styles.get("Normal"))
+
+    header = [
+        Paragraph('<font size="8" color="#666666"><b>IP-ADRESSE</b></font>',  s_hdr),
+        Paragraph('<font size="8" color="#666666"><b>TYP</b></font>',          s_hdr),
+        Paragraph('<font size="8" color="#666666"><b>QUELLEN</b></font>',      s_hdr),
+        Paragraph('<font size="8" color="#666666"><b>REVERSE DNS</b></font>',  s_hdr),
+    ]
+    rows         = [header]
+    type_colors  = []   # (row_idx, bg)
+    primary_rows = []
+
+    for idx, sip in enumerate(relevant):
+        row_idx = idx + 1
+
+
+        # Badge-Design für Typ
+        if sip.is_mail:
+            ip_type = "Mailserver"
+            badge_bg = C_MAIL_BG
+            badge_bd = C_MAIL_BD
+            badge_tx = C_MAIL_TX
+        elif sip.is_nameserver:
+            ip_type = "Nameserver"
+            badge_bg = C_NS_BG
+            badge_bd = C_NS_BD
+            badge_tx = C_NS_TX
+        else:
+            ip_type = "Server"
+            badge_bg = C_SERVER_BG
+            badge_bd = C_SERVER_BD
+            badge_tx = C_SERVER_TX
+
+
+        is_primary = bool(primary_ip and sip.ip == primary_ip)
+        if is_primary:
+            primary_rows.append(row_idx)
+
+        ip_display = f"{sip.ip} ✦" if is_primary else sip.ip
+
+        src_lines = sip.sources[:4]
+        src_text  = "<br/>".join(f"• {s}" for s in src_lines)
+        if len(sip.sources) > 4:
+            src_text += f"<br/>… +{len(sip.sources)-4} weitere"
+
+        rdns = sip.reverse_dns or "—"
+
+        # Badge als kleine 1x1-Tabelle
+        badge = Table(
+            [[Paragraph(f'<font size="9" color="#{_hex(badge_tx)}"><b>{ip_type}</b></font>', s_body)]],
+            colWidths=[24*mm],
+        )
+        badge.setStyle(TableStyle([
+            ("BACKGROUND",    (0, 0), (0, 0), badge_bg),
+            ("BOX",           (0, 0), (0, 0), 0.8, badge_bd),
+            ("ALIGN",         (0, 0), (0, 0), "CENTER"),
+            ("VALIGN",        (0, 0), (0, 0), "MIDDLE"),
+            ("LEFTPADDING",   (0, 0), (0, 0), 3),
+            ("RIGHTPADDING",  (0, 0), (0, 0), 3),
+            ("TOPPADDING",    (0, 0), (0, 0), 1),
+            ("BOTTOMPADDING", (0, 0), (0, 0), 1),
+        ]))
+
+        rows.append([
+            Paragraph(f'<font size="9" color="#1a1a1a">{ip_display}</font>', s_body),
+            badge,
+            Paragraph(f'<font size="9" color="#555555">{src_text}</font>',   s_body),
+            Paragraph(f'<font size="9" color="#888888">{rdns}</font>',       s_body),
+        ])
+
+    tbl = Table(rows, colWidths=[COL_IP, COL_TYPE, COL_SRC, COL_RDNS])
+
+    ts = TableStyle([
+        ("BACKGROUND",    (0, 0), (-1, 0),  C_HEADER_BG),
+        ("LINEBELOW",     (0, 0), (-1, 0),  0.8, C_BORDER),
+        ("BOX",           (0, 0), (-1, -1), 0.5, C_BORDER),
+        ("INNERGRID",     (0, 0), (-1, -1), 0.3, C_BORDER),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 6),
+        ("TOPPADDING",    (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("VALIGN",        (0, 0), (-1, -1), "TOP"),
+    ])
+
+    # Alternierende Zeilenhintergründe
+    for i in range(1, len(rows)):
+        bg = C_ROW_ALT if i % 2 == 0 else white
+        ts.add("BACKGROUND", (0, i), (-1, i), bg)
+
+    # Typ-Spalte: keine Zellenfärbung mehr, da Badge verwendet wird
+
+    # Primary-IP IP-Zelle hervorheben
+    for row_idx in primary_rows:
+        ts.add("BACKGROUND", (0, row_idx), (0, row_idx), HexColor("#EEF4FF"))
+
+    tbl.setStyle(ts)
+    return tbl
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CDN-HINWEIS
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _build_cdn_note(styles: Dict, cdn: list) -> Table:
+    s        = styles.get("body_small", styles.get("Normal"))
+    cdn_text = " · ".join(
+        f"{sip.ip} ({getattr(sip, 'cdn', 'CDN')})" for sip in cdn
+    )
+    note = Table(
+        [[Paragraph(
+            f'<font size="9" color="#666666">'
+            f'CDN/Proxy IPs gefiltert: {cdn_text}<br/>'
+            f'Der eigentliche Webserver ist dahinter verborgen. '
+            f'Origin-IP-Leaks prüfen (DNS-History, E-Mail-Header, crt.sh).'
+            f'</font>',
+            s,
+        )]],
+        colWidths=[FULL_W],
+    )
+    note.setStyle(TableStyle([
+        ("BACKGROUND",    (0, 0), (-1, -1), HexColor("#FEFCE8")),
+        ("BOX",           (0, 0), (-1, -1), 0.5, HexColor("#EAB308")),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 10),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 10),
+        ("TOPPADDING",    (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    return note
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SUBDOMAIN-BLOCK
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _build_subdomain_block(styles: Dict, subdomains: list) -> Table:
+    s         = styles.get("body_small", styles.get("Normal"))
+    shown     = subdomains[:20]
+    remaining = len(subdomains) - len(shown)
+    sub_text  = " · ".join(shown)
+    if remaining > 0:
+        sub_text += f" · … +{remaining} weitere"
+
+    tbl = Table(
+        [
+            [Paragraph(
+                '<font size="8" color="#333333"><b>'
+                'Subdomains aus Zertifikats-Historie (crt.sh)'
+                '</b></font>',
+                s,
+            )],
+            [Paragraph(f'<font size="8" color="#555555">{sub_text}</font>', s)],
+        ],
+        colWidths=[FULL_W],
+    )
+    tbl.setStyle(TableStyle([
+        ("BACKGROUND",    (0, 0), (-1, 0), C_HEADER_BG),
+        ("BACKGROUND",    (0, 1), (-1, 1), white),
+        ("BOX",           (0, 0), (-1, -1), 0.3, C_BORDER),
+        ("LINEBELOW",     (0, 0), (-1, 0),  0.3, C_BORDER),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 8),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 8),
+        ("TOPPADDING",    (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+    ]))
+    return tbl
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# FUSSNOTENBOX
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _build_footer_note(styles: Dict) -> Table:
+    s    = styles.get("body_small", styles.get("Normal"))
+    note = Table(
+        [[Paragraph(
+            '<font size="8.5" color="#444444">'
+            '✦ Analysiertes Asset — nur diese IP wird via Shodan bewertet. '
+            'Alle weiteren IPs und Hostnamen werden als Netzwerk-Identitäten aufgeführt, '
+            'aber nicht separat analysiert. Subdomains wie shop., awareness., firewall. '
+            'sind öffentlich sichtbar und für Angreifer direkt einsehbar.'
+            '</font>',
+            s,
+        )]],
+        colWidths=[FULL_W],
+    )
+    note.setStyle(TableStyle([
+        ("BACKGROUND",    (0, 0), (-1, -1), C_NOTE_BG),
+        ("BOX",           (0, 0), (-1, -1), 0.5, C_BORDER),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 10),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 10),
+        ("TOPPADDING",    (0, 0), (-1, -1), 7),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+    ]))
+    return note
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# HILFSFUNKTIONEN
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _hex(c) -> str:
+    """HexColor → 6-stelliger Hex-String ohne #."""
+    return f"{int(c.red*255):02X}{int(c.green*255):02X}{int(c.blue*255):02X}"
