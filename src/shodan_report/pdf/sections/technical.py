@@ -3,7 +3,7 @@ import re
 from reportlab.platypus import Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.units import mm
 from reportlab.lib.colors import HexColor
-from shodan_report.pdf.layout import keep_section, set_table_repeat, set_table_no_split
+from shodan_report.pdf.layout import keep_section, set_table_repeat
 from shodan_report.pdf.sections.data.technical_data import prepare_technical_detail
 
 
@@ -528,7 +528,6 @@ def create_technical_section(elements: List, styles: Dict, *args, **kwargs) -> N
     col_w = [14 * mm, 28 * mm, 34 * mm, 18 * mm, 81 * mm]
     tbl = Table(table_data, colWidths=col_w)
     set_table_repeat(tbl, 1)
-    set_table_no_split(tbl)
 
     ts = TableStyle([
         ("BACKGROUND",    (0, 0), (-1, 0), _C_HDR_BG),
@@ -846,6 +845,11 @@ def _extract_metadata_items_structured(
             items.append(("Krit. Konfigurationen", str(len(high_critical))))
 
     return items
+
+
+def _extract_metadata_items(technical_json: Dict[str, Any]) -> List[str]:
+    """Flat string list wrapper around _extract_metadata_items_structured."""
+    return [f"{label}: {value}" for label, value in _extract_metadata_items_structured(technical_json)]
 
 
 def _add_security_notes(

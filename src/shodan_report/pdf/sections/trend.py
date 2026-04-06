@@ -238,6 +238,28 @@ def _add_comparison_view(
     interp = _build_interpretation(trend_table)
     _build_interpretation_box(elements, styles, interp)
 
+    # ── Kennzahlen-Erklärung ─────────────────────────────────────────────────
+    _build_metrics_context(elements, styles)
+
+
+def _build_metrics_context(elements: List, styles: Dict) -> None:
+    """Kurze Erklärung der Kennzahlen — erscheint nach der Interpretationsbox."""
+    ns = styles.get("normal") or styles.get("Normal")
+    elements.append(Spacer(1, 8))
+    elements.append(Paragraph(
+        '<font size="8" color="#666666"><b>Was die Kennzahlen bedeuten</b></font>',
+        ns,
+    ))
+    elements.append(Paragraph(
+        '<font size="8" color="#888888">'
+        "Öffentliche Ports: Anzahl extern erreichbarer Dienste · "
+        "Kritische Services: Administrationsschnittstellen (SSH, RDP, DB) · "
+        "Hochrisiko-CVEs: Schwachstellen mit CVSS ≥ 9,0 · "
+        "TLS-Schwächen: Schwache Cipher, abgelaufene oder fehlende Zertifikate"
+        "</font>",
+        ns,
+    ))
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # KPI-KARTEN (obere Zeile mit 5 Kennzahlen)

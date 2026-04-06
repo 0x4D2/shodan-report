@@ -1,3 +1,19 @@
+## 2026-04-06
+
+- conclusion.py: Neue graue Intro-Box mit dynamischem Exposure-Level, darunter automatische zweispaltige Zeitplan-Tabelle (KURZFRISTIG, MITTELFRISTIG, etc.) basierend auf technical_json.
+- methodology.py: Oben Datenbasis-Box, links Begriffsdefinitionen, rechts Exposure-Level-Tabelle mit farbigen Punkten und Einschätzung, darunter Attack Surface Discovery Bullets.
+- footer.py: Große Disclaimer-Box mit OSINT-Hinweis, darunter zweispaltig GRENZEN/VERTRAULICHKEIT als separate Boxen, Signatur-Block mit ichwillsicherheit.de/BSI und SHA256-Prüfsumme.
+
+- fix: 6 failing Tests repariert
+  - `pdf/sections/technical.py`: `_extract_metadata_items()` als String-Wrapper um `_extract_metadata_items_structured()` ergänzt (Test-Import schlug fehl)
+  - `pdf/sections/technical.py`: `set_table_no_split()` aus der Services-Tabelle entfernt — große Tabellen (>30 Zeilen) konnten nicht über Seitengrenzen gesplittet werden (LayoutError)
+  - `pdf/sections/technical.py`: ungenutzten `set_table_no_split`-Import entfernt
+  - `pdf/sections/trend.py`: `_build_metrics_context()` ergänzt — rendert "Was die Kennzahlen bedeuten"-Block nach der Interpretationsbox in der Vergleichsansicht
+  - `tests/pdf/sections/test_trend_extra.py`: `find_paragraphs()`-Helper in zwei Tests korrigiert — traversierte `_cellvalues` (Liste von Zeilen-Listen) direkt statt die Zellen zu flattenen
+  - `tests/pdf/sections/test_trend_extra.py`: `_find_table_ncols()` ergänzt — sucht rekursiv nach verschachtelten Tabellen (Vergleichstabelle liegt in 2-spaltiger Layout-Table)
+  - `tests/pdf/sections/test_trend_extra.py`: TLS-Zeilen-Suche von `"TLS"` auf `"Zert"` erweitert (Anzeigename ist "Ablaufende Zert.", nicht "TLS-Schwächen")
+  - `tests/pdf/test_pdf_manager.py`: Footer-Timestamp-Test prüft jetzt das Jahr (`"%Y"`) statt `"%d.%m.%Y"` — Footer-Format ist `"06. April 2026 · HH:MM Uhr"`
+
 ## 2026-04-05 (Ergänzung)
 
 - Typ-Spalte in der IP-Tabelle zeigt jetzt ein farbiges Badge (Label) für Server/Mailserver/Nameserver statt kompletter Zellenfärbung. Die Zelle bleibt weiß, nur das Label ist farbig hinterlegt und umrahmt.

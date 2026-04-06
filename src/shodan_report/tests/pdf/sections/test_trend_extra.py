@@ -173,8 +173,26 @@ def test_create_trend_section_derives_table_from_technical_json(styles):
         technical_json=technical_json,
         evaluation=None,
     )
-    # Suche nach einer Tabelle mit 4 Spalten (Vergleichstabelle)
-    cmp_table = next((e for e in elements if isinstance(e, Table) and getattr(e, '_ncols', 0) == 4), None)
+    # Suche nach einer Tabelle mit 4 Spalten (auch in verschachtelten Tables)
+    def _find_table_ncols(elist, ncols):
+        from reportlab.platypus import KeepTogether
+        for e in elist:
+            if isinstance(e, Table):
+                if getattr(e, '_ncols', 0) == ncols:
+                    return e
+                for row in (getattr(e, '_cellvalues', None) or []):
+                    for cell in (row if isinstance(row, (list, tuple)) else [row]):
+                        items = cell if isinstance(cell, (list, tuple)) else [cell]
+                        result = _find_table_ncols(items, ncols)
+                        if result:
+                            return result
+            elif isinstance(e, KeepTogether):
+                result = _find_table_ncols(getattr(e, '_content', []) or [], ncols)
+                if result:
+                    return result
+        return None
+
+    cmp_table = _find_table_ncols(elements, 4)
     assert cmp_table is not None, "Vergleichstabelle sollte gerendert werden"
     # Prüfe, ob die Zeile für TLS-Schwächen enthalten ist
     data = getattr(cmp_table, '_cellvalues', None) or getattr(cmp_table, 'getPlainData', lambda: None)()
@@ -184,10 +202,10 @@ def test_create_trend_section_derives_table_from_technical_json(styles):
         return getattr(cell, "text", str(cell))
     tls_row = None
     for row in data:
-        if any("TLS" in _cell_text(c) for c in row):
+        if any("Zert" in _cell_text(c) or "TLS" in _cell_text(c) for c in row):
             tls_row = [_cell_text(c) for c in row]
             break
-    assert tls_row is not None, "TLS-Schwächen row should be present"
+    assert tls_row is not None, "TLS/Zertifikat row should be present"
 
 
 def test_trend_section_includes_interpretation_text(styles):
@@ -223,14 +241,15 @@ def test_trend_section_includes_interpretation_text(styles):
         for e in elist:
             if isinstance(e, Paragraph):
                 found.append(e)
-            elif isinstance(e, (Table, KeepTogether)):
-                for attr in ("_cellvalues", "_content"):
-                    inner = getattr(e, attr, None)
-                    if inner:
-                        found.extend(find_paragraphs(inner))
+            elif isinstance(e, Table):
+                for row in (getattr(e, "_cellvalues", None) or []):
+                    for cell in (row if isinstance(row, (list, tuple)) else [row]):
+                        items = cell if isinstance(cell, (list, tuple)) else [cell]
+                        found.extend(find_paragraphs(items))
+            elif isinstance(e, KeepTogether):
+                found.extend(find_paragraphs(getattr(e, "_content", []) or []))
         return found
     texts = [getattr(e, "text", "") for e in find_paragraphs(elements)]
-    # Robustere Suche: auch in Tabellenzellen
     assert any("Interpretation:" in t for t in texts), f"Interpretation fehlt: {texts}"
 
 
@@ -349,11 +368,13 @@ def test_metrics_context_appears_in_comparison_view(styles):
         for e in elist:
             if isinstance(e, Paragraph):
                 found.append(e)
-            elif isinstance(e, (Table, KeepTogether)):
-                for attr in ("_cellvalues", "_content"):
-                    inner = getattr(e, attr, None)
-                    if inner:
-                        found.extend(find_paragraphs(inner))
+            elif isinstance(e, Table):
+                for row in (getattr(e, "_cellvalues", None) or []):
+                    for cell in (row if isinstance(row, (list, tuple)) else [row]):
+                        items = cell if isinstance(cell, (list, tuple)) else [cell]
+                        found.extend(find_paragraphs(items))
+            elif isinstance(e, KeepTogether):
+                found.extend(find_paragraphs(getattr(e, "_content", []) or []))
         return found
     texts = [getattr(e, "text", "") for e in find_paragraphs(elements)]
     assert any("Was die Kennzahlen bedeuten" in t for t in texts), f"Metriken-Erklärungsblock fehlt: {texts}"
