@@ -260,20 +260,19 @@ def _build_ip_table(
 
         rdns = sip.reverse_dns or "—"
 
-        # Badge als kleine 1x1-Tabelle
+        # Badge als kleine 1x1-Tabelle, Breite dynamisch, Padding minimal
         badge = Table(
             [[Paragraph(f'<font size="9" color="#{_hex(badge_tx)}"><b>{ip_type}</b></font>', s_body)]],
-            colWidths=[24*mm],
         )
         badge.setStyle(TableStyle([
             ("BACKGROUND",    (0, 0), (0, 0), badge_bg),
             ("BOX",           (0, 0), (0, 0), 0.8, badge_bd),
             ("ALIGN",         (0, 0), (0, 0), "CENTER"),
             ("VALIGN",        (0, 0), (0, 0), "MIDDLE"),
-            ("LEFTPADDING",   (0, 0), (0, 0), 3),
-            ("RIGHTPADDING",  (0, 0), (0, 0), 3),
-            ("TOPPADDING",    (0, 0), (0, 0), 1),
-            ("BOTTOMPADDING", (0, 0), (0, 0), 1),
+            ("LEFTPADDING",   (0, 0), (0, 0), 1.5),
+            ("RIGHTPADDING",  (0, 0), (0, 0), 1.5),
+            ("TOPPADDING",    (0, 0), (0, 0), 0.5),
+            ("BOTTOMPADDING", (0, 0), (0, 0), 0.5),
         ]))
 
         rows.append([

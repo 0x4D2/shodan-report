@@ -332,6 +332,112 @@ def _find_insecure_tls(protocols: List[str]) -> List[str]:
     return out
 
 
+def _derive_risk_and_hint(
+    s: Dict[str, Any], technical_json: Dict[str, Any]
+) -> tuple:
+    """
+    Leitet Risiko-Level und Hinweistext für einen Service ab.
+    Gibt (risk_str, hint_str) zurück.
+    risk_str: "hoch" | "mittel" | "info"
+    """
+    port = s.get("port")
+    prod = _normalize_product(s.get("product") or "")
+    tls  = s.get("tls", {}) or {}
+
+    # Risiko-Logik
+    risk = "info"
+    hints = []
+
+    # Kritische Ports / Dienste
+    if port in (3306, 5432, 1433, 27017):  # Datenbanken
+        risk = "hoch"
+        hints.append("Datenbank direkt exponiert · Firewall-Regel empfohlen")
+    elif port in (21,):  # FTP
+        days = tls.get("cert_expires_in_days")
+        risk = "hoch"
+        if isinstance(days, int) and 0 <= days <= 14:
+            hints.append(f"Zertifikat läuft in {days} Tagen ab · Zugriff einschränken")
+        else:
+            hints.append("Zertifikat läuft ab · Zugriff einschränken")
+    elif port in (2082, 2083, 2086, 2087):  # cPanel
+        risk = "hoch"
+        hints.append("Admin-Panel öffentlich erreichbar · IP-Whitelist empfohlen")
+    elif port in (3389,):  # RDP
+        risk = "hoch"
+        hints.append("RDP direkt erreichbar · VPN/Jumphost empfohlen")
+    elif port == 22:  # SSH
+        risk = "mittel"
+        ssh = s.get("ssh", {}) or {}
+        kex = ssh.get("kex", [])
+        macs = ssh.get("macs", [])
+        parts = []
+        if kex:
+            parts.append(f"KEX: {kex[0]}" if kex else "")
+        if macs:
+            parts.append(f"MACs: {macs[0]}" if macs else "")
+        parts.append("öffentlich erreichbar")
+        hints.append(" · ".join(p for p in parts if p))
+    elif port == 443:
+        if tls.get("cert_self_signed"):
+            risk = "mittel"
+            issuer = tls.get("cert_issuer", "")
+            cipher = ""
+            if tls.get("ciphers"):
+                cipher = f" · Cipher: {tls['ciphers'][0]}"
+            hints.append(f"Selbstsigniertes Zertifikat · Aussteller: {issuer}{cipher}")
+        else:
+            risk = "info"
+            hints.append("TLS aktiv · Zertifikat von CA signiert")
+    elif port == 80:
+        risk = "info"
+        hints.append("Kein HTTPS-Redirect · HSTS nicht aktiv")
+
+    # CVE-basiert upgraden
+    cve_count = s.get("cve_count") or 0
+    if cve_count > 0 and risk == "info":
+        risk = "mittel"
+
+    # Fallback Hinweis
+    if not hints:
+        ver = _clean_display_field(s.get("version") or "", max_len=40)
+        if ver and ver != "-":
+            hints.append(f"Version: {ver}")
+        else:
+            hints.append("—")
+
+    return risk, " · ".join(hints[:2])  # max 2 Hinweise
+
+
+def _risk_badge(styles: Dict, risk: str) -> Table:
+    """
+    Kleines farbiges Badge für die RISIKO-Spalte.
+    hoch = rot, mittel = orange, info = grau
+    """
+    ns = styles.get("Normal") or styles.get("normal")
+    cfg = {
+        "hoch":   ("#FDECEA", "#C0392B", "#C0392B", "hoch"),
+        "mittel": ("#FEF3E8", "#E67E22", "#E67E22", "mittel"),
+        "info":   ("#F4F4F4", "#AAAAAA", "#666666", "info"),
+    }
+    bg_hex, bd_hex, tx_hex, label = cfg.get(risk, cfg["info"])
+    bg = HexColor(bg_hex)
+    bd = HexColor(bd_hex)
+
+    badge = Table(
+        [[Paragraph(f'<font size="8" color="{tx_hex}"><b>{label}</b></font>', ns)]],
+    )
+    badge.setStyle(TableStyle([
+        ("BACKGROUND",    (0, 0), (-1, -1), bg),
+        ("BOX",           (0, 0), (-1, -1), 0.7, bd),
+        ("TOPPADDING",    (0, 0), (-1, -1), 0.5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0.5),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 2),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 2),
+        ("ALIGN",         (0, 0), (-1, -1), "CENTER"),
+    ]))
+    return badge
+
+
 def create_technical_section(elements: List, styles: Dict, *args, **kwargs) -> None:
     # Support DI call: create_technical_section(elements, styles, context=ctx)
     technical_json = kwargs.get("technical_json", {})
@@ -343,16 +449,24 @@ def create_technical_section(elements: List, styles: Dict, *args, **kwargs) -> N
 
     elements.append(Spacer(1, 12))
     heading_style = styles.get("heading1", styles.get("heading2"))
-    # keep legacy header text so existing tests that look for "Technischer Anhang" still match
-    elements.append(keep_section([Paragraph("<b>4. Technischer Anhang — Technische Detailanalyse (Auszug)</b>", heading_style), Spacer(1, 8)]))
-    elements.append(Paragraph("Quelle: Shodan (OSINT, passive Datenerhebung).", styles["normal"]))
+    elements.append(keep_section([
+        Paragraph("<b>4. Technischer Anhang — Detailanalyse</b>", heading_style),
+        Spacer(1, 8),
+    ]))
+
+    # Quellen-Hinweis (klein, grau)
+    elements.append(Paragraph(
+        '<font size="8" color="#888888">'
+        "Quelle: Shodan (OSINT, passive Datenerhebung) · "
+        "Alle Findings sind Inferred, sofern nicht als [VERIFIED] gekennzeichnet"
+        "</font>",
+        styles["normal"],
+    ))
     elements.append(Spacer(1, 8))
 
-    # Show warning box for security-relevant Shodan tags (eol-product, doublepulsar, …)
+    # Shodan-Tag-Warnings + EOL + TLS — unveränderte Logik, nur Pills nebeneinander
     _render_shodan_tags_warning(elements, styles, technical_json)
-    # Show EOL/near-EOL warning boxes derived from service banners
     _render_eol_warnings(elements, styles, technical_json)
-    # Show VERIFIED TLS warning boxes (directly observable from TLS handshake)
     _render_tls_warnings(elements, styles, technical_json)
 
     if not technical_json:
@@ -366,72 +480,84 @@ def create_technical_section(elements: List, styles: Dict, *args, **kwargs) -> N
         elements.append(Paragraph("Keine offenen Ports identifiziert.", styles["normal"]))
         return
 
-    # Table: Port | Dienst | Version | Server
-    header = [
-        Paragraph("<b>Port</b>", styles["normal"]),
-        Paragraph("<b>Dienst</b>", styles["normal"]),
-        Paragraph("<b>Version</b>", styles["normal"]),
-        Paragraph("<b>Server</b>", styles["normal"]),
-    ]
+    # ── Tabelle: PORT | DIENST | VERSION | RISIKO | HINWEIS ──────────────────
+    _C_BORDER   = HexColor("#DDDDDD")
+    _C_HDR_BG   = HexColor("#F8F8F8")
+    _C_ROW_ALT  = HexColor("#F8FAFC")
+
+    def _hdr(text):
+        return Paragraph(
+            f'<font size="8" color="#666666"><b>{text}</b></font>',
+            styles["normal"],
+        )
+
+    header = [_hdr("PORT"), _hdr("DIENST"), _hdr("VERSION"), _hdr("RISIKO"), _hdr("HINWEIS")]
     table_data = [header]
     seen_rows = set()
-    for s in services:
-        port_txt = str(s.get("port") or "-")
-        prod_raw = s.get("product") or ""
-        prod = _normalize_product(prod_raw)
-        ver_raw = s.get("version") or ""
-        ver = _clean_display_field(ver_raw, max_len=60)
-        server = _clean_display_field(s.get("server") or "-", max_len=40)
 
-        # enforce single-line version (no newlines) and truncate to fit
+    for s in services:
+        port_val = s.get("port") or "-"
+        port_txt = str(port_val)
+        prod_raw = s.get("product") or ""
+        prod     = _normalize_product(prod_raw)
+        ver_raw  = s.get("version") or ""
+        ver      = _clean_display_field(ver_raw, max_len=40)
         if isinstance(ver, str):
             ver = ver.replace("\n", " ").replace("\r", " ").strip()
-            if len(ver) > 60:
-                ver = ver[:57] + "..."
 
-        # Deduplicate identical rows (port, product, server)
-        key = (str(s.get("port")), str(prod), str(server))
+        key = (port_txt, str(prod))
         if key in seen_rows:
             continue
         seen_rows.add(key)
 
+        # Risiko-Badge und Hinweis-Text ableiten
+        risk, hint = _derive_risk_and_hint(s, technical_json)
+
+        # Risiko-Badge als kleine farbige Table
+        risk_cell = _risk_badge(styles, risk)
+
         table_data.append([
-            Paragraph(port_txt, styles["normal"]),
-            Paragraph(prod, styles["normal"]),
-            Paragraph(ver, styles["normal"]),
-            Paragraph(server, styles["normal"]),
+            Paragraph(f'<font size="9" color="#1A1A1A"><b>{port_txt}</b></font>', styles["normal"]),
+            Paragraph(f'<font size="9" color="#333333">{prod}</font>',             styles["normal"]),
+            Paragraph(f'<font size="9" color="#666666">{ver}</font>',              styles["normal"]),
+            risk_cell,
+            Paragraph(f'<font size="9" color="#444444">{hint}</font>',             styles["normal"]),
         ])
 
-    # Constrain total width to typical text area (~150-160 mm)
-    # Adjust column widths to avoid overflowing page margins
-    tbl = Table(table_data, colWidths=[18 * mm, 60 * mm, 45 * mm, 40 * mm])
+    # Spaltenbreiten: PORT | DIENST | VERSION | RISIKO | HINWEIS
+    col_w = [14 * mm, 28 * mm, 34 * mm, 18 * mm, 81 * mm]
+    tbl = Table(table_data, colWidths=col_w)
     set_table_repeat(tbl, 1)
     set_table_no_split(tbl)
-    border_color = HexColor("#e5e7eb")
-    header_bg = HexColor("#f8fafc")
-    tbl.setStyle(
-        TableStyle(
-            [
-                ("GRID", (0, 0), (-1, -1), 0.3, border_color),
-                ("BACKGROUND", (0, 0), (-1, 0), header_bg),
-                ("TEXTCOLOR", (0, 0), (-1, 0), HexColor("#111827")),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("FONTSIZE", (0, 0), (-1, -1), 9),
-                ("LEFTPADDING", (0, 0), (-1, -1), 6),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-            ]
-        )
-    )
+
+    ts = TableStyle([
+        ("BACKGROUND",    (0, 0), (-1, 0), _C_HDR_BG),
+        ("BOX",           (0, 0), (-1, -1), 0.5, _C_BORDER),
+        ("INNERGRID",     (0, 0), (-1, -1), 0.3, _C_BORDER),
+        ("LINEBELOW",     (0, 0), (-1, 0),  0.5, _C_BORDER),
+        ("TOPPADDING",    (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 6),
+        ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+    ])
+    for i in range(1, len(table_data)):
+        if i % 2 == 0:
+            ts.add("BACKGROUND", (0, i), (-1, i), _C_ROW_ALT)
+    tbl.setStyle(ts)
     elements.append(tbl)
     elements.append(Spacer(1, 8))
 
-    # Add per-service details (TLS / CVE / Banner)
+    # Per-service details (TLS / SSH / Banner) — unveränderte Logik
     top_vulns_count = 0
     try:
         if isinstance(technical_json, dict):
-            top_vulns_count = len(technical_json.get("vulns") or technical_json.get("vulnerabilities") or [])
+            top_vulns_count = len(
+                technical_json.get("vulns") or technical_json.get("vulnerabilities") or []
+            )
     except Exception:
         top_vulns_count = 0
+
     for s in services:
         details = []
         tls = s.get("tls", {}) or {}
@@ -445,39 +571,25 @@ def create_technical_section(elements: List, styles: Dict, *args, **kwargs) -> N
         if tls.get("cert_expiry"):
             expiry_raw = tls.get("cert_expiry")
             days = tls.get("cert_expires_in_days")
-            # format date to German style: DD.MM.YYYY HH:MM:SS when possible
             try:
                 from dateutil import parser as _dtparser
                 from datetime import timezone
-
                 dt = None
                 try:
                     dt = _dtparser.parse(str(expiry_raw))
                 except Exception:
-                    # fallback for compact formats like 20260206235959Z
                     try:
                         from datetime import datetime as _dt
                         dt = _dt.strptime(str(expiry_raw), "%Y%m%d%H%M%SZ")
                         dt = dt.replace(tzinfo=timezone.utc)
                     except Exception:
                         dt = None
-                if dt is not None:
-                    if dt.tzinfo is None:
-                        dt = dt.replace(tzinfo=timezone.utc)
-                    fmt = dt.strftime("%d.%m.%Y")
-                else:
-                    fmt = str(expiry_raw)
+                fmt = dt.strftime("%d.%m.%Y") if dt else str(expiry_raw)
             except Exception:
                 fmt = str(expiry_raw)
-
             if isinstance(days, int):
-                try:
-                    if days < 0:
-                        details.append(f"Zertifikat gültig bis: {fmt} (abgelaufen vor {-days} Tagen)")
-                    else:
-                        details.append(f"Zertifikat gültig bis: {fmt} (in {days} Tagen)")
-                except Exception:
-                    details.append(f"Zertifikat gültig bis: {fmt}")
+                label = f"abgelaufen vor {-days} Tagen" if days < 0 else f"in {days} Tagen"
+                details.append(f"Zertifikat gültig bis: {fmt} ({label})")
             else:
                 details.append(f"Zertifikat gültig bis: {fmt}")
         if tls.get("cert_valid_from"):
@@ -485,7 +597,6 @@ def create_technical_section(elements: List, styles: Dict, *args, **kwargs) -> N
             try:
                 from dateutil import parser as _dtparser
                 from datetime import timezone
-
                 dt2 = None
                 try:
                     dt2 = _dtparser.parse(str(valid_raw))
@@ -496,12 +607,7 @@ def create_technical_section(elements: List, styles: Dict, *args, **kwargs) -> N
                         dt2 = dt2.replace(tzinfo=timezone.utc)
                     except Exception:
                         dt2 = None
-                if dt2 is not None:
-                    if dt2.tzinfo is None:
-                        dt2 = dt2.replace(tzinfo=timezone.utc)
-                    fmt2 = dt2.strftime("%d.%m.%Y")
-                else:
-                    fmt2 = str(valid_raw)
+                fmt2 = dt2.strftime("%d.%m.%Y") if dt2 else str(valid_raw)
             except Exception:
                 fmt2 = str(valid_raw)
             details.append(f"Zertifikat gültig ab: {fmt2}")
@@ -642,72 +748,104 @@ def _build_port_text(
 def _add_system_metadata(
     elements: List, styles: Dict, technical_json: Dict[str, Any]
 ) -> None:
+    """System-Informationen als zweispaltiges Grid — wie im Screenshot."""
     elements.append(Spacer(1, 12))
-    elements.append(Paragraph("<b>System-Informationen:</b>", styles["normal"]))
-    elements.append(Spacer(1, 4))
 
-    meta_items = _extract_metadata_items(technical_json)
+    # Label-Zeile
+    elements.append(Paragraph(
+        '<font size="9" color="#666666"><b>SYSTEM-INFORMATIONEN</b></font>',
+        styles["normal"],
+    ))
+    elements.append(Spacer(1, 6))
 
-    if meta_items:
-        for item in meta_items:
-            elements.append(Paragraph(f"• {item}", styles["bullet"]))
-    else:
-        elements.append(
-            Paragraph("Keine weiteren Metadaten verfügbar.", styles["normal"])
-        )
+    items = _extract_metadata_items_structured(technical_json)
+    if not items:
+        elements.append(Paragraph("Keine weiteren Metadaten verfügbar.", styles["normal"]))
+        return
+
+    # Zweispaltig: linke Spalte + rechte Spalte
+    # Aufteilen: erste Hälfte links, zweite Hälfte rechts
+    half = (len(items) + 1) // 2
+    left_items  = items[:half]
+    right_items = items[half:]
+
+    # Auf gleiche Länge padden
+    while len(right_items) < len(left_items):
+        right_items.append(("", ""))
+
+    _C_LABEL = "#888888"
+    _C_VAL   = "#1A1A1A"
+    ns = styles.get("Normal") or styles.get("normal")
+
+    def _row(label, val):
+        return [
+            Paragraph(f'<font size="9" color="{_C_LABEL}">{label}</font>', ns),
+            Paragraph(f'<font size="9" color="{_C_VAL}"><b>{val}</b></font>', ns),
+        ]
+
+    rows = []
+    for (ll, lv), (rl, rv) in zip(left_items, right_items):
+        rows.append(_row(ll, lv) + _row(rl, rv))
+
+    col_w = [38 * mm, 48 * mm, 38 * mm, 51 * mm]
+    tbl = Table(rows, colWidths=col_w)
+    tbl.setStyle(TableStyle([
+        ("TOPPADDING",    (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 6),
+        ("VALIGN",        (0, 0), (-1, -1), "TOP"),
+        ("LINEBELOW",     (0, 0), (-1, -1), 0.3, HexColor("#EEEEEE")),
+    ]))
+    elements.append(tbl)
 
 
-def _extract_metadata_items(technical_json: Dict[str, Any]) -> List[str]:
-    meta_items = []
+def _extract_metadata_items_structured(
+    technical_json: Dict[str, Any],
+) -> List[tuple]:
+    """Gibt Liste von (label, value) Tupeln zurück — für zweispaltiges Grid."""
+    items = []
 
-    # Hostnames/Domains
     hostnames = technical_json.get("hostnames", [])
     if hostnames:
-        meta_items.append(f"Hostname(s): {', '.join(hostnames[:3])}")
+        items.append(("Hostname(s)", ", ".join(hostnames[:2])))
 
-    # Organisation/ISP
     org = technical_json.get("org", "")
     isp = technical_json.get("isp", "")
     if org:
-        meta_items.append(f"Organisation: {org}")
+        items.append(("Organisation", org))
     elif isp:
-        meta_items.append(f"ISP: {isp}")
+        items.append(("ISP", isp))
 
-    # Geolocation
-    country = technical_json.get("country", "")
-    city = technical_json.get("city", "")
-    if country and city:
-        meta_items.append(f"Standort: {city}, {country}")
-    elif country:
-        meta_items.append(f"Land: {country}")
-
-    # ASN
     asn = technical_json.get("asn", "")
     if asn:
-        meta_items.append(f"Autonomous System: {asn}")
+        items.append(("Autonomous System", str(asn)))
 
-    # Tags: only show informational ones here; security-relevant tags
-    # are rendered as a warning box at the top of the section.
+    country = technical_json.get("country", "")
+    city    = technical_json.get("city", "")
+    if country and city:
+        items.append(("Standort", f"{city}, {country}"))
+    elif country:
+        items.append(("Land", country))
+
+    # Tags (informational only)
     tags = [str(t).lower().strip() for t in (technical_json.get("tags") or [])]
     info_tags = [t for t in tags if _SHODAN_TAG_MAP.get(t, (None,))[0] is None and t not in _SHODAN_TAG_MAP]
-    # also include known informational tags (cloud, vpn)
     info_tags += [t for t in tags if t in _SHODAN_TAG_MAP and _SHODAN_TAG_MAP[t][0] is None]
     if info_tags:
-        meta_items.append(f"Tags: {', '.join(info_tags)}")
+        items.append(("Tags", " · ".join(info_tags)))
 
-    # Vulnerabilities
     vulnerabilities = technical_json.get("vulnerabilities", [])
     if vulnerabilities:
-        meta_items.append(f"Identifizierte Schwachstellen: {len(vulnerabilities)}")
+        items.append(("Schwachstellen (Inferred)", str(len(vulnerabilities))))
 
-    # Kritische Services
     critical_services = technical_json.get("critical_services", [])
     if critical_services:
         high_critical = [c for c in critical_services if c.get("severity") == "high"]
         if high_critical:
-            meta_items.append(f"Kritische Konfigurationen: {len(high_critical)}")
+            items.append(("Krit. Konfigurationen", str(len(high_critical))))
 
-    return meta_items
+    return items
 
 
 def _add_security_notes(
