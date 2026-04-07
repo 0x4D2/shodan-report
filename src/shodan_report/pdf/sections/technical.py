@@ -5,6 +5,7 @@ from reportlab.lib.units import mm
 from reportlab.lib.colors import HexColor
 from shodan_report.pdf.layout import keep_section, set_table_repeat
 from shodan_report.pdf.sections.data.technical_data import prepare_technical_detail
+from shodan_report.pdf.styles import Colors
 
 
 def _clean_display_field(v: Optional[str], max_len: int = 80) -> str:
@@ -415,13 +416,11 @@ def _risk_badge(styles: Dict, risk: str) -> Table:
     """
     ns = styles.get("Normal") or styles.get("normal")
     cfg = {
-        "hoch":   ("#FDECEA", "#C0392B", "#C0392B", "hoch"),
-        "mittel": ("#FEF3E8", "#E67E22", "#E67E22", "mittel"),
-        "info":   ("#F4F4F4", "#AAAAAA", "#666666", "info"),
+        "hoch":   (Colors.risk_critical_bg,  Colors.risk_critical_dot,  "#991b1b", "hoch"),
+        "mittel": (Colors.risk_high_bg,       Colors.risk_high_dot,      "#9a3412", "mittel"),
+        "info":   (Colors.risk_unknown_bg,    Colors.border,             "#6b7280", "info"),
     }
-    bg_hex, bd_hex, tx_hex, label = cfg.get(risk, cfg["info"])
-    bg = HexColor(bg_hex)
-    bd = HexColor(bd_hex)
+    bg, bd, tx_hex, label = cfg.get(risk, cfg["info"])
 
     badge = Table(
         [[Paragraph(f'<font size="8" color="{tx_hex}"><b>{label}</b></font>', ns)]],
@@ -481,13 +480,13 @@ def create_technical_section(elements: List, styles: Dict, *args, **kwargs) -> N
         return
 
     # ── Tabelle: PORT | DIENST | VERSION | RISIKO | HINWEIS ──────────────────
-    _C_BORDER   = HexColor("#DDDDDD")
-    _C_HDR_BG   = HexColor("#F8F8F8")
-    _C_ROW_ALT  = HexColor("#F8FAFC")
+    _C_BORDER  = Colors.border     # #e5e7eb
+    _C_HDR_BG  = Colors.bg_light   # #f8fafc
+    _C_ROW_ALT = Colors.bg_stripe  # #f1f5f9
 
     def _hdr(text):
         return Paragraph(
-            f'<font size="8" color="#666666"><b>{text}</b></font>',
+            f'<font size="8" color="#6b7280"><b>{text}</b></font>',
             styles["normal"],
         )
 
@@ -517,11 +516,11 @@ def create_technical_section(elements: List, styles: Dict, *args, **kwargs) -> N
         risk_cell = _risk_badge(styles, risk)
 
         table_data.append([
-            Paragraph(f'<font size="9" color="#1A1A1A"><b>{port_txt}</b></font>', styles["normal"]),
-            Paragraph(f'<font size="9" color="#333333">{prod}</font>',             styles["normal"]),
-            Paragraph(f'<font size="9" color="#666666">{ver}</font>',              styles["normal"]),
+            Paragraph(f'<font size="9" color="#111827"><b>{port_txt}</b></font>', styles["normal"]),
+            Paragraph(f'<font size="9" color="#111827">{prod}</font>',             styles["normal"]),
+            Paragraph(f'<font size="9" color="#6b7280">{ver}</font>',              styles["normal"]),
             risk_cell,
-            Paragraph(f'<font size="9" color="#444444">{hint}</font>',             styles["normal"]),
+            Paragraph(f'<font size="9" color="#111827">{hint}</font>',             styles["normal"]),
         ])
 
     # Spaltenbreiten: PORT | DIENST | VERSION | RISIKO | HINWEIS
@@ -752,7 +751,7 @@ def _add_system_metadata(
 
     # Label-Zeile
     elements.append(Paragraph(
-        '<font size="9" color="#666666"><b>SYSTEM-INFORMATIONEN</b></font>',
+        '<font size="9" color="#6b7280"><b>SYSTEM-INFORMATIONEN</b></font>',
         styles["normal"],
     ))
     elements.append(Spacer(1, 6))
@@ -772,8 +771,8 @@ def _add_system_metadata(
     while len(right_items) < len(left_items):
         right_items.append(("", ""))
 
-    _C_LABEL = "#888888"
-    _C_VAL   = "#1A1A1A"
+    _C_LABEL = "#6b7280"   # Colors.text_muted
+    _C_VAL   = "#111827"   # Colors.text
     ns = styles.get("Normal") or styles.get("normal")
 
     def _row(label, val):

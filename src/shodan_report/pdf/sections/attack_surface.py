@@ -128,71 +128,28 @@ def _build_summary_bar(
     """
     s = styles.get("Normal")
 
-    # Linke Seite: eine Zelle, zwei Zeilen, linksbündig, mehr Padding
-    left = Table(
+    # Neue KPI-Bar: DOMAIN links, 3 dicke KPIs zentriert, alles in einer Zeile
+    col_widths = [60 * mm, 38.33 * mm, 38.33 * mm, 38.33 * mm]  # Summe 175 mm
+    bar = Table([
         [
-            [
-                Paragraph('<font size="8" color="#888888"><b>DOMAIN</b></font>', s)
-            ],
-            [
-                Paragraph(f'<font size="12" color="#1a1a1a"><b>{domain}</b></font>', s)
-            ]
-        ],
-        colWidths=[60 * mm],
-    )
-    left.setStyle(TableStyle([
-        ("VALIGN",        (0, 0), (-1, -1), "LEFT"),
-        ("ALIGN",         (0, 0), (-1, -1), "LEFT"),
-        ("LEFTPADDING",   (0, 0), (-1, -1), 4),
-        ("RIGHTPADDING",  (0, 0), (-1, -1), 8),
-        ("TOPPADDING",    (0, 0), (0, 0), 0),    # DOMAIN label
-        ("BOTTOMPADDING", (0, 0), (0, 0), 0),
-        ("TOPPADDING",    (0, 1), (0, 1), 0),    # Domainname
-        ("BOTTOMPADDING", (0, 1), (0, 1), 0),
-    ]))
-
-    # Rechte Seite — 3 KPI-Zahlen (flache Tabelle, keine verschachtelten Tabellen)
-    kpi_data = [
-        [
-            Paragraph(f'<font size="14" color="#1a1a1a"><b>{len(relevant)}</b></font>', s),
-            Paragraph(f'<font size="14" color="#1a1a1a"><b>{len(cdn)}</b></font>', s),
-            Paragraph(f'<font size="14" color="#1a1a1a"><b>{len(subdomains)}</b></font>', s),
-        ],
-        [
-            Paragraph('<font size="7" color="#888888">EXPONIERTE IPS</font>', s),
-            Paragraph('<font size="7" color="#888888">CDN GEFILTERT</font>', s),
-            Paragraph('<font size="7" color="#888888">SUBDOMAINS (CRT.SH)</font>', s),
+            Paragraph('<font size="8" color="#888888"><b>DOMAIN</b></font><br/><font size="14" color="#1a1a1a"><b>' + domain + '</b></font>', s),
+            Paragraph('<para align="center"><font size="18" color="#1a1a1a"><b>' + str(len(relevant)) + '</b></font><br/><font size="8" color="#888888">EXPONIERTE IPS</font></para>', s),
+            Paragraph('<para align="center"><font size="18" color="#1a1a1a"><b>' + str(len(cdn)) + '</b></font><br/><font size="8" color="#888888">CDN GEFILTERT</font></para>', s),
+            Paragraph('<para align="center"><font size="18" color="#1a1a1a"><b>' + str(len(subdomains)) + '</b></font><br/><font size="8" color="#888888">SUBDOMAINS (CRT.SH)</font></para>', s),
         ]
-    ]
-    right = Table(
-        kpi_data,
-        colWidths=[32 * mm, 32 * mm, 35 * mm],
-    )
-    right.setStyle(TableStyle([
-        ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
-        ("ALIGN",         (0, 0), (-1, -1), "CENTER"),
-        ("LEFTPADDING",   (0, 0), (-1, -1), 0),
-        ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
-        ("TOPPADDING",    (0, 0), (-1, -1), 2),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
-        ("LINEBEFORE",    (1, 0), (1, 1), 0.5, C_BORDER),
-        ("LINEBEFORE",    (2, 0), (2, 1), 0.5, C_BORDER),
-    ]))
-
-    # Neue Spaltenbreiten: links 60mm, rechts 99mm (Summe 159mm, mit Padding 175mm)
-    bar = Table(
-        [[left, right]],
-        colWidths=[60 * mm, 99 * mm],
-    )
+    ], colWidths=col_widths)
     bar.setStyle(TableStyle([
         ("BACKGROUND",    (0, 0), (-1, -1), C_SUMMARY_BG),
         ("BOX",           (0, 0), (-1, -1), 0.5, C_BORDER),
         ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+        ("ALIGN",         (0, 0), (-1, -1), "CENTER"),
         ("LEFTPADDING",   (0, 0), (-1, -1), 12),
         ("RIGHTPADDING",  (0, 0), (-1, -1), 12),
         ("TOPPADDING",    (0, 0), (-1, -1), 10),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
         ("LINEBEFORE",    (1, 0), (1, 0), 0.5, C_BORDER),
+        ("LINEBEFORE",    (2, 0), (2, 0), 0.5, C_BORDER),
+        ("LINEBEFORE",    (3, 0), (3, 0), 0.5, C_BORDER),
     ]))
     return bar
 

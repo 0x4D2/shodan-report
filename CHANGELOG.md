@@ -1,3 +1,7 @@
+# 2026-04-07
+- Design-Update: Die KPI-Bar im Abschnitt "Attack Surface — Domain-Discovery" ist jetzt einzeilig, mit Domain und Beschreibung linksbündig und drei schmalen, zentrierten KPIs. Einheitliches, modernes Layout wie die Tabelle darunter.
+# 2026-04-07
+- Überarbeitung: Das Design der CVE-Übersicht im PDF-Report wurde modernisiert und verbessert (KPI-Karten, CVSS-Balken, neue Tabellenstruktur, klarere Exploit- und Relevanzanzeige).
 ## 2026-04-06
 
 - conclusion.py: Neue graue Intro-Box mit dynamischem Exposure-Level, darunter automatische zweispaltige Zeitplan-Tabelle (KURZFRISTIG, MITTELFRISTIG, etc.) basierend auf technical_json.

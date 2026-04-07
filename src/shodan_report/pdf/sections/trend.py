@@ -9,23 +9,24 @@ from reportlab.platypus import Spacer, Paragraph, Table, TableStyle
 from reportlab.lib.units import mm
 from reportlab.lib.colors import HexColor, white, black
 from reportlab.graphics.shapes import Drawing, Line, Circle, String, Rect, PolyLine
-from shodan_report.pdf.layout import keep_section, set_table_repeat, set_table_no_split
+from shodan_report.pdf.layout import keep_section, set_table_repeat
+from shodan_report.pdf.styles import Colors
 
 
-# ── Farben ───────────────────────────────────────────────────────────────────
-C_BORDER      = HexColor("#DDDDDD")
-C_HEADER_BG   = HexColor("#F8F8F8")
-C_TEXT        = HexColor("#444444")
-C_MUTED       = HexColor("#888888")
-C_RED_BG      = HexColor("#FDECEA")
-C_RED         = HexColor("#C0392B")
-C_GREEN_BG    = HexColor("#F4F8F4")
-C_GREEN       = HexColor("#27AE60")
-C_ORANGE      = HexColor("#E67E22")
-C_ORANGE_BG   = HexColor("#FEF3E8")
-C_NEUTRAL_BG  = HexColor("#F8F8F8")
-C_CHART_LINE  = HexColor("#E67E22")
-C_GRID        = HexColor("#EEEEEE")
+# ── Farben — alle aus dem globalen Designsystem ──────────────────────────────
+C_BORDER     = Colors.border       # #e5e7eb
+C_HEADER_BG  = Colors.bg_light     # #f8fafc
+C_NEUTRAL_BG = Colors.bg_light     # #f8fafc
+C_TEXT       = Colors.text         # #111827
+C_MUTED      = Colors.text_muted   # #6b7280
+C_RED_BG     = Colors.risk_critical_bg   # #fef2f2
+C_RED        = Colors.risk_critical_dot  # #dc2626
+C_GREEN_BG   = Colors.risk_low_bg        # #f0fdf4
+C_GREEN      = Colors.risk_low_dot       # #16a34a
+C_ORANGE     = Colors.risk_high_dot      # #ea580c
+C_ORANGE_BG  = Colors.risk_high_bg       # #fff7ed
+C_CHART_LINE = Colors.accent             # #1e56a0
+C_GRID       = Colors.border             # #e5e7eb
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -247,11 +248,11 @@ def _build_metrics_context(elements: List, styles: Dict) -> None:
     ns = styles.get("normal") or styles.get("Normal")
     elements.append(Spacer(1, 8))
     elements.append(Paragraph(
-        '<font size="8" color="#666666"><b>Was die Kennzahlen bedeuten</b></font>',
+        '<font size="8" color="#6b7280"><b>Was die Kennzahlen bedeuten</b></font>',
         ns,
     ))
     elements.append(Paragraph(
-        '<font size="8" color="#888888">'
+        '<font size="8" color="#6b7280">'
         "Öffentliche Ports: Anzahl extern erreichbarer Dienste · "
         "Kritische Services: Administrationsschnittstellen (SSH, RDP, DB) · "
         "Hochrisiko-CVEs: Schwachstellen mit CVSS ≥ 9,0 · "
@@ -280,15 +281,22 @@ def _build_kpi_cards(
     ports_prev, ports_curr = _tt_vals(trend_table, "Öffentliche Ports")
     cves_prev,  cves_curr  = _tt_vals(trend_table, "Hochrisiko-CVEs")
 
+    # Farb-Tokens als Strings (für inline <font color="...">)
+    _COL_NEUTRAL = "#6b7280"   # Colors.text_muted
+    _COL_RED     = "#dc2626"   # Colors.risk_critical_dot
+    _COL_GREEN   = "#16a34a"   # Colors.risk_low_dot
+    _COL_ORANGE  = "#ea580c"   # Colors.risk_high_dot
+    _COL_TEXT    = "#111827"   # Colors.text
+
     # Exposure-Level
     exp_prev_str = f"{prev_exposure} / 5" if prev_exposure is not None else "— / 5"
     exp_curr_str = f"{curr_exposure} / 5" if curr_exposure is not None else "— / 5"
-    exp_curr_color = "#E67E22"
+    exp_curr_color = _COL_ORANGE
     if curr_exposure is not None and prev_exposure is not None:
         if curr_exposure < prev_exposure:
-            exp_curr_color = "#27AE60"
+            exp_curr_color = _COL_GREEN
         elif curr_exposure > prev_exposure:
-            exp_curr_color = "#C0392B"
+            exp_curr_color = _COL_RED
 
     # Veränderung
     if curr_exposure is not None and prev_exposure is not None:
@@ -296,89 +304,94 @@ def _build_kpi_cards(
         if diff == 0:
             change_val   = "→ Stabil"
             change_sub   = "kein Trend"
-            change_color = "#888888"
+            change_color = _COL_NEUTRAL
         elif diff > 0:
             change_val   = f"↑ +{diff}"
             change_sub   = "verschlechtert"
-            change_color = "#C0392B"
+            change_color = _COL_RED
         else:
             change_val   = f"↓ {diff}"
             change_sub   = "verbessert"
-            change_color = "#27AE60"
+            change_color = _COL_GREEN
     else:
         change_val   = "→ Stabil"
         change_sub   = "kein Trend"
-        change_color = "#888888"
+        change_color = _COL_NEUTRAL
 
     # Neue CVEs
     cve_diff = cves_curr - cves_prev
     if cve_diff > 0:
         cve_val   = f"+{cve_diff}"
         cve_sub   = "seit Vormonat"
-        cve_color = "#C0392B"
+        cve_color = _COL_RED
     elif cve_diff < 0:
         cve_val   = str(cve_diff)
         cve_sub   = "weniger als Vormonat"
-        cve_color = "#27AE60"
+        cve_color = _COL_GREEN
     else:
         cve_val   = "±0"
         cve_sub   = "keine Änderung"
-        cve_color = "#888888"
+        cve_color = _COL_NEUTRAL
 
     # Behobene Ports
     port_diff = ports_prev - ports_curr
     if port_diff > 0:
         port_val   = f"−{port_diff}"
         port_sub   = _port_closed_label(trend_table)
-        port_color = "#27AE60"
+        port_color = _COL_GREEN
     elif port_diff < 0:
         port_val   = f"+{abs(port_diff)}"
         port_sub   = "neu geöffnet"
-        port_color = "#C0392B"
+        port_color = _COL_RED
     else:
         port_val   = "±0"
         port_sub   = "unverändert"
-        port_color = "#888888"
+        port_color = _COL_NEUTRAL
 
-    def _card(top_label, big_val, big_color, sub_val, sub_color="#888888"):
+    # Die Interpretationsbox ist 183 mm breit, daher passen wir die KPI-Tabelle daran an
+    _CARD_W = 183.0 / 5 * mm  # 36.6 mm
+
+    def _card(top_label, big_val, big_color, sub_val, sub_color=None):
+        _big_color  = big_color if isinstance(big_color, str) else "#111827"
+        _sub_color  = (sub_color if isinstance(sub_color, str) else "#6b7280") if sub_color else "#6b7280"
         return Table(
             [
-                [Paragraph(f'<font size="7" color="#888888"><b>{top_label}</b></font>', styles["normal"])],
-                [Paragraph(f'<font size="13" color="{big_color}"><b>{big_val}</b></font>', styles["normal"])],
-                [Paragraph(f'<font size="7.5" color="{sub_color}">{sub_val}</font>', styles["normal"])],
+                [Paragraph(f'<font size="7" color="#6b7280">{top_label}</font>', styles["normal"])],
+                [Paragraph(f'<font size="14" color="{_big_color}"><b>{big_val}</b></font>', styles["normal"])],
+                [Paragraph(f'<font size="7.5" color="{_sub_color}">{sub_val}</font>', styles["normal"])],
             ],
-            colWidths=[33 * mm],
+            colWidths=[_CARD_W],
         )
 
     cards = [
-        _card("VORMONAT",        exp_prev_str,  "#444444", compare_month or "Vormonat"),
+        _card("VORMONAT",        exp_prev_str,  _COL_TEXT, compare_month or "Vormonat"),
         _card("AKTUELL",         exp_curr_str,  exp_curr_color, _next_month_label(compare_month)),
         _card("VERÄNDERUNG",     change_val,    change_color,   change_sub),
         _card("NEUE CVES",       cve_val,       cve_color,      cve_sub),
         _card("BEHOBENE PORTS",  port_val,      port_color,     port_sub),
     ]
 
-    # Kartenstyle
+    # Kartenstyle — identisch zu Management-KPI-Zellen
     card_style = TableStyle([
-        ("BOX",           (0, 0), (-1, -1), 0.5, C_BORDER),
+        ("BOX",           (0, 0), (-1, -1), 0.3, C_BORDER),
         ("BACKGROUND",    (0, 0), (-1, -1), C_NEUTRAL_BG),
-        ("TOPPADDING",    (0, 0), (-1, -1), 5),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-        ("LEFTPADDING",   (0, 0), (-1, -1), 7),
-        ("RIGHTPADDING",  (0, 0), (-1, -1), 5),
+        ("ALIGN",         (0, 0), (-1, -1), "CENTER"),
+        ("TOPPADDING",    (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 4),
         ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
     ])
     for c in cards:
         c.setStyle(card_style)
 
-    row_tbl = Table([[c for c in cards]], colWidths=[36 * mm] * 5)  # 5×36=180mm ≤ 183mm
+    row_tbl = Table([[c for c in cards]], colWidths=[_CARD_W] * 5)  # 5×36.6=183 mm
     row_tbl.setStyle(TableStyle([
         ("VALIGN",        (0, 0), (-1, -1), "TOP"),
         ("LEFTPADDING",   (0, 0), (-1, -1), 0),
         ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
         ("TOPPADDING",    (0, 0), (-1, -1), 0),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
-        ("RIGHTPADDING",  (0, 0), (0, 3), 3),  # Lücke zwischen Karten
     ]))
     return row_tbl
 
@@ -402,10 +415,10 @@ def _build_comparison_table(
     curr_label = "AKTUELL"
 
     header = [
-        Paragraph(f'<font size="8" color="#666666"><b>KENNZAHL</b></font>',   styles["normal"]),
-        Paragraph(f'<font size="8" color="#666666"><b>{prev_label}</b></font>', styles["normal"]),
-        Paragraph(f'<font size="8" color="#666666"><b>{curr_label}</b></font>', styles["normal"]),
-        Paragraph(f'<font size="8" color="#666666"><b>TREND</b></font>',       styles["normal"]),
+        Paragraph(f'<font size="8" color="#6b7280"><b>KENNZAHL</b></font>',   styles["normal"]),
+        Paragraph(f'<font size="8" color="#6b7280"><b>{prev_label}</b></font>', styles["normal"]),
+        Paragraph(f'<font size="8" color="#6b7280"><b>{curr_label}</b></font>', styles["normal"]),
+        Paragraph(f'<font size="8" color="#6b7280"><b>TREND</b></font>',       styles["normal"]),
     ]
 
     # Zeilen aus trend_table
@@ -443,21 +456,21 @@ def _build_comparison_table(
 
         if diff > 0:
             trend_str  = f"↑ +{diff}"
-            trend_color = "#C0392B"
+            trend_color = "#dc2626"
             row_bg      = None
         elif diff < 0:
             trend_str  = f"↓ {diff}"
-            trend_color = "#27AE60"
+            trend_color = "#16a34a"
             row_bg      = None
         else:
             trend_str  = "–"
-            trend_color = "#888888"
+            trend_color = "#6b7280"
             row_bg      = None
 
         rows.append([
-            Paragraph(f'<font size="9" color="#333333">{display_name}</font>', styles["normal"]),
-            Paragraph(f'<font size="9" color="#666666">{prev_disp}</font>',        styles["normal"]),
-            Paragraph(f'<font size="9" color="#333333"><b>{curr_disp}</b></font>', styles["normal"]),
+            Paragraph(f'<font size="9" color="#111827">{display_name}</font>', styles["normal"]),
+            Paragraph(f'<font size="9" color="#6b7280">{prev_disp}</font>',        styles["normal"]),
+            Paragraph(f'<font size="9" color="#111827"><b>{curr_disp}</b></font>', styles["normal"]),
             Paragraph(f'<font size="9" color="{trend_color}"><b>{trend_str}</b></font>', styles["normal"]),
         ])
 
@@ -499,13 +512,13 @@ def _build_chart_cell(
 
     # Legende
     legend = Paragraph(
-        '<font size="8" color="#E67E22">— Exposure-Level</font>',
+        '<font size="8" color="#ea580c">— Exposure-Level</font>',
         styles["normal"]
     )
 
     inner = Table(
         [
-            [Paragraph('<font size="8" color="#666666"><b>EXPOSURE-LEVEL VERLAUF (6 MONATE)</b></font>', styles["normal"])],
+            [Paragraph('<font size="8" color="#6b7280"><b>EXPOSURE-LEVEL VERLAUF (6 MONATE)</b></font>', styles["normal"])],
             [chart],
             [legend],
         ],
@@ -595,7 +608,7 @@ def _build_multi_point_chart(
     for i, label in enumerate(months):
         x = _xpos(i)
         is_last = (i == len(months) - 1)
-        color = "#E67E22" if is_last else "#AAAAAA"
+        color = "#ea580c" if is_last else "#AAAAAA"
         weight_str = ""
         d.add(String(x - 3 * mm, 1 * mm, label, fontSize=7,
                      fillColor=HexColor(color)))
@@ -622,7 +635,7 @@ def _build_interpretation_box(
     Grau hinterlegte Box mit Interpretation — wie im Screenshot.
     """
     cell = Paragraph(
-        f'<font size="9" color="#333333"><b>Interpretation:</b> {interp}</font>',
+        f'<font size="9" color="#111827"><b>Interpretation:</b> {interp}</font>',
         styles["normal"]
     )
     tbl = Table([[cell]], colWidths=[183 * mm])
