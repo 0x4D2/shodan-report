@@ -18,7 +18,7 @@ def serialize_service(service) -> dict:
 def save_snapshot(snapshot: AssetSnapshot, customer_name: str, month: str) -> Path:
 
     customer_dir = snapshots_dir() / customer_name.replace(" ", "_")
-    customer_dir.mkdir(exist_ok=True)
+    customer_dir.mkdir(parents=True, exist_ok=True)
 
     filename = f"{month}_{snapshot.ip}.json"
     path = customer_dir / filename

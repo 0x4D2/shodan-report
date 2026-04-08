@@ -1,3 +1,14 @@
+# 2026-04-08 (2)
+
+## fix: Logo, mkdir, .env.example, .gitignore
+
+- `assets/mg-solutions-logo.png` aus `.gitignore` entfernt → wird jetzt ins Repo eingecheckt (kein manuelles Kopieren mehr nach `git pull`)
+- `snapshot_manager.py`: `mkdir(parents=True)` ergänzt → Verzeichnis wird automatisch angelegt wenn `OUTPUT_BASE_DIR` auf einen neuen Pfad zeigt
+- `.env.example` hinzugefügt → Vorlage mit allen verfügbaren Variablen (ohne echte Werte)
+- `.gitignore` (äußeres Verzeichnis): neu erstellt → `reports/`, `archive/`, `snapshots/`, `.cache/` werden nicht versehentlich committed
+
+---
+
 # 2026-04-08
 
 ## refactor: Zentrale Pfad-Konfiguration (`paths.py`)
