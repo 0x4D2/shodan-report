@@ -8,9 +8,8 @@ from .pdf_manager import prepare_pdf_elements
 from .pdf_renderer import render_pdf
 from .sections.data.management_data import prepare_management_data
 from .sections.data.cve_enricher import enrich_cves
+from shodan_report.paths import reports_dir
 import re
-
-OUTPUT_DIR = Path("./reports")
 
 
 def generate_pdf(
@@ -22,7 +21,7 @@ def generate_pdf(
     technical_json: dict,
     evaluation: dict,
     business_risk: str,
-    output_dir: Path = OUTPUT_DIR,
+    output_dir: Path = None,
     config: Optional[dict] = None,
     compare_month: Optional[str] = None,
 ) -> Path:
@@ -30,6 +29,8 @@ def generate_pdf(
     config = config or {}
     debug_mdata = bool(config.get("debug_mdata", False))
 
+    if output_dir is None:
+        output_dir = reports_dir()
     output_dir.mkdir(parents=True, exist_ok=True)
     customer_dir = output_dir / customer_name.replace(" ", "_")
     customer_dir.mkdir(parents=True, exist_ok=True)

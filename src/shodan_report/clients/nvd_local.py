@@ -6,11 +6,12 @@ so callers can quickly lookup CVE details without hitting NVD API or HTML.
 from pathlib import Path
 from typing import Optional, Dict, Any
 import json
+from shodan_report.paths import cache_dir as _cache_base
 
 
 class LocalNvdClient:
     def __init__(self, cache_dir: Optional[str] = None):
-        self.cache_dir = Path(cache_dir or '.cache/nvd')
+        self.cache_dir = Path(cache_dir) if cache_dir else _cache_base() / "nvd"
         self._index: Dict[str, Dict[str, Any]] = {}
         self._loaded = False
 

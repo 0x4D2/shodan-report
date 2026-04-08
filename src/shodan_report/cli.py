@@ -5,6 +5,7 @@ import argparse
 import sys
 from pathlib import Path
 from typing import Optional
+from shodan_report.paths import reports_dir
 
 
 def parse_args(args: Optional[list[str]] = None) -> argparse.Namespace:
@@ -59,8 +60,8 @@ Beispiele:
         "--output-dir",
         "-o",
         type=Path,
-        default=Path("./reports"),
-        help="Ausgabeverzeichnis für PDFs (default: ./reports)",
+        default=None,
+        help="Ausgabeverzeichnis für PDFs (default: OUTPUT_BASE_DIR/reports oder ./reports)",
     )
 
     parser.add_argument(
@@ -109,8 +110,9 @@ def validate_args(args: argparse.Namespace) -> bool:
         return False
 
     # Validate output directory
+    output_dir = args.output_dir if args.output_dir is not None else reports_dir()
     try:
-        args.output_dir.mkdir(parents=True, exist_ok=True)
+        output_dir.mkdir(parents=True, exist_ok=True)
     except (PermissionError, OSError) as e:
         print(f"ERROR: Kann Ausgabeverzeichnis nicht erstellen: {e}", file=sys.stderr)
         return False

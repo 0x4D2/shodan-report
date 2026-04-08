@@ -22,6 +22,7 @@ from shodan_report.pdf.pdf_generator import generate_pdf
 from shodan_report.pdf.sections.data.management_data import prepare_management_data
 from shodan_report.pdf.sections.data.cve_enricher import enrich_cves
 from shodan_report.archiver.report_archiver import ReportArchiver
+from shodan_report.paths import reports_dir
 
 
 def load_customer_config(config_path: Optional[Path]) -> dict:
@@ -49,7 +50,7 @@ def generate_report_pipeline(
     month: str,
     compare_month: Optional[str] = None,
     config_path: Optional[Path] = None,
-    output_dir: Path = Path("./reports"),
+    output_dir: Path = None,
     archive: bool = True,
     verbose: bool = False,
     domain: Optional[str] = None,
@@ -78,6 +79,9 @@ def generate_report_pipeline(
         trend_text = "Trendanalyse deaktiviert (Kundenkonfiguration)."
 
     load_dotenv()
+
+    if output_dir is None:
+        output_dir = reports_dir()
 
     # ── Attack Surface Discovery (passives OSINT) ──────────────────────────────────
     attack_surface = None

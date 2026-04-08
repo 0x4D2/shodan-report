@@ -1,3 +1,29 @@
+# 2026-04-08
+
+## refactor: Zentrale Pfad-Konfiguration (`paths.py`)
+
+Alle Ausgabepfade waren bisher als relative Konstanten über 10 Dateien verteilt (`Path("reports")`, `Path("archive")`, etc.). Das führte dazu, dass Ausgaben je nach Arbeitsverzeichnis an unterschiedlichen Orten landeten (Datenduplikate in `shodan-report/` und `shodan-report/shodan-report/`).
+
+**Änderungen:**
+- Neue Datei `src/shodan_report/paths.py` als zentrale Anlaufstelle für alle Ausgabepfade
+- Neue `.env`-Variable `OUTPUT_BASE_DIR` (optional): setzt das Basisverzeichnis für alle Ausgaben; ohne Variable identisches Verhalten wie vorher (CWD)
+- Alle 10 betroffenen Module (`archiver/core.py`, `archiver/report_archiver.py`, `archiver/snapshot_archiver.py`, `archiver/version_manager.py`, `cli.py`, `clients/nvd_local.py`, `core/runner.py`, `pdf/pdf_generator.py`, `pdf/sections/data/cve_enricher.py`, `persistence/snapshot_manager.py`) importieren nun aus `paths.py`
+- Monkeypatches in 3 Testdateien angepasst (Patch am Verwendungsort, nicht am Definitionsort)
+
+**So nutzen:** In `.env` eintragen:
+```
+OUTPUT_BASE_DIR=C:/Users/<username>/Code/shodan-report
+```
+Dann landen `reports/`, `snapshots/`, `archive/` und `.cache/` immer im selben Basisverzeichnis, egal von wo der Befehl gestartet wird.
+
+## design: Management-Section zweispaltig, KPI-Bar modernisiert
+
+- KPI-Breite von 163 mm auf 175 mm (volle Textbreite) angepasst
+- KPI-Karten: Uppercase-Labels, einheitlicher Rahmen/Hintergrund (`#F8F8F8`, `#DDDDDD`)
+- Exposure-Box: kräftigere Akzentfarben (Rot `#C0392B`, Orange `#E67E22`, Grün `#27AE60`)
+- Management-Section: zweispaltiges Layout (links: Kernaussagen + Technische Kurzbewertung | rechts: Gesamteinschätzung + Empfehlung)
+- Fallback-Texte für leere `management_text`-Blöcke ergänzt
+
 # 2026-04-07
 - Design-Update: Die KPI-Bar im Abschnitt "Attack Surface — Domain-Discovery" ist jetzt einzeilig, mit Domain und Beschreibung linksbündig und drei schmalen, zentrierten KPIs. Einheitliches, modernes Layout wie die Tabelle darunter.
 # 2026-04-07

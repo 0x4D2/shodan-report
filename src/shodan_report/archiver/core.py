@@ -3,14 +3,13 @@ import json
 from typing import Iterable
 
 from shodan_report.models import AssetSnapshot, Service
-
-ARCHIVE_DIR = Path("archive")
+from shodan_report.paths import archive_dir
 
 
 
 def _customer_dir(customer_name: str) -> Path:
     """Return the Path for a customer's archive directory (does not create it)."""
-    return ARCHIVE_DIR / customer_name.replace(" ", "_")
+    return archive_dir() / customer_name.replace(" ", "_")
 
 
 def _ensure_customer_dir(customer_name: str) -> Path:

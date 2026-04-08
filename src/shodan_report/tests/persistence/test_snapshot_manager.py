@@ -86,7 +86,7 @@ def test_compare_snapshots_handles_none_and_duplicates():
 
 
 def test_load_snapshot_reads_snapshot_format(tmp_path, monkeypatch):
-    monkeypatch.setattr(snapshot_manager, "SNAPSHOT_DIR", tmp_path)
+    monkeypatch.setattr("shodan_report.persistence.snapshot_manager.snapshots_dir", lambda: tmp_path)
 
     customer_dir = tmp_path / "Test_Customer"
     customer_dir.mkdir(parents=True, exist_ok=True)
@@ -124,7 +124,7 @@ def test_load_snapshot_reads_snapshot_format(tmp_path, monkeypatch):
 
 
 def test_save_snapshot_preserves_ssl_info(tmp_path, monkeypatch):
-    monkeypatch.setattr(snapshot_manager, "SNAPSHOT_DIR", tmp_path)
+    monkeypatch.setattr("shodan_report.persistence.snapshot_manager.snapshots_dir", lambda: tmp_path)
 
     snapshot = AssetSnapshot(
         ip="1.2.3.4",
