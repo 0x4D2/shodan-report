@@ -127,6 +127,6 @@ def prepare_pdf_elements(
     create_methodology_section(elements=elements, styles=styles)
 
     # Keep Footer together with methodology — no extra marker
-    create_footer_section(elements=elements, styles=styles)
+    create_footer_section(elements=elements, styles=styles, sha256=config.get("_sha256"))
 
     return elements

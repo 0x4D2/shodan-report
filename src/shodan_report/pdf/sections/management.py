@@ -607,7 +607,7 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
 
     left_rows = [
         [Paragraph('<font size="9" color="#1A1A1A"><b>Kernaussagen</b></font>', ns)],
-        [Paragraph(f'<font size="9" color="#444444">• <b>Risiko:</b> {risk_stmt}</font>', ns)],
+        [Paragraph(f'<font size="9" color="#444444">• <b>Risiko:</b> {risk_stmt.replace("Risiko: ", "", 1)}</font>', ns)],
         [Paragraph(f'<font size="9" color="#444444">• <b>Zustand:</b> {state_stmt.replace("Zustand: ", "")}</font>', ns)],
         [Paragraph(f'<font size="9" color="#444444">• <b>Richtung:</b> {trend_note.replace("Richtung: ", "")}</font>', ns)],
         [Spacer(1, 6)],

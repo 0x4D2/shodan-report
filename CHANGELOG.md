@@ -1,3 +1,13 @@
+# 2026-04-08 (3)
+
+## fix: Report-Inhaltsfehler — doppeltes "Risiko:", SHA256-Platzhalter, falscher Zielwert
+
+- `management.py`: `risk_stmt` enthielt bereits das Präfix "Risiko:" — beim Rendern wurde es erneut als Bold-Label vorangestellt (`Risiko: Risiko: ...`). Fix: `.replace("Risiko: ", "", 1)` analog zu `state_stmt` und `trend_note`
+- `conclusion.py`: Zielwert im LAUFEND-Block war hardcoded auf `2/5 senken` — auch wenn der aktuelle Exposure-Level bereits 2 war. Fix: dynamisch berechnet als `max(1, score-1)/5`; bei Level 1 stattdessen "auf 1/5 halten"
+- `pdf_generator.py` / `pdf_manager.py` / `footer.py`: SHA256 im Signaturblock auf Seite 8 zeigte `—` statt der tatsächlichen Prüfsumme. Fix: Hash wird jetzt vor `prepare_pdf_elements()` in `config["_sha256"]` hinterlegt und über `pdf_manager` → `create_footer_section(sha256=...)` durchgereicht
+
+---
+
 # 2026-04-08 (2)
 
 ## fix: Logo, mkdir, .env.example, .gitignore

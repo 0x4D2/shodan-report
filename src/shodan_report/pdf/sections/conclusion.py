@@ -83,7 +83,7 @@ def create_conclusion_section(
     elements.append(Spacer(1, 8))
 
     # ── Zeitplan-Tabelle ──────────────────────────────────────────────────────
-    steps = _build_steps(risk_level, technical_json, evaluation, next_steps)
+    steps = _build_steps(risk_level, technical_json, evaluation, next_steps, exposure_score)
     _render_steps_table(elements, styles, steps)
 
 
@@ -128,6 +128,7 @@ def _build_steps(
     technical_json: Dict,
     evaluation: Dict,
     extra_steps: List,
+    exposure_score: Optional[int] = None,
 ) -> List[Dict]:
     """
     Gibt Liste von Schritt-Dicts zurück:
@@ -252,7 +253,11 @@ def _build_steps(
         "body":  (
             "<b>Monatliche Wiederholung</b> der Analyse zur Trendbeobachtung. "
             "CVE-Monitoring einrichten. Owner benennen (IT-Betrieb). "
-            "Ziel: Exposure-Level auf 2/5 senken."
+            + (
+                f"Ziel: Exposure-Level auf {max(1, exposure_score - 1)}/5 senken."
+                if exposure_score and exposure_score > 1
+                else "Ziel: Exposure-Level auf 1/5 halten."
+            )
         ),
     })
 

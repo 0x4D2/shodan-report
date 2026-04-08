@@ -24,10 +24,25 @@ def _clean_display_field(v: Optional[str], max_len: int = 80) -> str:
     return s
 
 
-def _normalize_product(prod: Optional[str]) -> str:
+_BANNER_RESPONSE_PATTERN = re.compile(r"^\d{3}\s")
+
+_PORT_SERVICE_NAMES = {
+    21: "FTP", 22: "SSH", 23: "Telnet", 25: "SMTP", 53: "DNS",
+    80: "HTTP", 110: "POP3", 143: "IMAP", 443: "HTTPS", 465: "SMTPS",
+    587: "SMTP", 993: "IMAPS", 995: "POP3S", 3306: "MySQL/MariaDB",
+    3389: "RDP", 5432: "PostgreSQL", 6379: "Redis", 27017: "MongoDB",
+    2082: "cPanel HTTP", 2083: "cPanel HTTPS", 2086: "WHM HTTP", 2087: "WHM HTTPS",
+    2095: "Webmail HTTP", 2096: "Webmail HTTPS",
+}
+
+
+def _normalize_product(prod: Optional[str], port: Optional[int] = None) -> str:
     if not prod:
         return "-"
     p = str(prod).strip()
+    # Shodan sometimes puts banner response codes (e.g. "421 Too") into the product field
+    if _BANNER_RESPONSE_PATTERN.match(p):
+        return _PORT_SERVICE_NAMES.get(port, "-") if port else "-"
     low = p.lower()
     if "ssh-2.0" in low or "openssh" in low or "mod_sftp" in low or low.strip() == "ssh":
         if "mod_sftp" in low:
@@ -342,7 +357,7 @@ def _derive_risk_and_hint(
     risk_str: "hoch" | "mittel" | "info"
     """
     port = s.get("port")
-    prod = _normalize_product(s.get("product") or "")
+    prod = _normalize_product(s.get("product") or "", port=port)
     tls  = s.get("tls", {}) or {}
 
     # Risiko-Logik
@@ -400,7 +415,10 @@ def _derive_risk_and_hint(
 
     # Fallback Hinweis
     if not hints:
-        ver = _clean_display_field(s.get("version") or "", max_len=40)
+        ver_raw = s.get("version") or ""
+        if _BANNER_RESPONSE_PATTERN.match(s.get("product") or ""):
+            ver_raw = ""
+        ver = _clean_display_field(ver_raw, max_len=40)
         if ver and ver != "-":
             hints.append(f"Version: {ver}")
         else:
@@ -496,10 +514,14 @@ def create_technical_section(elements: List, styles: Dict, *args, **kwargs) -> N
 
     for s in services:
         port_val = s.get("port") or "-"
+        port_num = port_val if isinstance(port_val, int) else None
         port_txt = str(port_val)
         prod_raw = s.get("product") or ""
-        prod     = _normalize_product(prod_raw)
+        prod     = _normalize_product(prod_raw, port=port_num)
         ver_raw  = s.get("version") or ""
+        # If product was a banner response code, version is also a fragment — discard it
+        if _BANNER_RESPONSE_PATTERN.match(prod_raw):
+            ver_raw = ""
         ver      = _clean_display_field(ver_raw, max_len=40)
         if isinstance(ver, str):
             ver = ver.replace("\n", " ").replace("\r", " ").strip()
@@ -672,8 +694,11 @@ def create_technical_section(elements: List, styles: Dict, *args, **kwargs) -> N
 
         # Recompute display product/version per-service to avoid using loop-scoped vars
         prod_raw = s.get("product") or ""
-        prod = _normalize_product(prod_raw)
+        _port_num = s.get("port") if isinstance(s.get("port"), int) else None
+        prod = _normalize_product(prod_raw, port=_port_num)
         ver_raw = s.get("version") or ""
+        if _BANNER_RESPONSE_PATTERN.match(prod_raw):
+            ver_raw = ""
         ver = _clean_display_field(ver_raw, max_len=60)
 
         if details:

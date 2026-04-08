@@ -51,6 +51,11 @@ def generate_pdf(
     except Exception:
         pass
 
+    # Pre-compute SHA256 so the signature block on the last page can use it
+    config["_sha256"] = hashlib.sha256(
+        f"{customer_name}:{ip}:{month}".encode()
+    ).hexdigest()
+
     # Call `prepare_pdf_elements` with positional args to remain compatible with tests.
     if compare_month is None:
         elements = prepare_pdf_elements(
@@ -96,7 +101,7 @@ def generate_pdf(
             or config.get("domain")
             or ""
         )
-        _sha256 = hashlib.sha256(
+        _sha256 = config.get("_sha256") or hashlib.sha256(
             f"{customer_name}:{ip}:{month}".encode()
         ).hexdigest()
         try:
