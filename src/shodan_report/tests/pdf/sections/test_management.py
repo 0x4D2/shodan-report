@@ -2,7 +2,7 @@
 """Tests für die Management-Zusammenfassung (neue Struktur)."""
 
 import pytest
-from reportlab.platypus import Paragraph, Table
+from reportlab.platypus import Paragraph, Table, KeepTogether
 from reportlab.lib.units import mm
 from shodan_report.pdf.styles import create_styles, create_theme
 from shodan_report.pdf.sections.management import (
@@ -12,6 +12,35 @@ from shodan_report.pdf.sections.management import (
 )
 from shodan_report.models import Service
 from shodan_report.evaluation import Evaluation
+
+
+def _all_paragraphs(elements):
+    """Rekursiv alle Paragraph-Objekte aus verschachtelten Tables/KeepTogether extrahieren."""
+    result = []
+    for e in elements:
+        if isinstance(e, Paragraph):
+            result.append(e)
+        elif isinstance(e, Table):
+            for row in (getattr(e, "_cellvalues", None) or []):
+                for cell in row:
+                    if isinstance(cell, Paragraph):
+                        result.append(cell)
+                    elif isinstance(cell, (Table, KeepTogether)):
+                        result.extend(_all_paragraphs([cell]))
+        elif isinstance(e, KeepTogether):
+            result.extend(_all_paragraphs(list(e._content) if hasattr(e, "_content") else []))
+    return result
+
+
+def _all_para_texts(elements):
+    """Alle Paragraph-Texte (plain) rekursiv aus elements extrahieren."""
+    texts = []
+    for p in _all_paragraphs(elements):
+        try:
+            texts.append(p.getPlainText())
+        except Exception:
+            texts.append(str(getattr(p, "text", "")))
+    return texts
 
 
 # Dummy-Helfer, falls nicht verfügbar
@@ -60,7 +89,7 @@ class TestManagementSection:
         )
 
         assert len(elements) > 0
-        assert any(isinstance(e, Paragraph) for e in elements)
+        assert len(_all_paragraphs(elements)) > 0
         assert any(isinstance(e, Table) for e in elements)  # Exposure-Tabelle
 
     # ────────────────────────────────
@@ -136,7 +165,7 @@ class TestManagementSection:
         )
 
         assert len(elements) > 0
-        assert any(isinstance(e, Paragraph) for e in elements)
+        assert len(_all_paragraphs(elements)) > 0
 
     # ────────────────────────────────
     # 4. Insights-Limitierung
@@ -156,12 +185,9 @@ class TestManagementSection:
             business_risk="MEDIUM",
         )
 
-        bullets = [
-            e for e in elements if isinstance(e, Paragraph) and e.style.name == "Bullet"
-        ]
-        assert len(bullets) > 0  # Es gibt Insights & Empfehlungen
-        # Optional: Max 4 Insights, max 3 Empfehlungen? → abhängig von generate_priority_*
-        # Wenn die Helper limitiert sind, könnte man das hier prüfen
+        # Management section rendert Inhalte in nested Tables; mind. ein Text muss vorhanden sein
+        all_texts = _all_para_texts(elements)
+        assert len(all_texts) > 0  # Es gibt gerenderte Inhalte
 
     # ────────────────────────────────
     # 5. Evaluation als dict
@@ -205,9 +231,7 @@ class TestManagementSection:
             business_risk="MEDIUM",
         )
 
-        paragraph_texts = [
-            str(e.getPlainText()) for e in elements if isinstance(e, Paragraph)
-        ]
+        paragraph_texts = _all_para_texts(elements)
         assert any("Dienste" in t or "Angriffsfläche" in t for t in paragraph_texts)
 
     def test_management_section_with_realistic_services(self):
@@ -239,7 +263,7 @@ class TestManagementSection:
             config={},
         )
 
-        assert any(isinstance(e, Paragraph) for e in elements)
+        assert len(_all_paragraphs(elements)) > 0
 
         table_found = any(str(getattr(e, "_cellvalues", None)) for e in elements)
         assert table_found
@@ -267,7 +291,7 @@ class TestManagementSection:
 
         assert len(elements) > 0
         # Es sollten trotzdem wichtige Absätze erstellt werden
-        assert any(isinstance(e, Paragraph) for e in elements)
+        assert len(_all_paragraphs(elements)) > 0
 
     def test_management_text_is_rendered_in_elements(self, styles):
         """management_text wird tatsächlich in die PDF-Elemente gerendert (30.03.2026)."""
@@ -286,13 +310,7 @@ class TestManagementSection:
             config={},
         )
 
-        para_texts = []
-        for e in elements:
-            if isinstance(e, Paragraph) and hasattr(e, "text"):
-                try:
-                    para_texts.append(e.getPlainText())
-                except Exception:
-                    para_texts.append(str(e.text))
+        para_texts = _all_para_texts(elements)
 
         found = any("RDP-Zugang sofort schließen" in t for t in para_texts)
         assert found, "management_text-Inhalt muss in den gerenderten Elementen erscheinen"

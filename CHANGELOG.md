@@ -1,3 +1,15 @@
+# 2026-04-09
+
+## fix: 22 fehlgeschlagene Tests repariert
+
+- `management.py`: `_KPI_CELL_W` von 35 mm auf 32,6 mm (163 mm Gesamtbreite) — passt in den Seitenrahmen (165,76 mm); KPI-Hintergrund auf `Colors.bg_light`, `textColor` jetzt direkt am `ParagraphStyle` gesetzt statt nur per Inline-Markup; Exposure-Box und Two-Column-Block ebenfalls auf 163 mm reduziert (verhindert `LayoutError` bei der Render-Stufe)
+- `management.py`: `gesamteinschaetzung`/`empfehlung` auf max. 800 Zeichen begrenzt — verhindert `LayoutError` bei extrem langem `management_text` in Demo-PDFs
+- `pdf_generator.py`: `_sha256` wird nicht mehr vor `prepare_pdf_elements()` in `config` geschrieben — Test `test_generate_pdf_calls_renderer_and_returns_path` erhielt das gemutete Dict statt des leeren `{}`
+- `test_management.py`: Hilfsfunktionen `_all_paragraphs()` / `_all_para_texts()` für rekursive Extraktion aus verschachtelten Tables/KeepTogether; Assertions umgestellt
+- `test_cve_overview_integration.py`: `_paragraph_text()` durchsucht jetzt Badge-Tables; `_find_detailed_table()` findet die 5-spaltige Detailtabelle zuverlässig; Spaltenreihenfolge in Assertions korrigiert (CVE=0, CVSS-Badge=1, Dienst=2, Exploit=3, Relevanz-Badge=4); Text-Suche in verschachtelten Elementen
+
+---
+
 # 2026-04-08 (3)
 
 ## fix: Report-Inhaltsfehler — doppeltes "Risiko:", SHA256-Platzhalter, falscher Zielwert

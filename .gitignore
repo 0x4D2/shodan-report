@@ -18,5 +18,6 @@ jobs/*.txt
 .cache/
 .mypy_cache/
 .ruff_cache/
+.claude
 
 scripts/dev/

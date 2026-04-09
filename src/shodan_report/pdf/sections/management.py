@@ -168,15 +168,15 @@ def get_management_risk_and_tech_note(technical_json: Dict[str, Any], evaluation
 
     return risk_stmt, tech_note
 
-# Total KPI row = 5 cells × _KPI_CELL_W mm = 175 mm (full text-width)
-_KPI_CELL_W = 175.0 / 5  # = 35 mm
+# Total KPI row = 5 cells × _KPI_CELL_W mm = 163 mm (fits within page text frame)
+_KPI_CELL_W = 163.0 / 5  # = 32.6 mm
 
 
 def _kpi_cell(label: str, value: str, value_color=None, value_size: int = 16) -> Table:
     """KPI-Karte — Uppercase-Label oben, große Zahl unten, weißer Hintergrund mit Rahmen."""
     _C_BORDER  = HexColor("#DDDDDD")
-    _C_BG      = HexColor("#F8F8F8")
-    _val_color = value_color if value_color is not None else HexColor("#1A1A1A")
+    _C_BG      = Colors.bg_light
+    _val_color = value_color if value_color is not None else Colors.text
 
     lbl = Paragraph(
         f'<font size="7" color="#888888">{label}</font>',
@@ -209,6 +209,7 @@ def _kpi_cell(label: str, value: str, value_color=None, value_size: int = 16) ->
             spaceAfter=0,
             spaceBefore=0,
             fontName="Helvetica-Bold",
+            textColor=_val_color,
         ),
     )
     # Feste Zeilenhöhen für perfekte Gleichheit und Zentrierung
@@ -565,7 +566,7 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
                 ),
             ),
         ]],
-        colWidths=[72 * mm, 38 * mm, 65 * mm],
+        colWidths=[66 * mm, 34 * mm, 63 * mm],
     )
     _exp_box.setStyle(TableStyle([
         ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
@@ -615,7 +616,7 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
         [Paragraph(f'<font size="9" color="#444444">{tech_note_candidate}</font>', ns)],
     ]
 
-    left_tbl = Table(left_rows, colWidths=[85 * mm])
+    left_tbl = Table(left_rows, colWidths=[78 * mm])
     left_tbl.setStyle(TableStyle([
         ("TOPPADDING",    (0, 0), (-1, -1), 3),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
@@ -663,6 +664,13 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
             "(Owner: IT-Betrieb)."
         )
 
+    # Truncate to prevent oversized Table cells that exceed the page frame height
+    _MAX_CELL_CHARS = 800
+    if len(gesamteinschaetzung) > _MAX_CELL_CHARS:
+        gesamteinschaetzung = gesamteinschaetzung[:_MAX_CELL_CHARS] + "\u2026"
+    if len(empfehlung) > _MAX_CELL_CHARS:
+        empfehlung = empfehlung[:_MAX_CELL_CHARS] + "\u2026"
+
     right_rows = [
         [Paragraph('<font size="9" color="#1A1A1A"><b>Gesamteinschätzung</b></font>', ns)],
         [Paragraph(f'<font size="9" color="#444444">{gesamteinschaetzung}</font>', ns)],
@@ -671,7 +679,7 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
         [Paragraph(f'<font size="9" color="#444444">{empfehlung}</font>', ns)],
     ]
 
-    right_tbl = Table(right_rows, colWidths=[86 * mm])
+    right_tbl = Table(right_rows, colWidths=[85 * mm])
     right_tbl.setStyle(TableStyle([
         ("TOPPADDING",    (0, 0), (-1, -1), 3),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
@@ -683,7 +691,7 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
     ]))
 
     # Zweispaltiger Wrapper
-    two_col = Table([[left_tbl, right_tbl]], colWidths=[85 * mm, 90 * mm])
+    two_col = Table([[left_tbl, right_tbl]], colWidths=[78 * mm, 85 * mm])
     two_col.setStyle(TableStyle([
         ("VALIGN",        (0, 0), (-1, -1), "TOP"),
         ("LEFTPADDING",   (0, 0), (-1, -1), 0),

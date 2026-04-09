@@ -51,8 +51,10 @@ def generate_pdf(
     except Exception:
         pass
 
-    # Pre-compute SHA256 so the signature block on the last page can use it
-    config["_sha256"] = hashlib.sha256(
+    # Pre-compute SHA256 so the signature block on the last page can use it.
+    # Store in a local variable; do NOT mutate `config` before prepare_pdf_elements
+    # so that tests can assert on the clean config that was passed in.
+    _sha256_precomputed = hashlib.sha256(
         f"{customer_name}:{ip}:{month}".encode()
     ).hexdigest()
 
@@ -101,9 +103,7 @@ def generate_pdf(
             or config.get("domain")
             or ""
         )
-        _sha256 = config.get("_sha256") or hashlib.sha256(
-            f"{customer_name}:{ip}:{month}".encode()
-        ).hexdigest()
+        _sha256 = _sha256_precomputed
         try:
             _month_dt = datetime.strptime(month, "%Y-%m")
             _month_display = _month_dt.strftime("%b %Y")
