@@ -74,6 +74,26 @@ def generate_report_pipeline(
     """
     config = load_customer_config(config_path)
     report_config = config.get("report", {})
+
+    # ── Customer-YAML: IP/Domain/Package aus Konfiguration lesen ─────────────
+    customer_cfg = config.get("customer", {})
+
+    # IP: explizites Argument hat Vorrang, dann YAML
+    if not ip:
+        ip = customer_cfg.get("ip") or None
+
+    # Domain: explizites Argument hat Vorrang, dann YAML
+    if not domain:
+        domain = customer_cfg.get("domain") or None
+
+    # Package-basierte Sektion-Kontrolle in config einschreiben
+    package = customer_cfg.get("package", "professional").lower()
+    config["_package"] = package
+
+    # enterprise → NVD Live automatisch
+    if package == "enterprise":
+        config.setdefault("nvd", {})["enabled"] = True
+
     include_trend = config.get("report", {}).get("include_trend_analysis", True)
     if not include_trend:
         trend_text = "Trendanalyse deaktiviert (Kundenkonfiguration)."

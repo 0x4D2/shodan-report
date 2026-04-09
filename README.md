@@ -95,32 +95,49 @@ Jeder Report enthält bis zu 9 Abschnitte:
 
 ## Kundenkonfiguration (YAML)
 
+Jeder Kunde bekommt eine Datei unter `config/customers/<name>.yaml`. IP, Domain, Vertragsbeginn und Paket werden dort zentral gepflegt.
+
 ```yaml
 # config/customers/beispiel.yaml
 customer:
   name: "Beispiel GmbH"
+  ip: "1.2.3.4"                    # Primäre IP-Adresse
+  domain: "beispiel.de"            # optional — aktiviert Attack-Surface-Discovery
+  contract_start: "2026-01-01"     # Vertragsbeginn
+  package: "professional"          # basic | professional | enterprise
 
 styling:
   primary_color: "#1a365d"
   secondary_color: "#2d3748"
 
 report:
-  include_trend_analysis: true
-  debug_mdata: false        # false in Produktion (kein .mdata.json Sidecar)
+  debug_mdata: false               # false in Produktion (kein .mdata.json Sidecar)
 
 nvd:
-  enabled: false            # true oder NVD_LIVE=1 für Live-CVE-Lookups
+  enabled: false                   # bei package=enterprise automatisch true
 ```
+
+**Pakete:**
+
+| Paket | Enthaltene Abschnitte |
+|---|---|
+| `basic` | Management, Empfehlungen, Technischer Anhang |
+| `professional` | + CVE-Übersicht, Trendanalyse, Attack Surface (wenn domain gesetzt) |
+| `enterprise` | wie professional + NVD Live-Lookups automatisch aktiv |
 
 ---
 
 ## Batch-Verarbeitung
 
-`jobs.txt` — eine Job-Definition pro Zeile:
+`jobs.txt` — eine Job-Definition pro Zeile. Zwei Formate werden unterstützt:
 
 ```
-Kunde1 1.2.3.4 2026-04
-Kunde2 5.6.7.8 2026-04 --compare 2026-03
+# Kurzformat: IP/Domain aus YAML (empfohlen)
+Beispiel GmbH 2026-04
+Beispiel GmbH 2026-04 --compare 2026-03
+
+# Langformat: IP explizit (für Ausnahmen ohne YAML)
+Kunde2 5.6.7.8 2026-04
 Kunde3 9.10.11.12 2026-04 --config config/customers/kunde3.yaml
 ```
 

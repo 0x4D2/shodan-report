@@ -1,23 +1,31 @@
 # Beispiel Kundenkonfiguration für shodan-report
+#
+# Pflichtfelder: customer.name, customer.ip ODER customer.domain
+# Alle anderen Felder sind optional.
 
 customer:
   name: "Beispiel GmbH"
-  slug: "beispiel_gmbh"  # optional: wird für Dateipfade genutzt
-  language: "de"
+  ip: "1.2.3.4"                    # Primäre IP-Adresse
+  domain: ""                        # Domain für Attack-Surface-Discovery (optional)
+  contract_start: "2026-01-01"      # Vertragsbeginn (YYYY-MM-DD)
+  package: "professional"           # basic | professional | enterprise
+
+# Pakete und enthaltene Report-Abschnitte:
+#   basic:        Management-Zusammenfassung, Handlungsempfehlungen, Technischer Anhang
+#   professional: + Attack Surface (wenn domain gesetzt), CVE-Übersicht, Trendanalyse
+#   enterprise:   + NVD Live-Lookups (automatisch aktiviert)
 
 styling:
   primary_color: "#1a365d"
   secondary_color: "#2d3748"
-  logo_path: "assets/logo.png"  # relativ zum Repo
+  logo_path: "assets/logo.png"      # relativ zum Repo-Root
 
 report:
-  include_trend_analysis: true   # true/false
-  debug_mdata: false             # false empfohlen in Produktion (verhindert .mdata.json Sidecar)
-  keep_sidecar: false            # falls true: behalte .mdata.json neben PDF
+  include_trend_analysis: true      # true/false (wird durch package übersteuert)
+  debug_mdata: false                # false in Produktion (kein .mdata.json Sidecar)
 
 nvd:
-  enabled: false                 # true = NVD-Lookups aktiv
-  cache_ttl_days: 7              # Standard TTL für CVE Cache
+  enabled: false                    # true = NVD-Lookups aktiv; bei package=enterprise automatisch true
 
 archive:
   enabled: true
@@ -25,9 +33,10 @@ archive:
   versioning: true
 
 logging:
-  level: "INFO"  # DEBUG / INFO / WARNING / ERROR
+  level: "INFO"                     # DEBUG / INFO / WARNING / ERROR
 
 # Hinweise:
-# - NVD_LIVE=1 (Env) überschreibt nvd.enabled in dieser Datei.
-# - Setze report.debug_mdata: false für Produktionsläufe, damit Sidecar-Dateien
-#   mit potentiell sensitiven Bannern nicht erzeugt werden.
+# - NVD_LIVE=1 (Env) überschreibt nvd.enabled.
+# - customer.ip und customer.domain können beide gesetzt sein;
+#   domain aktiviert Attack-Surface-Discovery.
+# - report.debug_mdata: false für Produktionsläufe empfohlen.
