@@ -15,14 +15,13 @@ report:
   custom_sections:              # Eigene Sektionen
     - executive_summary
     - risk_matrix
+  cover_note: ""                # Persönliche Ansprache auf Seite 1 (leer = nicht anzeigen)
 
 styling:
   primary_color: "#1a365d"
   secondary_color: "#2d3748"
 
 disclaimer:
-  enabled: true
-  custom_text: |                # Firmenspezifischer Disclaimer
-    Nur für interne Verwendung.
-    Vertraulichkeitsstufe: Intern.
-  
+  enabled: true                 # false = Haftungsausschluss ausblenden
+  # custom_text: |              # Optional: eigenen Text überschreiben
+  #   Nur für interne Verwendung. Vertraulichkeitsstufe: Intern.

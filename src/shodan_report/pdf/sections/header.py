@@ -1,5 +1,6 @@
-from reportlab.platypus import Paragraph, Spacer
+from reportlab.platypus import Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.colors import HexColor
+from reportlab.lib.units import mm
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 
@@ -12,7 +13,7 @@ from shodan_report.pdf.helpers.header_helpers import (
 def create_header_section(
     elements: List,
     styles: Dict,
-    theme,  # Theme-Objekt wird jetzt wirklich genutzt
+    theme,
     customer_name: str,
     month: str,
     ip: str,
@@ -20,6 +21,8 @@ def create_header_section(
     domain: Optional[str] = None,
 ) -> None:
     config = config or {}
+    report_cfg = config.get("report", {})
+    disclaimer_cfg = config.get("disclaimer", {})
 
     # ─────────────────────────────────────────────
     # Logo (optional)
@@ -64,7 +67,6 @@ def create_header_section(
     except ValueError:
         month_formatted = month
 
-    # IP-Anzeige + optionale Domain
     report_id = generate_compact_report_id(customer_name, month, ip)
     ip_part = f"<b>IP:</b> {ip}"
     domain_part = f" &nbsp;&nbsp;|&nbsp;&nbsp; <b>Domain:</b> {domain}" if domain else ""
@@ -93,7 +95,11 @@ def create_header_section(
         )
     )
 
-    elements.append(Spacer(1, 10))
+    elements.append(Spacer(1, 8))
+
+    # Haftungsausschluss wird nicht als Flowable gesetzt —
+    # der Canvas in pdf_renderer.py zeichnet ihn auf Seite 1 ganz unten.
+    # cover_note wird in pdf_manager.py nach dem Management-Block gesetzt.
 
 
 # Backward Compatibility

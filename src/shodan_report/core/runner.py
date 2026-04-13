@@ -54,6 +54,7 @@ def generate_report_pipeline(
     archive: bool = True,
     verbose: bool = False,
     domain: Optional[str] = None,
+    note: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Generiere einen vollständigen Shodan Report mit NEUER Evaluation Engine.
@@ -74,6 +75,10 @@ def generate_report_pipeline(
     """
     config = load_customer_config(config_path)
     report_config = config.get("report", {})
+
+    # --note CLI-Argument überschreibt cover_note aus YAML
+    if note:
+        config.setdefault("report", {})["cover_note"] = note
 
     # ── Customer-YAML: IP/Domain/Package aus Konfiguration lesen ─────────────
     customer_cfg = config.get("customer", {})

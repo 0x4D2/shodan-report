@@ -1,3 +1,18 @@
+# 2026-04-13 (2)
+
+## feat: Persönliche Ansprache (cover_note) + Haftungsausschluss auf Seite 1
+
+- [`src/shodan_report/pdf/pdf_manager.py`](src/shodan_report/pdf/pdf_manager.py): `cover_note` wird als hervorgehobenes Textfeld (blauer Akzentstreifen, hellgrauer Hintergrund) **unter** der Management-Zusammenfassung auf Seite 1 gerendert — nur wenn gesetzt
+- [`src/shodan_report/pdf/pdf_renderer.py`](src/shodan_report/pdf/pdf_renderer.py): Haftungsausschluss wird via Canvas **ganz unten auf Seite 1** gezeichnet (7pt, kursiv, grau) — garantiert positioniert unabhängig vom Flowable-Layout; Text via `page_meta["disclaimer_text"]` übergeben
+- [`src/shodan_report/pdf/pdf_generator.py`](src/shodan_report/pdf/pdf_generator.py): Disclaimer-Text aus `config.disclaimer` ausgelesen und in `page_meta` durchgereicht; via `disclaimer.enabled: false` deaktivierbar, via `disclaimer.custom_text` überschreibbar
+- [`src/shodan_report/cli.py`](src/shodan_report/cli.py): Neuer Parameter `--note "..."` (`-n`) — persönliche Bewertung direkt beim Aufruf mitgeben, ohne YAML-Bearbeitung
+- [`src/shodan_report/core/runner.py`](src/shodan_report/core/runner.py): `note`-Parameter in `generate_report_pipeline` aufgenommen — schreibt den Wert als `report.cover_note` in die Config
+- [`config/customers/example.yaml`](config/customers/example.yaml), [`config/customers/werning.com-gmbh.yaml`](config/customers/werning.com-gmbh.yaml): `report.cover_note`-Feld dokumentiert
+
+**Workflow:** Report generieren → lesen → mit `--note "Meine Bewertung..."` neu generieren
+
+---
+
 # 2026-04-13
 
 ## fix: conclusion.py — Exposure-Label im Fazit korrigiert

@@ -71,6 +71,14 @@ Beispiele:
     )
 
     parser.add_argument(
+        "--note", "-n",
+        default=None,
+        metavar="TEXT",
+        help="Persönliche Ansprache/Bewertung — erscheint auf Seite 1. "
+             "Überschreibt report.cover_note aus der YAML.",
+    )
+
+    parser.add_argument(
         "--verbose", "-v", action="store_true", help="Ausführliche Ausgabe"
     )
 
@@ -132,6 +140,7 @@ def build_pipeline_kwargs(args: argparse.Namespace) -> dict:
         "archive": not args.no_archive,
         "verbose": args.verbose,
         "domain": args.domain,
+        "note": args.note,
     }
 
 

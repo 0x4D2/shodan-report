@@ -109,11 +109,27 @@ def generate_pdf(
             _month_display = _month_dt.strftime("%b %Y")
         except Exception:
             _month_display = month
+        _disclaimer_cfg = config.get("disclaimer", {})
+        _show_disclaimer = _disclaimer_cfg.get("enabled", True)
+        _disclaimer_default = (
+            "Haftungsausschluss: Dieser Bericht basiert ausschließlich auf passiver OSINT-Analyse "
+            "öffentlich zugänglicher Quellen (Shodan, crt.sh, DNS-Records u.\u00a0a.). "
+            "Es wurden keine aktiven Scans oder Eingriffe in Systeme vorgenommen. "
+            "Die Ergebnisse erheben keinen Anspruch auf Vollständigkeit. "
+            "MG Solutions GmbH übernimmt keine Haftung für Schäden, die aus der Nutzung "
+            "oder dem Vertrauen auf diese Informationen entstehen."
+        )
+        _disclaimer_text = (
+            (_disclaimer_cfg.get("custom_text") or _disclaimer_default).strip()
+            if _show_disclaimer else None
+        )
+
         _page_meta = {
             "domain": _domain,
             "month_display": _month_display,
             "sha256": _sha256,
             "confidentiality": "Vertraulich",
+            "disclaimer_text": _disclaimer_text,
         }
     except Exception:
         _page_meta = {}
