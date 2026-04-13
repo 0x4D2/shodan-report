@@ -1,6 +1,7 @@
 from reportlab.platypus import SimpleDocTemplate, PageBreak
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import cm
+from reportlab.lib.utils import simpleSplit
 from pathlib import Path
 from typing import Optional, Dict, Any
 from .layout import keep_section
@@ -205,6 +206,24 @@ def render_pdf(output_path: Path, elements: list, page_meta: Optional[Dict[str, 
                     self.setFillGray(gray)
                     self.drawRightString(right_x, 1.1 * cm, f"SHA256: {sha256}")
                     self.restoreState()
+
+                # ── Haftungsausschluss — nur auf Seite 1 ────────────────────
+                if page == 1:
+                    disclaimer = meta.get("disclaimer_text")
+                    if disclaimer:
+                        self.saveState()
+                        font_name = "Helvetica-Oblique"
+                        font_size = 6.5
+                        self.setFont(font_name, font_size)
+                        self.setFillGray(0.60)
+                        max_w = A4[0] - 4 * cm  # linker + rechter Rand
+                        lines = simpleSplit(disclaimer, font_name, font_size, max_w)
+                        line_h = font_size * 1.35
+                        # Startposition: oberhalb der Fußzeile, von unten
+                        base_y = 1.9 * cm + len(lines) * line_h
+                        for i, line in enumerate(lines):
+                            self.drawString(left_x, base_y - i * line_h, line)
+                        self.restoreState()
 
         doc.build(proc_elements, canvasmaker=NumberedCanvas)
         print(f"PDF erfolgreich erstellt: {output_path}")

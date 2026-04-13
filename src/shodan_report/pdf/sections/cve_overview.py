@@ -42,52 +42,44 @@ def create_cve_overview_section(
     context: Optional[Any] = None,
 ) -> None:
     """
-    Erstelle KOMPAKTE CVE-Übersicht Section für One-Page Design.
-
-    Args:
-        elements: Liste der PDF-Elemente
-        styles: Dictionary mit PDF-Styles
-        technical_json: Technische Daten mit CVEs
-        evaluation: Optional - Evaluation Ergebnisse
+    CVE-Übersicht — Design wie im Screenshot:
+    5 KPI-Karten oben · CVSS-Balken · Inferred-Hinweis · Tabelle · Fußnoten-Box.
     """
-    # Weniger Abstand für kompaktes Design
     elements.append(Spacer(1, 8))
     heading_style = styles.get("heading1", styles.get("heading2"))
-    elements.append(keep_section([Paragraph("5. CVE-ÜBERSICHT", heading_style), Spacer(1, 8)]))
+    elements.append(keep_section([
+        Paragraph("<b>5. CVE-Übersicht</b>", heading_style),
+        Spacer(1, 10),
+    ]))
 
-    # Extrahiere CVE-Daten
-    cve_data = _extract_cve_data(technical_json)
+    cve_data = _extract_cve_data(technical_json, context)
 
     if not cve_data:
-        # Minimal "Keine CVEs" Darstellung (entschärfte Formulierung)
-        elements.append(
-            Paragraph(
-                "Keine CVE-basierten Exploit-Risiken identifiziert; das Risiko ergibt sich jedoch aus der direkten Exposition des Dienstes.",
-                styles["normal"],
-            )
-        )
+        elements.append(Paragraph(
+            "Keine CVE-basierten Exploit-Risiken identifiziert; "
+            "das Risiko ergibt sich jedoch aus der direkten Exposition des Dienstes.",
+            styles["normal"],
+        ))
         return
 
-    # Signal-Zeile: was wirklich zählt (vor den Farbboxen)
-    _critical = [c for c in cve_data if c.get("cvss") is not None and c.get("cvss") >= 9.0]
-    _high = [c for c in cve_data if c.get("cvss") is not None and 7.0 <= c.get("cvss") < 9.0]
-    _signal_parts = []
-    if _critical:
-        _signal_parts.append(f"<b>{len(_critical)} kritisch (CVSS ≥ 9)</b>")
-    if _high:
-        _signal_parts.append(f"{len(_high)} hoch (CVSS 7–9)")
-    if _signal_parts:
-        _inferred_note = " — Inferred Findings (Versionszuordnung, keine aktive Verifikation)"
-        elements.append(Paragraph(
-            f"{len(cve_data)} CVEs zugeordnet: {', '.join(_signal_parts)}{_inferred_note}",
-            styles.get("normal"),
-        ))
-        elements.append(Spacer(1, 6))
-
-    # 1. RISIKO-ÜBERSICHT (kompakte farbige Boxen)
+    # 1. KPI-Karten
     _create_risk_overview(elements, styles, cve_data)
 
-    # 2. DETAILED CVE TABLE (per-service) — default: Top-N, full list only if requested
+    # 2. CVSS-Verteilungsbalken
+    _create_cvss_bar(elements, cve_data)
+
+    # 3. Inferred-Hinweis
+    elements.append(Spacer(1, 6))
+    elements.append(Paragraph(
+        f'<font size="8" color="#888888">'
+        f'{len(cve_data)} CVEs zugeordnet · '
+        f'Inferred Findings (Versionszuordnung) · keine aktive Verifikation'
+        f'</font>',
+        styles["normal"],
+    ))
+    elements.append(Spacer(1, 8))
+
+    # 4. Tabelle
     show_full = False
     limit = 6
     try:
@@ -98,11 +90,14 @@ def create_cve_overview_section(
         show_full = False
         limit = 10
 
-    _create_detailed_cve_table(elements, styles, cve_data, technical_json, show_full=show_full, limit=limit)
+    _create_detailed_cve_table(elements, styles, cve_data, technical_json,
+                               show_full=show_full, limit=limit)
+
+    # 5. Fußnoten-Box
     _final_evaluation_paragraph(elements, styles, cve_data)
 
 
-def _extract_cve_data(technical_json: Dict[str, Any]) -> List[Dict]:
+def _extract_cve_data(technical_json: Dict[str, Any], context: Optional[Any] = None) -> List[Dict]:
     """Extrahiert CVE-Daten aus technical_json.
 
     Nutzt lokalen Enricher (`enrich_cves`) um CVSS und betroffene Ports zu ermitteln,
@@ -209,58 +204,116 @@ def _extract_cve_data(technical_json: Dict[str, Any]) -> List[Dict]:
 
 
 def _create_risk_overview(elements: List, styles: Dict, cve_data: List[Dict]) -> None:
-    """Erstelle kompakte Risiko-Übersicht mit farbigen Boxen."""
+    """
+    Fünf KPI-Karten nebeneinander — wie im Screenshot:
+    große Zahl in Farbe, darunter kleines Uppercase-Label.
+    """
+    ns = styles.get("normal") or styles.get("Normal")
 
-    # Zähle CVEs nach Risiko-Level
-    # Count by CVSS buckets; ignore unknown (None) scores for bucket assignment
-    critical = [c for c in cve_data if (c.get("cvss") is not None and c.get("cvss") >= 9.0)]
-    high = [c for c in cve_data if (c.get("cvss") is not None and 7.0 <= c.get("cvss") < 9.0)]
-    medium = [c for c in cve_data if (c.get("cvss") is not None and 4.0 <= c.get("cvss") < 7.0)]
-    low = [c for c in cve_data if (c.get("cvss") is not None and c.get("cvss") < 4.0)]
+    critical = len([c for c in cve_data if c.get("cvss") is not None and c.get("cvss") >= 9.0])
+    high     = len([c for c in cve_data if c.get("cvss") is not None and 7.0 <= c.get("cvss") < 9.0])
+    medium   = len([c for c in cve_data if c.get("cvss") is not None and 4.0 <= c.get("cvss") < 7.0])
+    low      = len([c for c in cve_data if c.get("cvss") is not None and c.get("cvss") < 4.0])
+    cisa_kev = len([c for c in cve_data if c.get("exploit_status") == "public"])
 
-    # Farbdefinitionen
-    color_critical = colors.HexColor("#dc2626")  # Rot
-    color_high = colors.HexColor("#f97316")  # Orange
-    color_medium = colors.HexColor("#eab308")  # Gelb
-    color_low = colors.HexColor("#16a34a")  # Grün
-    color_unknown = colors.HexColor("#585758DC")  # Grau
+    _C_BORDER = HexColor("#DDDDDD")
+    _C_BG     = HexColor("#F8F8F8")
 
-    # Kompakte Tabelle für Risiko-Boxen (inkl. 'UNBEKANNT' für CVEs ohne CVSS)
-    unknown = len([c for c in cve_data if c.get("cvss") is None])
-    table_data = [
-        [
-            _create_risk_cell("KRITISCH", len(critical), color_critical),
-            _create_risk_cell("HOCH", len(high), color_high),
-            _create_risk_cell("MEDIUM", len(medium), color_medium),
-            _create_risk_cell("NIEDRIG", len(low), color_low),
-            _create_risk_cell("UNBEKANNT", unknown, color_unknown),
-        ]
+    def _card(num, label, num_color):
+        # Beide Paragraphen werden explizit zentriert
+        num_paragraph = Paragraph(
+            f'<para align="center"><font size="18" color="{num_color}"><b>{num}</b></font></para>', ns)
+        label_paragraph = Paragraph(
+            f'<para align="center"><font size="7" color="#888888">{label}</font></para>', ns)
+        inner = Table([
+            [num_paragraph],
+            [label_paragraph],
+        ], colWidths=[34 * mm])
+        inner.setStyle(TableStyle([
+            ("ALIGN",         (0, 0), (-1, -1), "CENTER"),
+            ("TOPPADDING",    (0, 0), (-1, -1), 8),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+            ("LEFTPADDING",   (0, 0), (-1, -1), 4),
+            ("RIGHTPADDING",  (0, 0), (-1, -1), 4),
+        ]))
+        return inner
+
+    cards = [
+        _card(critical, "KRITISCH (≥9)",   "#C0392B"),
+        _card(high,     "HOCH (7–8.9)",    "#E67E22"),
+        _card(medium,   "MEDIUM (4–6.9)",  "#F39C12"),
+        _card(low,      "NIEDRIG (<4)",    "#888888"),
+        _card(cisa_kev, "CISA KEV",        "#1A1A1A"),
     ]
 
-    # Kleinere Boxen für kompaktere Layouts: 5 * 20mm = 100mm total.
-    # Bessere Option für enge oder zweiseitige Layouts.
-    table = Table(table_data, colWidths=[20 * mm, 20 * mm, 20 * mm, 20 * mm, 20 * mm])
-    set_table_no_split(table)
-    table.setStyle(
-        TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (0, 0), color_critical),
-                ("BACKGROUND", (1, 0), (1, 0), color_high),
-                ("BACKGROUND", (2, 0), (2, 0), color_medium),
-                ("BACKGROUND", (3, 0), (3, 0), color_low),
-                ("BACKGROUND", (4, 0), (4, 0), color_unknown),
-                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                ("ALIGNMENT", (0, 0), (-1, 0), "CENTER"),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                # Removed table-level FONTSIZE to allow inline Paragraph font tags to take effect.
-                ("PADDING", (0, 0), (-1, 0), (6, 4)),
-                ("BOX", (0, 0), (-1, -1), 0.5, colors.grey),
-            ]
-        )
-    )
+    row_tbl = Table([[c for c in cards]], colWidths=[35 * mm] * 5)
+    row_tbl.setStyle(TableStyle([
+        ("BOX",           (0, 0), (-1, -1), 0.5, _C_BORDER),
+        ("LINEBEFORE",    (1, 0), (-1, -1), 0.5, _C_BORDER),
+        ("BACKGROUND",    (0, 0), (-1, -1), _C_BG),
+        ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
+        ("TOPPADDING",    (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+    ]))
+    elements.append(row_tbl)
+    elements.append(Spacer(1, 8))
 
-    elements.append(table)
-    elements.append(Spacer(1, 6))
+
+def _create_cvss_bar(elements: List, cve_data: List[Dict]) -> None:
+    """
+    Horizontaler CVSS-Verteilungsbalken — rot/orange/gelb/grau proportional.
+    """
+    total = len(cve_data)
+    if total == 0:
+        return
+
+    critical = len([c for c in cve_data if c.get("cvss") is not None and c.get("cvss") >= 9.0])
+    high     = len([c for c in cve_data if c.get("cvss") is not None and 7.0 <= c.get("cvss") < 9.0])
+    medium   = len([c for c in cve_data if c.get("cvss") is not None and 4.0 <= c.get("cvss") < 7.0])
+    rest     = total - critical - high - medium
+
+    full_w = 175 * mm
+    segs = []
+    for count, color in [
+        (critical, "#C0392B"),
+        (high,     "#E67E22"),
+        (medium,   "#F39C12"),
+        (rest,     "#CCCCCC"),
+    ]:
+        if count > 0:
+            w = (count / total) * full_w
+            segs.append((w, color))
+
+    if not segs:
+        return
+
+    # Baue Balken als einzeilige Tabelle mit farbigen Zellen
+    cells  = [Paragraph("", ParagraphStyle("x", fontSize=1)) for _ in segs]
+    widths = [s[0] for s in segs]
+    bar    = Table([cells], colWidths=widths)
+
+    ts = TableStyle([
+        ("TOPPADDING",    (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
+    ])
+    for i, (_, color) in enumerate(segs):
+        ts.add("BACKGROUND", (i, 0), (i, 0), HexColor(color))
+    bar.setStyle(ts)
+
+    # Wrapper für feste Höhe (6pt)
+    wrapper = Table([[bar]], colWidths=[full_w])
+    wrapper.setStyle(TableStyle([
+        ("TOPPADDING",    (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
+        ("ROWHEIGHT",     (0, 0), (-1, -1), 6),
+    ]))
+    elements.append(wrapper)
 
 
 def _create_risk_cell(label: str, count: int, color) -> Paragraph:
@@ -457,233 +510,254 @@ def _create_exploit_summary(elements: List, styles: Dict, cve_data: List[Dict]) 
         )
 
 
-def _create_detailed_cve_table(elements: List, styles: Dict, cve_data: List[Dict], technical_json: Dict[str, Any], *, show_full: bool = False, limit: int = 10) -> None:
-    """Erstelle eine detaillierte per-service CVE-Tabelle mit Spalten:
-    Dienst | CVE | CVSS | Exploit-Status | Relevanz
+def _create_detailed_cve_table(
+    elements: List,
+    styles: Dict,
+    cve_data: List[Dict],
+    technical_json: Dict[str, Any],
+    *,
+    show_full: bool = False,
+    limit: int = 6,
+) -> None:
+    """
+    Tabelle: CVE | CVSS-Badge | DIENST/KOMPONENTE | EXPLOIT-STATUS | RELEVANZ-Badge
+    Exakt wie im Screenshot — CVE-ID linksbündig, CVSS als farbiges Badge,
+    RELEVANZ als farbiges Badge, Zeilen ohne farbigen Hintergrund.
     """
     if not cve_data:
         return
 
-    # Build port -> product map for nicer service names. Prefer `services` entries.
+    ns = styles.get("normal") or styles.get("Normal")
+    _C_BORDER  = HexColor("#DDDDDD")
+    _C_HDR_BG  = HexColor("#F8F8F8")
+    _C_ROW_ALT = HexColor("#F8FAFC")
+
+    # Port→Produktname aufbauen
     port_product = {}
-    services_src = None
-    if isinstance(technical_json, dict):
-        services_src = technical_json.get("services") or technical_json.get("open_ports") or []
-    else:
-        services_src = getattr(technical_json, "services", None) or getattr(technical_json, "open_ports", []) or []
-
-    for s in (services_src or []):
-        try:
-            if isinstance(s, dict):
-                p = s.get("port")
-                # attempt to get a friendly product/service name
-                prod = None
-                if isinstance(s.get("service"), dict):
-                    prod = s.get("service", {}).get("product") or s.get("service", {}).get("name")
-                prod = prod or s.get("product") or s.get("service") or s.get("name")
-            else:
-                p = getattr(s, "port", None)
-                prod = getattr(s, "product", None) or getattr(s, "service", None) or str(p)
-
-            # normalize product label
+    try:
+        services_src = (
+            technical_json.get("services") or technical_json.get("open_ports") or []
+            if isinstance(technical_json, dict) else []
+        )
+        for s in services_src:
+            if not isinstance(s, dict):
+                continue
+            p    = s.get("port")
+            prod = None
+            if isinstance(s.get("service"), dict):
+                prod = s["service"].get("product") or s["service"].get("name")
+            prod = prod or s.get("product") or s.get("service") or s.get("name")
             if isinstance(prod, dict):
                 prod = prod.get("product") or prod.get("name") or str(p)
-            label = str(prod).strip() if prod is not None else str(p)
-            # fallback to port number label
-            port_product[p] = label or str(p)
-        except Exception:
-            continue
+            if p is not None:
+                port_product[p] = str(prod).strip() if prod else str(p)
+    except Exception:
+        pass
 
-    # Header
-    elements.append(Spacer(1, 6))
-    elements.append(keep_section([Paragraph("Detaillierte CVE-Übersicht", styles.get("heading3", styles.get("heading2"))), Spacer(1, 8)]))
-    elements.append(Spacer(1, 2))
+    def _hdr(text):
+        return Paragraph(
+            f'<font size="8" color="#666666"><b>{text}</b></font>', ns
+        )
 
-    table_data = [[
-        Paragraph("<b>Dienst</b>", styles["normal"]),
-        Paragraph("<b>CVE</b>", styles["normal"]),
-        Paragraph("<b>CVSS</b>", styles["normal"]),
-        Paragraph("<b>Exploit-Status</b>", styles["normal"]),
-        Paragraph("<b>Relevanz</b>", styles["normal"]),
+    rows = [[
+        _hdr("CVE"),
+        _hdr("CVSS"),
+        _hdr("DIENST / KOMPONENTE"),
+        _hdr("EXPLOIT-\nSTATUS"),
+        _hdr("RELEVANZ"),
     ]]
 
-    def map_exploit(status: str) -> str:
-        return {
-            "public": "öffentlich bekannt",
-            "private": "teilweise",
-            "none": "nicht bekannt",
-            "unknown": "unbekannt",
-        }.get(status, str(status) if status else "unbekannt")
-
-    def relevance_from_cvss(cvss: Optional[float]) -> str:
-        try:
-            if cvss is None:
-                return "unbekannt"
-            if cvss >= 9.0:
-                return "kritisch"
-            if cvss >= 7.0:
-                return "hoch"
-            if cvss >= 4.0:
-                return "mittel"
-            return "niedrig"
-        except Exception:
-            return "unbekannt"
-
-    # Decide which CVEs to show: Top-N unless show_full is True
-    def _sort_key_all(x):
+    # Sortieren: höchster CVSS zuerst
+    def _sort_key(x):
         v = x.get("cvss")
         has_ind = 1 if x.get("service_indicator") else 0
         return (has_ind, v if v is not None else -1)
 
-    sorted_all = sorted(cve_data, key=_sort_key_all, reverse=True)
-    if show_full:
-        to_display = sorted_all
-    else:
-        to_display = sorted_all[: max(0, int(limit or 10))]
+    sorted_all  = sorted(cve_data, key=_sort_key, reverse=True)
+    to_display  = sorted_all if show_full else sorted_all[:max(0, int(limit or 6))]
+    remaining   = len(sorted_all) - len(to_display)
 
-    # Each cve_data entry may correspond to ports (list) or service string
     for c in to_display:
-        cid = c.get("id")
-        cvss = c.get("cvss") if c.get("cvss") is not None else None
-        serv = c.get("service") or ""
-        # Prefer mapped product names for ports; if many, show short summary
-        try:
-            ports = c.get("ports", []) or []
-            if ports:
-                names = []
-                for p in ports:
-                    # ports may be strings or ints
-                    key = p
-                    try:
-                        key = int(p)
-                    except Exception:
-                        key = p
-                    names.append(str(port_product.get(key, port_product.get(p, p))))
+        cid  = c.get("id") or "—"
+        cvss = c.get("cvss")
+        exploit = c.get("exploit_status", "unknown")
 
-                # Deduplicate while preserving order
-                seen = set()
-                dedup_names = []
-                for n in names:
-                    if n not in seen:
-                        seen.add(n)
-                        dedup_names.append(n)
+        # CVE-Zelle (klickbar wenn URL vorhanden)
+        nvd_url = c.get("nvd_url")
+        if nvd_url:
+            cve_cell = Paragraph(
+                f'<font size="9" color="#2563A8"><a href="{nvd_url}">{cid}</a></font>', ns
+            )
+        else:
+            cve_cell = Paragraph(
+                f'<font size="9" color="#1A1A1A">{cid}</font>', ns
+            )
 
-                if len(dedup_names) > 3:
-                    service_label = ", ".join(dedup_names[:2]) + f" (+{len(dedup_names)-2})"
-                else:
-                    service_label = ", ".join(dedup_names)
-            else:
-                # fallback to the generic service string (often 'Various' or empty)
-                service_label = serv or "-"
-        except Exception:
-            service_label = serv or "-"
+        # CVSS-Badge
+        cvss_cell = _cvss_badge(styles, cvss)
 
-        exploit_status = map_exploit(c.get("exploit_status", c.get("exploit", "unknown")))
-        rel = relevance_from_cvss(cvss)
-
-        # Build service cell: prefer OSINT indicator label when available
+        # Dienst/Komponente
         try:
             ind = c.get("service_indicator")
-            ind_label = None
-            if ind and isinstance(ind, dict):
-                ind_label = ind.get("label") or None
-
+            ind_label = ind.get("label") if isinstance(ind, dict) else None
             if ind_label:
-                svc_lines = [str(ind_label), "<font size=8 color='#6b7280'>(OSINT-Indiz)</font>"]
-                service_cell = Paragraph("<br/>".join(svc_lines), styles["normal"])
+                svc_text = (
+                    f'<font size="9" color="#333333">{ind_label}</font>'
+                    f'<font size="8" color="#888888"> (OSINT-Indiz)</font>'
+                )
             else:
-                display_label = service_label
-                service_cell = Paragraph(str(display_label or "-"), styles["normal"])
+                ports = c.get("ports") or []
+                if ports:
+                    names = [str(port_product.get(int(p) if str(p).isdigit() else p, p))
+                             for p in ports]
+                    seen  = list(dict.fromkeys(names))
+                    label = ", ".join(seen[:3])
+                    if len(seen) > 3:
+                        label += f" (+{len(seen)-3})"
+                else:
+                    label = c.get("service") or "—"
+                svc_text = f'<font size="9" color="#333333">{label}</font>'
         except Exception:
-            service_cell = Paragraph(str(service_label), styles["normal"])
+            svc_text = f'<font size="9" color="#333333">{c.get("service") or "—"}</font>'
+        svc_cell = Paragraph(svc_text, ns)
 
-        # CVE cell with clickable link when nvd_url available
-        try:
-            nvd_url = c.get("nvd_url")
-            if nvd_url:
-                cve_cell = Paragraph(f"<a href=\"{nvd_url}\">{cid}</a>", styles["normal"])
-            else:
-                cve_cell = Paragraph(str(cid), styles["normal"])
-        except Exception:
-            cve_cell = Paragraph(str(cid), styles["normal"])
+        # Exploit-Status
+        exploit_map = {
+            "public":  "öffentlich bekannt",
+            "private": "teilweise",
+            "none":    "nicht bekannt",
+            "unknown": "unbekannt",
+        }
+        exploit_str = exploit_map.get(exploit, str(exploit) if exploit else "unbekannt")
+        exploit_cell = Paragraph(
+            f'<font size="9" color="#666666">{exploit_str}</font>', ns
+        )
 
-        table_data.append([
-            service_cell,
-            cve_cell,
-            Paragraph(f"{cvss if cvss is not None else 'n/a'}", styles["normal"]),
-            Paragraph(exploit_status, styles["normal"]),
-            Paragraph(rel, styles["normal"]),
+        # Relevanz-Badge
+        rel_cell = _relevance_badge(styles, cvss)
+
+        rows.append([cve_cell, cvss_cell, svc_cell, exploit_cell, rel_cell])
+
+    # "+ N weitere" Zeile
+    if remaining > 0:
+        medium_low_str = "Medium /\nNiedrig"
+        rows.append([
+            Paragraph(f'<font size="9" color="#AAAAAA">+ {remaining} weitere CVEs</font>', ns),
+            Paragraph(f'<font size="8" color="#AAAAAA">{medium_low_str}</font>', ns),
+            Paragraph(f'<font size="9" color="#AAAAAA">verschiedene Dienste</font>', ns),
+            Paragraph("", ns),
+            _relevance_badge(styles, 5.0),  # medium badge
         ])
 
-    # Use technical section styling for consistency
-    col_widths = [25 * mm, 45 * mm, 20 * mm, 40 * mm, 30 * mm]
-    table = Table(table_data, colWidths=col_widths)
-    set_table_repeat(table, 1)
-    set_table_no_split(table)
-    border_color = HexColor("#e5e7eb")
-    header_bg = HexColor("#f8fafc")
-    table_style = TableStyle([
-        ("GRID", (0, 0), (-1, -1), 0.3, border_color),
-        ("BACKGROUND", (0, 0), (-1, 0), header_bg),
-        ("TEXTCOLOR", (0, 0), (-1, 0), HexColor("#111827")),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("FONTSIZE", (0, 0), (-1, -1), 9),
-        ("LEFTPADDING", (0, 0), (-1, -1), 6),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+    # Spaltenbreiten: CVE | CVSS | Dienst | Exploit | Relevanz
+    col_w = [36 * mm, 18 * mm, 55 * mm, 30 * mm, 36 * mm]
+    tbl = Table(rows, colWidths=col_w)
+    set_table_repeat(tbl, 1)
+
+    ts = TableStyle([
+        ("BACKGROUND",    (0, 0), (-1, 0), _C_HDR_BG),
+        ("BOX",           (0, 0), (-1, -1), 0.5, _C_BORDER),
+        ("INNERGRID",     (0, 0), (-1, -1), 0.3, _C_BORDER),
+        ("LINEBELOW",     (0, 0), (-1, 0),  0.5, _C_BORDER),
+        ("TOPPADDING",    (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 6),
+        ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
     ])
+    for i in range(1, len(rows)):
+        if i % 2 == 0:
+            ts.add("BACKGROUND", (0, i), (-1, i), _C_ROW_ALT)
+    tbl.setStyle(ts)
+    elements.append(tbl)
+    elements.append(Spacer(1, 8))
 
-    # Add per-row CVSS accent backgrounds like the compact table
-    # Only iterate over the rows that are actually displayed to avoid
-    # adding background commands for non-existent rows (which can
-    # occur when `show_full` is False and we truncated the list).
-    for i, c in enumerate(to_display, start=1):
-        try:
-            cvss = c.get("cvss")
-            if cvss is None:
-                continue
-            if cvss >= 9.0:
-                table_style.add("BACKGROUND", (0, i), (-1, i), colors.HexColor("#fee2e2"))
-            elif cvss >= 7.0:
-                table_style.add("BACKGROUND", (0, i), (-1, i), colors.HexColor("#ffedd5"))
-            elif cvss >= 4.0:
-                table_style.add("BACKGROUND", (0, i), (-1, i), colors.HexColor("#fef9c3"))
-        except Exception:
-            # Defensive: skip styling for this row on any error
-            continue
 
-    table.setStyle(table_style)
-    elements.append(table)
-    elements.append(Spacer(1, 6))
+def _cvss_badge(styles: Dict, cvss: Optional[float]) -> Table:
+    """Farbiges CVSS-Badge — Zahl in Farbe mit Rahmen."""
+    ns = styles.get("normal") or styles.get("Normal")
+    if cvss is None:
+        bg, bd, tx, val = "#F4F4F4", "#AAAAAA", "#666666", "n/a"
+    elif cvss >= 9.0:
+        bg, bd, tx, val = "#FDECEA", "#C0392B", "#C0392B", f"{cvss}"
+    elif cvss >= 7.0:
+        bg, bd, tx, val = "#FEF3E8", "#E67E22", "#E67E22", f"{cvss}"
+    elif cvss >= 4.0:
+        bg, bd, tx, val = "#FEF9ED", "#F39C12", "#A06010", f"{cvss}"
+    else:
+        bg, bd, tx, val = "#F4F8F4", "#27AE60", "#27AE60", f"{cvss}"
 
-    # If we truncated the list, add a short note referencing the sidecar containing the full list
-    try:
-        total = len(cve_data)
-        shown = len(to_display)
-        if shown < total:
-            elements.append(
-                Paragraph(
-                    f"<i>Es werden die {shown} wichtigsten CVEs angezeigt. Vollständige Liste auf Anfrage verfügbar.</i>",
-                    ParagraphStyle(
-                        "SmallItalic",
-                        parent=styles["normal"],
-                        fontSize=8,
-                        textColor=colors.HexColor("#6b7280"),
-                    ),
-                )
-            )
-    except Exception:
-        pass
+    badge = Table(
+        [[Paragraph(f'<font size="9" color="{tx}"><b>{val}</b></font>', ns)]],
+        colWidths=[14 * mm],
+    )
+    badge.setStyle(TableStyle([
+        ("BACKGROUND",    (0, 0), (-1, -1), HexColor(bg)),
+        ("BOX",           (0, 0), (-1, -1), 0.5, HexColor(bd)),
+        ("TOPPADDING",    (0, 0), (-1, -1), 2),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 4),
+        ("ALIGN",         (0, 0), (-1, -1), "CENTER"),
+    ]))
+    return badge
+
+
+def _relevance_badge(styles: Dict, cvss: Optional[float]) -> Table:
+    """Farbiges Relevanz-Badge (kritisch/hoch/mittel/niedrig)."""
+    ns = styles.get("normal") or styles.get("Normal")
+    if cvss is None:
+        bg, bd, tx, label = "#F4F4F4", "#AAAAAA", "#666666", "unbekannt"
+    elif cvss >= 9.0:
+        bg, bd, tx, label = "#FDECEA", "#C0392B", "#C0392B", "kritisch"
+    elif cvss >= 7.0:
+        bg, bd, tx, label = "#FEF3E8", "#E67E22", "#E67E22", "hoch"
+    elif cvss >= 4.0:
+        bg, bd, tx, label = "#FEF9ED", "#F39C12", "#A06010", "medium"
+    else:
+        bg, bd, tx, label = "#F4F8F4", "#27AE60", "#27AE60", "niedrig"
+
+    badge = Table(
+        [[Paragraph(f'<font size="9" color="{tx}"><b>{label}</b></font>', ns)]],
+        colWidths=[22 * mm],
+    )
+    badge.setStyle(TableStyle([
+        ("BACKGROUND",    (0, 0), (-1, -1), HexColor(bg)),
+        ("BOX",           (0, 0), (-1, -1), 0.5, HexColor(bd)),
+        ("TOPPADDING",    (0, 0), (-1, -1), 2),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 6),
+        ("ALIGN",         (0, 0), (-1, -1), "CENTER"),
+    ]))
+    return badge
 
 
 def _final_evaluation_paragraph(elements: List, styles: Dict, cve_data: List[Dict]) -> None:
-    total = len(cve_data)
-    high = len([c for c in cve_data if (c.get("cvss") is not None and c.get("cvss") >= 9.0)])
+    """Grau hinterlegte Hinweis-Box am Ende — wie im Screenshot."""
+    ns = styles.get("normal") or styles.get("Normal")
+
+    total          = len(cve_data)
+    crit           = len([c for c in cve_data if (c.get("cvss") or 0) >= 9.0])
     public_exploits = len([c for c in cve_data if c.get("exploit_status") == "public"])
 
-    eval_text = (
-        "Bewertung:<br/>"
-        f"Keine aktuell aktiv ausgenutzten Schwachstellen mit kritischer Priorität identifiziert.<br/>"
-        f"Insgesamt identifizierte CVEs: {total}. Kritisch (CVSS≥9): {high}. Öffentliche Exploits: {public_exploits}.<br/>"
-        "Hinweis: Keine technischen Nachweise, keine aktiven Scans und keine bestätigten Schwachstellen; Empfehlung: technische Verifikation."
+    text = (
+        "Hinweis: CVE-Zuordnungen basieren auf öffentlich sichtbaren Softwareversionen (Inferred). "
+        "Keine aktive Verifikation der Ausnutzbarkeit. "
+        "Empfehlung: technische Verifikation durch IT-Betrieb. "
+        f"Vollständige CVE-Liste auf Anfrage verfügbar."
     )
-    elements.append(Paragraph(eval_text, styles["normal"]))
+
+    box = Table(
+        [[Paragraph(f'<font size="8" color="#444444">{text}</font>', ns)]],
+        colWidths=[175 * mm],
+    )
+    box.setStyle(TableStyle([
+        ("BACKGROUND",    (0, 0), (-1, -1), HexColor("#F8F8F8")),
+        ("BOX",           (0, 0), (-1, -1), 0.5, HexColor("#DDDDDD")),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 10),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 10),
+        ("TOPPADDING",    (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+    ]))
+    elements.append(box)

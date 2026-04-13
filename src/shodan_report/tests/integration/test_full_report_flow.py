@@ -48,7 +48,7 @@ def test_end_to_end_report_generation(tmp_path, monkeypatch):
 
     technical_json = build_technical_data(curr, prev)
 
-    monkeypatch.setattr(pdf_generator, "OUTPUT_DIR", tmp_path / "reports")
+    monkeypatch.setattr("shodan_report.pdf.pdf_generator.reports_dir", lambda: tmp_path / "reports")
 
     def fake_render(path: Path, elements, **kwargs):
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -81,8 +81,8 @@ def test_end_to_end_report_generation(tmp_path, monkeypatch):
 def test_pdf_and_archive_integration(tmp_path, monkeypatch):
 
     # Setup
-    monkeypatch.setattr(pdf_generator, "OUTPUT_DIR", tmp_path / "reports")
-    monkeypatch.setattr("shodan_report.archiver.core.ARCHIVE_DIR", tmp_path / "archive")
+    monkeypatch.setattr("shodan_report.pdf.pdf_generator.reports_dir", lambda: tmp_path / "reports")
+    monkeypatch.setattr("shodan_report.archiver.core.archive_dir", lambda: tmp_path / "archive")
 
     curr = _make_snapshot(
         "1.2.3.4",
@@ -146,8 +146,8 @@ def test_pdf_and_archive_integration(tmp_path, monkeypatch):
 
 def test_main_flow_simulation(tmp_path, monkeypatch):
     # Setup temporäre Verzeichnisse
-    monkeypatch.setattr(pdf_generator, "OUTPUT_DIR", tmp_path / "reports")
-    monkeypatch.setattr("shodan_report.archiver.core.ARCHIVE_DIR", tmp_path / "archive")
+    monkeypatch.setattr("shodan_report.pdf.pdf_generator.reports_dir", lambda: tmp_path / "reports")
+    monkeypatch.setattr("shodan_report.archiver.core.archive_dir", lambda: tmp_path / "archive")
 
     # Mock für ShodanClient (vereinfacht)
     class MockShodanClient:

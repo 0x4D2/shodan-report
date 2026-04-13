@@ -8,9 +8,8 @@ from .pdf_manager import prepare_pdf_elements
 from .pdf_renderer import render_pdf
 from .sections.data.management_data import prepare_management_data
 from .sections.data.cve_enricher import enrich_cves
+from shodan_report.paths import reports_dir
 import re
-
-OUTPUT_DIR = Path("./reports")
 
 
 def generate_pdf(
@@ -22,7 +21,7 @@ def generate_pdf(
     technical_json: dict,
     evaluation: dict,
     business_risk: str,
-    output_dir: Path = OUTPUT_DIR,
+    output_dir: Path = None,
     config: Optional[dict] = None,
     compare_month: Optional[str] = None,
 ) -> Path:
@@ -30,6 +29,8 @@ def generate_pdf(
     config = config or {}
     debug_mdata = bool(config.get("debug_mdata", False))
 
+    if output_dir is None:
+        output_dir = reports_dir()
     output_dir.mkdir(parents=True, exist_ok=True)
     customer_dir = output_dir / customer_name.replace(" ", "_")
     customer_dir.mkdir(parents=True, exist_ok=True)
@@ -49,6 +50,13 @@ def generate_pdf(
             technical_json["cve_enriched"] = enriched
     except Exception:
         pass
+
+    # Pre-compute SHA256 so the signature block on the last page can use it.
+    # Store in a local variable; do NOT mutate `config` before prepare_pdf_elements
+    # so that tests can assert on the clean config that was passed in.
+    _sha256_precomputed = hashlib.sha256(
+        f"{customer_name}:{ip}:{month}".encode()
+    ).hexdigest()
 
     # Call `prepare_pdf_elements` with positional args to remain compatible with tests.
     if compare_month is None:
@@ -95,19 +103,33 @@ def generate_pdf(
             or config.get("domain")
             or ""
         )
-        _sha256 = hashlib.sha256(
-            f"{customer_name}:{ip}:{month}".encode()
-        ).hexdigest()
+        _sha256 = _sha256_precomputed
         try:
             _month_dt = datetime.strptime(month, "%Y-%m")
             _month_display = _month_dt.strftime("%b %Y")
         except Exception:
             _month_display = month
+        _disclaimer_cfg = config.get("disclaimer", {})
+        _show_disclaimer = _disclaimer_cfg.get("enabled", True)
+        _disclaimer_default = (
+            "Haftungsausschluss: Dieser Bericht basiert ausschließlich auf passiver OSINT-Analyse "
+            "öffentlich zugänglicher Quellen (Shodan, crt.sh, DNS-Records u.\u00a0a.). "
+            "Es wurden keine aktiven Scans oder Eingriffe in Systeme vorgenommen. "
+            "Die Ergebnisse erheben keinen Anspruch auf Vollständigkeit. "
+            "MG Solutions GmbH übernimmt keine Haftung für Schäden, die aus der Nutzung "
+            "oder dem Vertrauen auf diese Informationen entstehen."
+        )
+        _disclaimer_text = (
+            (_disclaimer_cfg.get("custom_text") or _disclaimer_default).strip()
+            if _show_disclaimer else None
+        )
+
         _page_meta = {
             "domain": _domain,
             "month_display": _month_display,
             "sha256": _sha256,
             "confidentiality": "Vertraulich",
+            "disclaimer_text": _disclaimer_text,
         }
     except Exception:
         _page_meta = {}

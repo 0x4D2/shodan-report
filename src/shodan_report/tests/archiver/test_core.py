@@ -4,7 +4,6 @@ import pytest
 from shodan_report.archiver.core import (
     archive_snapshot,
     retrieve_archived_snapshot,
-    ARCHIVE_DIR,
     list_archived_snapshots,
 )
 from shodan_report.models import AssetSnapshot, Service
@@ -54,7 +53,7 @@ def test_archive_and_retrieve_snapshot(tmp_path, monkeypatch):
     # Temporären Archivordner einrichten
     archive_test_dir = tmp_path / "archive"
     archive_test_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setattr("shodan_report.archiver.core.ARCHIVE_DIR", archive_test_dir)
+    monkeypatch.setattr("shodan_report.archiver.core.archive_dir", lambda: archive_test_dir)
 
     # Snapshot erstellen und archivieren
     snapshot = make_snapshot()
@@ -79,7 +78,7 @@ def test_archive_and_retrieve_snapshot(tmp_path, monkeypatch):
 def test_list_archived_snapshots(tmp_path, monkeypatch):
     archive_test_dir = tmp_path / "archive"
     archive_test_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setattr("shodan_report.archiver.core.ARCHIVE_DIR", archive_test_dir)
+    monkeypatch.setattr("shodan_report.archiver.core.archive_dir", lambda: archive_test_dir)
 
     snapshot1 = make_minimal_snapshot("1.2.3.4")
     snapshot2 = make_minimal_snapshot("5.6.7.8")
@@ -97,7 +96,7 @@ def test_list_archived_snapshots(tmp_path, monkeypatch):
 def test_retrieve_nonexistent_snapshot(tmp_path, monkeypatch):
     archive_test_dir = tmp_path / "archive"
     archive_test_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setattr("shodan_report.archiver.core.ARCHIVE_DIR", archive_test_dir)
+    monkeypatch.setattr("shodan_report.archiver.core.archive_dir", lambda: archive_test_dir)
 
     result = retrieve_archived_snapshot("TestCustomer", "2026-01", "9.9.9.9")
     assert result is None

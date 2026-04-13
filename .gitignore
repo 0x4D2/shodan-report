@@ -15,9 +15,9 @@ config/customers/*.yml
 archive/*
 jobs.txt
 jobs/*.txt
-assets/*.png
 .cache/
 .mypy_cache/
 .ruff_cache/
+.claude
 
 scripts/dev/

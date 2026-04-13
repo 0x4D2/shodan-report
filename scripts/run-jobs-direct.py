@@ -1,92 +1,202 @@
 # scripts/run-jobs-direct.py
-import sys
-from pathlib import Path
-import os
+"""Batch-Verarbeitung aus jobs.txt.
 
-# By default prefer the installed package (editable install).
-# Set environment variable `USE_LOCAL_SRC=1` to force usage of the local `src/` directory
-# (useful during development). This prevents accidental usage of legacy local paths.
+Format jobs.txt (eine Job-Definition pro Zeile):
+
+  Kurzformat (IP/Domain aus YAML):
+    Kundenname YYYY-MM [--compare YYYY-MM]
+
+  Langformat (IP explizit, für Ausnahmen):
+    Kundenname IP YYYY-MM [--compare YYYY-MM] [--config pfad.yaml]
+
+Die Kundenkonfiguration wird automatisch gesucht unter:
+  config/customers/<kundenname-lowercase-mit-bindestrich>.yaml
+
+Liegt dort eine YAML mit customer.ip / customer.domain,
+werden diese verwendet — kein IP-Eintrag in jobs.txt nötig.
+
+Beispiele:
+  Acme GmbH 2026-04
+  Acme GmbH 2026-04 --compare 2026-03
+  Acme GmbH 1.2.3.4 2026-04
+  Acme GmbH 1.2.3.4 2026-04 --config config/customers/acme.yaml
+"""
+import sys
+import os
+import re
+import argparse
+import yaml
+from pathlib import Path
+
 if os.getenv("USE_LOCAL_SRC") == "1":
-    repo_root = Path(__file__).resolve().parents[1]
-    src_path = repo_root / "src"
+    src_path = Path(__file__).resolve().parents[1] / "src"
     if str(src_path) not in sys.path:
         sys.path.insert(0, str(src_path))
-    print("INFO: Using local src/ (USE_LOCAL_SRC=1)")
-else:
-    print("INFO: Using installed package (ensure you ran 'pip install -e .')")
-
 
 from shodan_report.core.runner import generate_report_pipeline
 
-print("=== Batch Processing ===")
+_REPO_ROOT = Path(__file__).resolve().parents[1]
 
-# 1. Jobs laden
-jobs_file = Path("jobs.txt")
-if not jobs_file.exists():
-    print("jobs.txt missing")
-    sys.exit(1)
+# Simple IP regex (IPv4)
+_IP_RE = re.compile(r"^\d{1,3}(\.\d{1,3}){3}$")
+# Month pattern YYYY-MM
+_MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
 
-jobs = []
-with open(jobs_file, 'r', encoding='utf-8') as f:
-    for line in f:
-        line = line.strip()
-        if line and not line.startswith('#'):
-            jobs.append(line)
 
-total = len(jobs)
-success = 0
+def _find_config(customer: str) -> Path | None:
+    """Sucht automatisch nach einer passenden Config-Datei."""
+    slug = customer.lower().replace(" ", "-").replace("_", "-")
+    candidates = [
+        _REPO_ROOT / "config" / "customers" / f"{slug}.yaml",
+        _REPO_ROOT / "config" / "customers" / f"{slug}.yml",
+    ]
+    for p in candidates:
+        if p.exists():
+            return p
+    return None
 
-print(f"Processing {total} jobs...")
 
-# 2. CONFIG MAPPING (Customer → Config-Datei)
-config_mapping = {
-    "MG_Solutions": "config/customers/mg-solutions.yaml",
-    "CHINANET": "config/customers/chinanet-hubei.yaml", 
-    "Next_Vision_GmbH": "config/customers/next-vision-gmbh.yaml",
-}
+def _parse_job_line(line: str) -> dict | None:
+    """Parst eine jobs.txt-Zeile in ein Job-Dict.
 
-for i, line in enumerate(jobs, 1):
-    parts = line.split()
-    if len(parts) < 3:
-        print(f"[{i}] Invalid: {line}")
-        continue
-
-    customer = " ".join(parts[:-2]).strip()
-    ip = parts[-2]
-    month = parts[-1]
-    if not customer:
-        print(f"[{i}] Invalid: {line}")
-        continue
-    print(f"[{i}/{total}] {customer} - {ip} - {month}")
-    
+    Unterstützt beide Formate:
+      Kurzformat: Kundenname YYYY-MM [--compare YYYY-MM]
+      Langformat: Kundenname IP YYYY-MM [--compare YYYY-MM] [--config pfad]
+    """
+    tokens = line.split()
+    compare_month = None
     config_path = None
-    normalized_customer = customer.replace(" ", "_")
-    if customer in config_mapping:
-        config_path = Path(config_mapping[customer])
-    elif normalized_customer in config_mapping:
-        config_path = Path(config_mapping[normalized_customer])
-        if not config_path.exists():
-            print(f"⚠️  Config nicht gefunden: {config_path}")
-            config_path = None
-    else:
-        print(f"⚠️  Kein Config-Mapping für: {customer}")
-    
-    # 4. MIT CONFIG AUFRUFEN
-    result = generate_report_pipeline(
-        customer_name=customer,
-        ip=ip,
-        month=month,
-        config_path=config_path,  
-        archive=False,
-        compare_month=None,
-        verbose=False
-    )
-    
-    if result.get("success"):
-        print(f" Success - PDF: {result.get('pdf_path', '?')}")
-        success += 1
-    else:
-        print(f" Failed: {result.get('error', 'Unknown error')}")
 
-print(f"\n=== Done ===")
-print(f"{success}/{total} successful")
+    # Flags extrahieren
+    i = 0
+    positional = []
+    while i < len(tokens):
+        if tokens[i] == "--compare" and i + 1 < len(tokens):
+            compare_month = tokens[i + 1]
+            i += 2
+        elif tokens[i] == "--config" and i + 1 < len(tokens):
+            config_path = Path(tokens[i + 1])
+            i += 2
+        else:
+            positional.append(tokens[i])
+            i += 1
+
+    if len(positional) < 2:
+        return None
+
+    # Letztes positional muss ein Monat sein
+    if not _MONTH_RE.match(positional[-1]):
+        return None
+
+    month = positional[-1]
+
+    # Vorletztes positional: IP oder Teil des Kundennamens?
+    if len(positional) >= 3 and _IP_RE.match(positional[-2]):
+        # Langformat: IP explizit angegeben
+        ip = positional[-2]
+        customer = " ".join(positional[:-2])
+    else:
+        # Kurzformat: kein IP — kommt aus YAML
+        ip = None
+        customer = " ".join(positional[:-1])
+
+    if not customer:
+        return None
+
+    return {
+        "customer": customer,
+        "ip": ip,
+        "month": month,
+        "compare_month": compare_month,
+        "config_path": config_path,
+    }
+
+
+def _get_ip_list(explicit_ip: str | None, config_path: Path | None) -> list[str | None]:
+    """Gibt die Liste der zu verarbeitenden IPs zurück.
+
+    - Explizite IP aus jobs.txt hat immer Vorrang → einelementige Liste.
+    - Sonst: customer.ips aus YAML (Liste), customer.ip aus YAML, oder [None]
+      (letzteres damit der Runner Domain-Discovery / Fehlerbehandlung übernimmt).
+    """
+    if explicit_ip:
+        return [explicit_ip]
+
+    if config_path and config_path.exists():
+        try:
+            cfg = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+            customer = cfg.get("customer", {})
+            ips = customer.get("ips")
+            if ips and isinstance(ips, list):
+                return [str(ip) for ip in ips if ip]
+            single = customer.get("ip")
+            if single:
+                return [str(single)]
+        except Exception:
+            pass
+
+    return [None]
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Batch-Report-Generierung aus jobs.txt")
+    parser.add_argument("--jobs", default="jobs.txt", help="Pfad zur jobs.txt")
+    parser.add_argument("--archive", action="store_true", help="Revisionssichere Archivierung aktivieren")
+    parser.add_argument("--verbose", "-v", action="store_true")
+    args = parser.parse_args()
+
+    jobs_file = Path(args.jobs)
+    if not jobs_file.exists():
+        print(f"Fehler: {jobs_file} nicht gefunden")
+        sys.exit(1)
+
+    lines = [
+        l.strip() for l in jobs_file.read_text(encoding="utf-8").splitlines()
+        if l.strip() and not l.startswith("#")
+    ]
+
+    total = len(lines)
+    success = 0
+    print(f"=== Batch Processing — {total} Jobs ===\n")
+
+    for i, line in enumerate(lines, 1):
+        job = _parse_job_line(line)
+        if not job:
+            print(f"[{i}/{total}] Ungültige Zeile: {line}")
+            continue
+
+        # Config automatisch suchen wenn nicht explizit angegeben
+        config_path = job["config_path"]
+        if config_path is None:
+            config_path = _find_config(job["customer"])
+
+        ip_list = _get_ip_list(job["ip"], config_path)
+
+        for ip in ip_list:
+            ip_label = ip or "IP aus YAML/Domain"
+            print(f"[{i}/{total}] {job['customer']} — {ip_label} — {job['month']}", end="")
+            if config_path:
+                print(f" (config: {config_path.name})", end="")
+            print()
+
+            result = generate_report_pipeline(
+                customer_name=job["customer"],
+                ip=ip,
+                month=job["month"],
+                config_path=config_path,
+                archive=args.archive,
+                compare_month=job["compare_month"],
+                verbose=args.verbose,
+            )
+
+            if result.get("success"):
+                print(f"  OK {result.get('pdf_path', '?')}")
+                success += 1
+            else:
+                print(f"  FEHLER {result.get('error', 'Unbekannter Fehler')}")
+
+    print(f"\n=== Fertig: {success}/{total} erfolgreich ===")
+
+
+if __name__ == "__main__":
+    main()

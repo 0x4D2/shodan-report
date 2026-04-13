@@ -22,6 +22,7 @@ from shodan_report.pdf.pdf_generator import generate_pdf
 from shodan_report.pdf.sections.data.management_data import prepare_management_data
 from shodan_report.pdf.sections.data.cve_enricher import enrich_cves
 from shodan_report.archiver.report_archiver import ReportArchiver
+from shodan_report.paths import reports_dir
 
 
 def load_customer_config(config_path: Optional[Path]) -> dict:
@@ -49,10 +50,11 @@ def generate_report_pipeline(
     month: str,
     compare_month: Optional[str] = None,
     config_path: Optional[Path] = None,
-    output_dir: Path = Path("./reports"),
+    output_dir: Path = None,
     archive: bool = True,
     verbose: bool = False,
     domain: Optional[str] = None,
+    note: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Generiere einen vollständigen Shodan Report mit NEUER Evaluation Engine.
@@ -73,11 +75,42 @@ def generate_report_pipeline(
     """
     config = load_customer_config(config_path)
     report_config = config.get("report", {})
+
+    # --note CLI-Argument überschreibt cover_note aus YAML
+    if note:
+        config.setdefault("report", {})["cover_note"] = note
+
+    # ── Customer-YAML: IP/Domain/Package aus Konfiguration lesen ─────────────
+    customer_cfg = config.get("customer", {})
+
+    # IP: explizites Argument hat Vorrang, dann YAML (einzeln oder Liste)
+    if not ip:
+        ip = customer_cfg.get("ip") or None
+    if not ip:
+        ips_list = customer_cfg.get("ips")
+        if ips_list and isinstance(ips_list, list):
+            ip = ips_list[0]
+
+    # Domain: explizites Argument hat Vorrang, dann YAML
+    if not domain:
+        domain = customer_cfg.get("domain") or None
+
+    # Package-basierte Sektion-Kontrolle in config einschreiben
+    package = customer_cfg.get("package", "professional").lower()
+    config["_package"] = package
+
+    # enterprise → NVD Live automatisch
+    if package == "enterprise":
+        config.setdefault("nvd", {})["enabled"] = True
+
     include_trend = config.get("report", {}).get("include_trend_analysis", True)
     if not include_trend:
         trend_text = "Trendanalyse deaktiviert (Kundenkonfiguration)."
 
     load_dotenv()
+
+    if output_dir is None:
+        output_dir = reports_dir()
 
     # ── Attack Surface Discovery (passives OSINT) ──────────────────────────────────
     attack_surface = None

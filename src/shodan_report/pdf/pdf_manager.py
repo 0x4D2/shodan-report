@@ -2,6 +2,10 @@
 
 from typing import List, Dict, Any, Optional, Callable
 
+from reportlab.platypus import Table, TableStyle, Spacer, Paragraph
+from reportlab.lib.colors import HexColor
+from reportlab.lib.units import mm
+
 from .styles import create_theme, create_styles
 from .sections.header import _create_header
 from .context import ReportContext
@@ -85,6 +89,14 @@ def prepare_pdf_elements(
     # Default (legacy) behavior: call built-in section functions in order.
     # Insert a marker before each section so the renderer can keep the whole
     # section together when producing the PDF.
+
+    # ── Package-basierte Sektion-Kontrolle ───────────────────────────────────
+    package = config.get("_package", "professional").lower()
+    _is_professional = package in ("professional", "enterprise")
+    _is_enterprise = package == "enterprise"
+
+    from reportlab.platypus import PageBreak as _PageBreak
+
     elements.append(_SectionMarker())
     _header_domain = ctx.attack_surface.domain if ctx.attack_surface else None
     _create_header(elements=elements, styles=styles, theme=theme, customer_name=customer_name, month=month, ip=ip, config=config, domain=_header_domain)
@@ -94,39 +106,64 @@ def prepare_pdf_elements(
     # possible.
     create_management_section(elements=elements, styles=styles, management_text=management_text, technical_json=technical_json, evaluation=evaluation, business_risk=business_risk, config=config, context=ctx)
 
-    from reportlab.platypus import PageBreak as _PageBreakMgmt
-    elements.append(_PageBreakMgmt())
+    # ── Persönliche Ansprache — unter dem Management-Block, vor dem Seitenumbruch
+    _cover_note = config.get("report", {}).get("cover_note", "").strip()
+    if _cover_note:
+        _note_para = Paragraph(
+            _cover_note,
+            styles["normal"].clone(
+                "cover_note_text",
+                fontSize=9.5,
+                leading=14,
+                textColor=HexColor("#1A1A1A"),
+            ),
+        )
+        _note_table = Table([[_note_para]], colWidths=[163 * mm])
+        _note_table.setStyle(TableStyle([
+            ("BACKGROUND",    (0, 0), (-1, -1), HexColor("#F7F9FC")),
+            ("LINESTART",     (0, 0), (0, -1),  3, HexColor("#2563EB")),
+            ("LEFTPADDING",   (0, 0), (-1, -1), 10),
+            ("RIGHTPADDING",  (0, 0), (-1, -1), 10),
+            ("TOPPADDING",    (0, 0), (-1, -1), 8),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+        ]))
+        elements.append(Spacer(1, 6))
+        elements.append(_note_table)
 
-    # Section 3: Priorisierte Handlungsempfehlungen
-    create_recommendations_section(elements=elements, styles=styles, business_risk=business_risk, technical_json=technical_json, evaluation=evaluation)
-
-    # Hard page break: Empfehlungen auf eigener Seite, technischer Inhalt beginnt immer neu.
-    # technischer Inhalt beginnt immer auf einer neuen Seite.
-    from reportlab.platypus import PageBreak as _PageBreak
     elements.append(_PageBreak())
 
-    # Attack Surface Discovery — nach Empfehlungen, vor Technical-Detail
+    # Priorisierte Handlungsempfehlungen — immer enthalten
+    create_recommendations_section(elements=elements, styles=styles, business_risk=business_risk, technical_json=technical_json, evaluation=evaluation)
+
+    elements.append(_PageBreak())
+
+    # Attack Surface Discovery — immer enthalten wenn domain vorhanden
     if ctx.attack_surface is not None:
         elements.append(_SectionMarker())
         create_attack_surface_section(elements=elements, styles=styles, context=ctx)
 
+    # Technischer Anhang — immer enthalten
     elements.append(_SectionMarker())
     create_technical_section(elements=elements, styles=styles, technical_json=technical_json, config=config)
 
-    elements.append(_SectionMarker())
-    create_cve_overview_section(elements=elements, styles=styles, technical_json=technical_json, evaluation=evaluation, context=ctx)
+    # CVE-Übersicht — professional/enterprise
+    if _is_professional:
+        elements.append(_SectionMarker())
+        create_cve_overview_section(elements=elements, styles=styles, technical_json=technical_json, evaluation=evaluation, context=ctx)
 
-    elements.append(_SectionMarker())
-    create_trend_section(elements=elements, styles=styles, trend_text=trend_text, compare_month=compare_month, trend_table=trend_table, legacy_mode=False, technical_json=technical_json, evaluation=evaluation)
+    # Trendanalyse — professional/enterprise
+    if _is_professional:
+        elements.append(_SectionMarker())
+        create_trend_section(elements=elements, styles=styles, trend_text=trend_text, compare_month=compare_month, trend_table=trend_table, legacy_mode=False, technical_json=technical_json, evaluation=evaluation)
 
     elements.append(_SectionMarker())
     create_conclusion_section(elements=elements, styles=styles, customer_name=customer_name, business_risk=business_risk, context=ctx)
 
-    # Einordnung & Bewertungslogik — letzte Seite, nach dem Fazit
+    # Methodik — immer enthalten
     elements.append(_SectionMarker())
     create_methodology_section(elements=elements, styles=styles)
 
     # Keep Footer together with methodology — no extra marker
-    create_footer_section(elements=elements, styles=styles)
+    create_footer_section(elements=elements, styles=styles, sha256=config.get("_sha256"))
 
     return elements

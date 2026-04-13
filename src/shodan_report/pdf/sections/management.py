@@ -168,46 +168,63 @@ def get_management_risk_and_tech_note(technical_json: Dict[str, Any], evaluation
 
     return risk_stmt, tech_note
 
-# Total KPI row = 5 cells × _KPI_CELL_W mm = 163 mm (matches other section tables)
-_KPI_CELL_W = 163.0 / 5  # ≈ 32.6 mm
+# Total KPI row = 5 cells × _KPI_CELL_W mm = 163 mm (fits within page text frame)
+_KPI_CELL_W = 163.0 / 5  # = 32.6 mm
 
 
 def _kpi_cell(label: str, value: str, value_color=None, value_size: int = 16) -> Table:
-    """Rendert eine einzelne KPI-Karte im Management-Stil."""
+    """KPI-Karte — Uppercase-Label oben, große Zahl unten, weißer Hintergrund mit Rahmen."""
+    _C_BORDER  = HexColor("#DDDDDD")
+    _C_BG      = Colors.bg_light
     _val_color = value_color if value_color is not None else Colors.text
-    _val_leading = max(value_size + 2, 11)
+
     lbl = Paragraph(
-        f'<font size="7">{label}</font>',
+        f'<font size="7" color="#888888">{label}</font>',
         ParagraphStyle(
             "_KpiLabel",
             alignment=1,
             leading=9,
             spaceAfter=0,
             spaceBefore=0,
-            textColor=Colors.text_muted,
             fontName="Helvetica",
         ),
     )
+    # IP-Wert kleiner und monospace, alle anderen normal groß
+    if value_size <= 9:
+        val_markup = f'<font size="9" color="#1A1A1A"><b>{value}</b></font>'
+    else:
+        hex_color = "#{:02X}{:02X}{:02X}".format(
+            int(_val_color.red * 255),
+            int(_val_color.green * 255),
+            int(_val_color.blue * 255),
+        ) if value_color else "#1A1A1A"
+        val_markup = f'<font size="{value_size}" color="{hex_color}"><b>{value}</b></font>'
+
     val = Paragraph(
-        f'<font size="{value_size}"><b>{value}</b></font>',
+        val_markup,
         ParagraphStyle(
             "_KpiValue",
             alignment=1,
-            leading=_val_leading,
+            leading=max(value_size + 2, 11),
             spaceAfter=0,
             spaceBefore=0,
-            textColor=_val_color,
             fontName="Helvetica-Bold",
+            textColor=_val_color,
         ),
     )
-    inner = Table([[lbl], [val]], colWidths=[_KPI_CELL_W * mm], rowHeights=[14, 26])
+    # Feste Zeilenhöhen für perfekte Gleichheit und Zentrierung
+    inner = Table(
+        [[lbl], [val]],
+        colWidths=[_KPI_CELL_W * mm],
+        rowHeights=[14, 26]  # Label-Zeile, Wert-Zeile (siehe Changelog)
+    )
     inner.setStyle(TableStyle([
-        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("TOPPADDING", (0, 0), (-1, -1), 4),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-        ("BACKGROUND", (0, 0), (-1, -1), Colors.bg_light),
-        ("BOX", (0, 0), (-1, -1), 0.3, Colors.border),
+        ("ALIGN",         (0, 0), (-1, -1), "CENTER"),
+        ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING",    (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ("BACKGROUND",    (0, 0), (-1, -1), _C_BG),
+        ("BOX",           (0, 0), (-1, -1), 0.5, _C_BORDER),
     ]))
     return inner
 
@@ -449,22 +466,25 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
     _ip_display = str(technical_json.get("ip_str") or technical_json.get("ip") or "—")
     kpi_row = Table(
         [[
-            _kpi_cell("Analysierte IP", _ip_display, value_size=9),
-            _kpi_cell("Offene Ports", str(int(mdata.get("total_ports", 0) or 0))),
-            _kpi_cell("CVEs gesamt", str(_cve_total_kpi)),
-            _kpi_cell("Kritisch (≥9)", str(_crit_count_kpi), _crit_color_kpi),
-            _kpi_cell("CISA KEV", str(_cisa_count_kpi), _cisa_color_kpi),
+            _kpi_cell("ANALYSIERTE IP",  _ip_display, value_size=9),
+            _kpi_cell("OFFENE PORTS",    str(int(mdata.get("total_ports", 0) or 0))),
+            _kpi_cell("CVES GESAMT",     str(_cve_total_kpi)),
+            _kpi_cell("KRITISCH (≥9)",   str(_crit_count_kpi), _crit_color_kpi),
+            _kpi_cell("CISA KEV",        str(_cisa_count_kpi), _cisa_color_kpi),
         ]],
         colWidths=[_KPI_CELL_W * mm] * 5,
     )
     kpi_row.setStyle(TableStyle([
-        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 0),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("ALIGN",         (0, 0), (-1, -1), "CENTER"),
+        ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
+        ("TOPPADDING",    (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ("LINEBEFORE",    (1, 0), (-1, -1), 0.5, HexColor("#DDDDDD")),
     ]))
     elements.append(kpi_row)
-    elements.append(Spacer(1, 12))
+    elements.append(Spacer(1, 10))
 # ── Exposure-Level + Beitragsfaktoren (ein kompakter Block) ─────────────
     try:
         services = technical_json.get("services") or technical_json.get("open_ports") or []
@@ -511,11 +531,15 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
 
     _factor_str = " · ".join(_factors)
 
-    # Akzentfarbe linker Rand abhängig vom Exposure-Level
     _accent_color = (
-        HexColor("#dc2626") if exposure_score >= 4
-        else HexColor("#f97316") if exposure_score == 3
-        else HexColor("#22c55e")
+        HexColor("#C0392B") if exposure_score >= 4
+        else HexColor("#E67E22") if exposure_score == 3
+        else HexColor("#27AE60")
+    )
+    _exp_color_hex = (
+        "#C0392B" if exposure_score >= 4
+        else "#E67E22" if exposure_score == 3
+        else "#27AE60"
     )
 
     try:
@@ -526,128 +550,158 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
     _exp_box = Table(
         [[
             Paragraph(
-                f"<b>EXPOSURE-LEVEL:</b> &nbsp; {exposure_display} ({exposure_desc})",
-                styles["exposure"],
+                f'<font size="8" color="#888888">EXPOSURE-LEVEL</font><br/>'
+                f'<font size="12" color="{_exp_color_hex}"><b>{exposure_display}</b></font>'
+                f'<font size="9" color="{_exp_color_hex}"> ({exposure_desc})</font>',
+                styles["normal"],
             ),
             _ampel_box,
             Paragraph(
-                f"Beitragsfaktoren: {_factor_str}",
-                styles["normal"].clone("_exp_factors", alignment=2, fontSize=8, textColor=Colors.text_muted),
+                f'<font size="8" color="#888888">Beitragsfaktoren: {_factor_str}</font>',
+                ParagraphStyle(
+                    "_exp_factors",
+                    parent=styles["normal"],
+                    alignment=2,
+                    fontSize=8,
+                ),
             ),
         ]],
-        colWidths=[68 * mm, 35 * mm, 60 * mm],
+        colWidths=[60 * mm, 40 * mm, 63 * mm],
     )
     _exp_box.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 10),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
-        ("TOPPADDING", (0, 0), (-1, -1), 6),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-        ("BOX", (0, 0), (-1, -1), 0.5, Colors.border),
-        ("BACKGROUND", (0, 0), (-1, -1), Colors.bg_light),
-        ("LINEBEFORE", (0, 0), (0, -1), 4, _accent_color),
+        ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 10),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 8),
+        ("TOPPADDING",    (0, 0), (-1, -1), 7),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+        ("BOX",           (0, 0), (-1, -1), 0.5, HexColor("#DDDDDD")),
+        ("BACKGROUND",    (0, 0), (-1, -1), HexColor("#F8F8F8")),
+        ("LINEBEFORE",    (0, 0), (0, -1),  4, _accent_color),
     ]))
     elements.append(_exp_box)
-    elements.append(Spacer(1, 6))
+    elements.append(Spacer(1, 10))
 
-    # 3 Kernaussagen (Risiko, Zustand, Richtung)
-    elements.append(Paragraph("<b>Kernaussagen</b>", styles["normal"]))
-    elements.append(Spacer(1, 4))
+    # ── Zweispaltig: Links = Kernaussagen + Technik | Rechts = Gesamteinschätzung + Empfehlung ──
+    ns = styles.get("normal") or styles.get("Normal")
 
-    # Use helper to produce the risk statement and the technical short note
+    # ── LINKE SPALTE ──────────────────────────────────────────────────────────
     rdp_primary = should_show_rdp_warning(technical_json, mdata)
-    risk_stmt, tech_note_candidate = get_management_risk_and_tech_note(technical_json, evaluation, mdata=mdata, config=config)
-
+    risk_stmt, tech_note_candidate = get_management_risk_and_tech_note(
+        technical_json, evaluation, mdata=mdata, config=config
+    )
     _state_dienste = "öffentlicher Dienst" if total_ports == 1 else "öffentliche Dienste"
-    state_stmt = f"Zustand: Exposure-Level {exposure_display} ({exposure_desc}) — Gesamtbewertung stützt sich auf {total_ports} {_state_dienste}."
-
+    state_stmt = (
+        f"Zustand: Exposure-Level {exposure_display} ({exposure_desc}) — "
+        f"{total_ports} {_state_dienste}, {cve_count} CVE-Indikatoren."
+    )
     trend_note = (
-        "Richtung: Trend aktuell nicht verfügbar (zu wenige historische Messungen); "
-        "Lösung: regelmäßige Scans (z. B. monatlich) und längere Aufbewahrung der Ergebnisse einführen, "
-        "damit Trendanalysen möglich werden."
+        "Richtung: Baseline gesetzt. Trendvergleich ab nächstem Report verfügbar."
     )
     try:
         if compare_month or trend_text:
             trend_note = (
                 "Richtung: Trendbewertung verfügbar (siehe Trend- & Vergleichsanalyse). "
-                "Beispiel-Lösung: regelmäßige, automatisierte Scans und Alerting einrichten, "
-                "Trendberichte monatlich erstellen und einen Verantwortlichen (Owner) benennen."
+                "Regelmäßige Scans und Owner benennen."
             )
     except Exception:
         pass
 
-    for stmt in (risk_stmt, state_stmt, trend_note):
-        elements.append(Paragraph(f"• {stmt}", styles["bullet"]))
+    left_rows = [
+        [Paragraph('<font size="9" color="#1A1A1A"><b>Kernaussagen</b></font>', ns)],
+        [Paragraph(f'<font size="9" color="#444444">• <b>Risiko:</b> {risk_stmt.replace("Risiko: ", "", 1)}</font>', ns)],
+        [Paragraph(f'<font size="9" color="#444444">• <b>Zustand:</b> {state_stmt.replace("Zustand: ", "")}</font>', ns)],
+        [Paragraph(f'<font size="9" color="#444444">• <b>Richtung:</b> {trend_note.replace("Richtung: ", "")}</font>', ns)],
+        [Spacer(1, 6)],
+        [Paragraph('<font size="9" color="#1A1A1A"><b>Technische Kurzbewertung</b></font>', ns)],
+        [Paragraph(f'<font size="9" color="#444444">{tech_note_candidate}</font>', ns)],
+    ]
 
-    elements.append(Spacer(1, 6))
+    left_tbl = Table(left_rows, colWidths=[78 * mm])
+    left_tbl.setStyle(TableStyle([
+        ("TOPPADDING",    (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 6),
+        ("VALIGN",        (0, 0), (-1, -1), "TOP"),
+        # Header-Zeilen etwas mehr Abstand nach unten
+        ("BOTTOMPADDING", (0, 0), (0, 0),   5),
+        ("BOTTOMPADDING", (0, 5), (0, 5),   5),
+    ]))
 
-    # Technische Kurzbewertung (OSINT-basiert)
-    try:
-        services = technical_json.get("services") or technical_json.get("open_ports") or []
-        ports = set()
-        products = []
-        for s in services:
-            if isinstance(s, dict):
-                ports.add(s.get("port"))
-                products.append(str(s.get("product") or "").lower())
-            else:
-                ports.add(getattr(s, "port", None))
-                products.append(str(getattr(s, "product", "")).lower())
-        prod_text = " ".join(products)
-        has_ssh = bool(22 in ports or "ssh" in prod_text)
-        has_web = bool(ports.intersection({80, 443, 8080, 8443, 8081}) or "http" in prod_text)
-
-        # If RDP is primary, add a focused technical short note instead of generic SSH/web text
-        if rdp_primary:
-            tech_note = (
-                "Hinweis: Öffentlich erreichbares RDP erfordert besondere Absicherung. "
-                "Empfohlene Maßnahmen umfassen: Netzwerk Access Control (IP-Whitelisting), NLA (Network Level Authentication), "
-                "MFA-Einführung oder Ersatz durch VPN/Jumphost-Lösungen."
-            )
-        elif has_ssh and has_web:
-            tech_note = (
-                "Technische Kurzbewertung: SSH (Port 22) wirkt modern konfiguriert; "
-                "im OSINT-Datensatz keine schwachen Algorithmen erkennbar. Hauptrisiko: "
-                "öffentlich erreichbar, Authentifizierung prüfen (VPN, Key-Only, Fail2ban). "
-                "Webserver nur passiv bewertet."
-            )
-        elif has_ssh:
-            tech_note = (
-                "Technische Kurzbewertung: SSH (Port 22) wirkt modern konfiguriert; "
-                "im OSINT-Datensatz keine schwachen Algorithmen erkennbar. Hauptrisiko: "
-                "öffentlich erreichbar, Authentifizierung prüfen (VPN, Key-Only, Fail2ban)."
-            )
-        elif has_web:
-            tech_note = "Technische Kurzbewertung: Webserver nur passiv bewertet."
-        else:
-            tech_note = "Technische Kurzbewertung: OSINT-Perspektive ohne interne Systemprüfung."
-    except Exception:
-        tech_note = "Technische Kurzbewertung: OSINT-Perspektive ohne interne Systemprüfung."
-
-    elements.append(Paragraph(tech_note, styles["normal"]))
-    elements.append(Spacer(1, 8))
-
-    # ── Management-Text (szenario-spezifisch aus management_text.py) ──────────
+    # ── RECHTE SPALTE ─────────────────────────────────────────────────────────
+    # Gesamteinschätzung + Empfehlung aus management_text
+    gesamteinschaetzung = ""
+    empfehlung = ""
     try:
         if management_text and management_text.strip():
-            for block in management_text.strip().split("\n\n"):
-                block = block.strip()
-                if not block:
-                    continue
+            blocks = [b.strip() for b in management_text.strip().split("\n\n") if b.strip()]
+            for block in blocks:
                 lines = block.split("\n")
-                # Erste Zeile ggf. als Abschnittsbezeichner (z.B. "Empfehlung:")
                 first = lines[0].strip()
-                if len(lines) > 1 and first.endswith(":"):
-                    elements.append(Paragraph(f"<b>{first}</b>", styles["normal"]))
-                    rest = " ".join(l.strip() for l in lines[1:] if l.strip())
-                    if rest:
-                        elements.append(Paragraph(rest, styles["normal"]))
-                else:
-                    elements.append(Paragraph(block.replace("\n", " "), styles["normal"]))
-                elements.append(Spacer(1, 4))
-            elements.append(Spacer(1, 4))
+                rest  = " ".join(l.strip() for l in lines[1:] if l.strip())
+                if "einschätzung" in first.lower() or "gesamteinschätzung" in first.lower():
+                    gesamteinschaetzung = rest or block.replace("\n", " ")
+                elif "empfehlung" in first.lower():
+                    empfehlung = rest or block.replace("\n", " ")
+                elif not gesamteinschaetzung:
+                    gesamteinschaetzung = block.replace("\n", " ")
+                elif not empfehlung:
+                    empfehlung = block.replace("\n", " ")
     except Exception:
         pass
+
+    # Fallback wenn management_text leer
+    if not gesamteinschaetzung:
+        gesamteinschaetzung = (
+            f"Die externe Sicherheitslage ist {exposure_desc} (Level {exposure_display}). "
+            "Keine akut bestätigten Exploits, jedoch Konfigurationsrisiken und CVE-Indikatoren erkannt, "
+            "die das Angriffspotenzial messbar erhöhen."
+        )
+    if not empfehlung:
+        empfehlung = (
+            "Kritische CVEs innerhalb 30 Tage adressieren. TLS-Konfiguration härten. "
+            "CVE-Monitoring einrichten. Nächste Schritte: IT-Betrieb bewertet Konfigurationsrisiken "
+            "(Owner: IT-Betrieb)."
+        )
+
+    # Truncate to prevent oversized Table cells that exceed the page frame height
+    _MAX_CELL_CHARS = 800
+    if len(gesamteinschaetzung) > _MAX_CELL_CHARS:
+        gesamteinschaetzung = gesamteinschaetzung[:_MAX_CELL_CHARS] + "\u2026"
+    if len(empfehlung) > _MAX_CELL_CHARS:
+        empfehlung = empfehlung[:_MAX_CELL_CHARS] + "\u2026"
+
+    right_rows = [
+        [Paragraph('<font size="9" color="#1A1A1A"><b>Gesamteinschätzung</b></font>', ns)],
+        [Paragraph(f'<font size="9" color="#444444">{gesamteinschaetzung}</font>', ns)],
+        [Spacer(1, 8)],
+        [Paragraph('<font size="9" color="#1A1A1A"><b>Empfehlung</b></font>', ns)],
+        [Paragraph(f'<font size="9" color="#444444">{empfehlung}</font>', ns)],
+    ]
+
+    right_tbl = Table(right_rows, colWidths=[85 * mm])
+    right_tbl.setStyle(TableStyle([
+        ("TOPPADDING",    (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 8),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
+        ("VALIGN",        (0, 0), (-1, -1), "TOP"),
+        ("BOTTOMPADDING", (0, 0), (0, 0),   5),
+        ("BOTTOMPADDING", (0, 3), (0, 3),   5),
+    ]))
+
+    # Zweispaltiger Wrapper
+    two_col = Table([[left_tbl, right_tbl]], colWidths=[78 * mm, 85 * mm])
+    two_col.setStyle(TableStyle([
+        ("VALIGN",        (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
+        ("TOPPADDING",    (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ("LINEAFTER",     (0, 0), (0, -1),  0.3, HexColor("#EEEEEE")),
+    ]))
+    elements.append(two_col)
+    elements.append(Spacer(1, 8))
 
 
 

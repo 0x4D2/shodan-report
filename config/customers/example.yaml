@@ -2,6 +2,12 @@ customer:
   name: "BEISPIEL KUNDE GMBH"
   contact: "security@beispiel.de"
   language: "de"
+  # Einzelne IP:
+  # ip: "1.2.3.4"
+  # Mehrere IPs (erzeugt einen Report pro IP):
+  # ips:
+  #   - "1.2.3.4"
+  #   - "5.6.7.8"
 
 report:
   include_trend_analysis: false  # Trend abschalten
@@ -9,14 +15,13 @@ report:
   custom_sections:              # Eigene Sektionen
     - executive_summary
     - risk_matrix
+  cover_note: ""                # Persönliche Ansprache auf Seite 1 (leer = nicht anzeigen)
 
 styling:
   primary_color: "#1a365d"
   secondary_color: "#2d3748"
 
 disclaimer:
-  enabled: true
-  custom_text: |                # Firmenspezifischer Disclaimer
-    Nur für interne Verwendung.
-    Vertraulichkeitsstufe: Intern.
-  
+  enabled: true                 # false = Haftungsausschluss ausblenden
+  # custom_text: |              # Optional: eigenen Text überschreiben
+  #   Nur für interne Verwendung. Vertraulichkeitsstufe: Intern.

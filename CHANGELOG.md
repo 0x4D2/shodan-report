@@ -1,4 +1,163 @@
+# 2026-04-13 (2)
+
+## feat: Persönliche Ansprache (cover_note) + Haftungsausschluss auf Seite 1
+
+- [`src/shodan_report/pdf/pdf_manager.py`](src/shodan_report/pdf/pdf_manager.py): `cover_note` wird als hervorgehobenes Textfeld (blauer Akzentstreifen, hellgrauer Hintergrund) **unter** der Management-Zusammenfassung auf Seite 1 gerendert — nur wenn gesetzt
+- [`src/shodan_report/pdf/pdf_renderer.py`](src/shodan_report/pdf/pdf_renderer.py): Haftungsausschluss wird via Canvas **ganz unten auf Seite 1** gezeichnet (7pt, kursiv, grau) — garantiert positioniert unabhängig vom Flowable-Layout; Text via `page_meta["disclaimer_text"]` übergeben
+- [`src/shodan_report/pdf/pdf_generator.py`](src/shodan_report/pdf/pdf_generator.py): Disclaimer-Text aus `config.disclaimer` ausgelesen und in `page_meta` durchgereicht; via `disclaimer.enabled: false` deaktivierbar, via `disclaimer.custom_text` überschreibbar
+- [`src/shodan_report/cli.py`](src/shodan_report/cli.py): Neuer Parameter `--note "..."` (`-n`) — persönliche Bewertung direkt beim Aufruf mitgeben, ohne YAML-Bearbeitung
+- [`src/shodan_report/core/runner.py`](src/shodan_report/core/runner.py): `note`-Parameter in `generate_report_pipeline` aufgenommen — schreibt den Wert als `report.cover_note` in die Config
+- [`config/customers/example.yaml`](config/customers/example.yaml), [`config/customers/werning.com-gmbh.yaml`](config/customers/werning.com-gmbh.yaml): `report.cover_note`-Feld dokumentiert
+
+**Workflow:** Report generieren → lesen → mit `--note "Meine Bewertung..."` neu generieren
+
+---
+
+# 2026-04-13
+
+## fix: conclusion.py — Exposure-Label im Fazit korrigiert
+
+- [`src/shodan_report/pdf/sections/conclusion.py`](src/shodan_report/pdf/sections/conclusion.py): Im `else`-Zweig von `_build_intro_text` (Risk-Level `LOW`) war das Exposure-Label pauschal auf `"niedrig"` hardcodiert — unabhängig vom tatsächlichen `exposure_score`. Ein Score von 3/5 wurde dadurch als „niedrig (Exposure-Level 3/5)" ausgegeben, obwohl Level 3 laut Skala „erhöht" bedeutet. Fix: Label wird jetzt aus dem Score abgeleitet (`1→minimal`, `2→niedrig–mittel`, `3→erhöht`, `4→hoch`, `5→kritisch`), konsistent mit der Tabelle in `methodology.py`.
+
+## feat: Multi-IP-Support pro Kunde
+
+- [`config/customers/example.yaml`](config/customers/example.yaml): Neue YAML-Option `ips` (Liste) dokumentiert — Kommentarblock zeigt Einzeln- vs. Listen-Variante
+- [`src/shodan_report/core/runner.py`](src/shodan_report/core/runner.py): Fallback auf `customer.ips[0]` wenn `customer.ip` nicht gesetzt — erster Eintrag der Liste wird automatisch als primäre IP verwendet
+- [`scripts/run-jobs-direct.py`](scripts/run-jobs-direct.py): Neue Funktion `_get_ip_list()` — liest `customer.ips` aus YAML und iteriert automatisch über alle IPs; erzeugt einen Report pro IP; explizite IP in `jobs.txt` hat weiterhin Vorrang
+
+## fix: domain_scout.py — crt.sh Timeout erhöht, Fehlerausgabe verbessert
+
+- [`src/shodan_report/clients/domain_scout.py`](src/shodan_report/clients/domain_scout.py): `_fetch_crtsh()` erhält konfigurierbaren `timeout`-Parameter (Default 20 s statt 10 s) — verhindert Timeouts bei langsamen crt.sh-Antworten; bei Fehler wird jetzt eine Warnung ausgegeben statt still `[]` zurückzugeben
+
+## fix: management.py — Exposure-Box Layout
+
+- [`src/shodan_report/pdf/sections/management.py`](src/shodan_report/pdf/sections/management.py): Exposure-Box zweizeilig (`EXPOSURE-LEVEL` als Beschriftung, Score als großer farbiger Wert) — verbesserte Lesbarkeit; Spaltenbreiten angepasst (60/40/63 mm)
+
+## fix: pdf_manager.py — Attack-Surface-Sektion paketunabhängig
+
+- [`src/shodan_report/pdf/pdf_manager.py`](src/shodan_report/pdf/pdf_manager.py): Attack-Surface-Discovery-Sektion wird jetzt immer gerendert wenn eine Domain vorhanden ist — nicht mehr auf `professional`/`enterprise` beschränkt
+
+---
+
+# 2026-04-09 (2)
+
+## fix: Domain Scout — Windows-Encoding-Crash behoben
+
+- [`src/shodan_report/clients/domain_scout.py`](src/shodan_report/clients/domain_scout.py): `→`-Zeichen in allen `print()`-Statements durch `->` ersetzt — auf Windows (cp1252) konnte das Unicode-Pfeilzeichen nicht kodiert werden, was einen unbehandelten `UnicodeEncodeError` auslöste. Die gesamte Scout-Funktion wurde dadurch als fehlgeschlagen markiert (`except Exception`), `_attack_surface` nie gesetzt und die Attack-Surface-Sektion (inkl. crt.sh-Zertifikats-Historie) nicht im PDF gerendert.
+
+## feat: Kundenkonfiguration werning.com GmbH
+
+- [`config/customers/werning.com-gmbh.yaml`](config/customers/werning.com-gmbh.yaml): Neue Kundenkonfiguration angelegt — IP `185.237.65.209`, Domain `werning.com`, Paket `professional`, Logo `assets/mg-solutions-logo.png`
+- [`jobs.txt`](jobs.txt): Eintrag `werning.com GmbH 2026-04` im Kurzformat ergänzt (IP und Domain kommen aus der YAML)
+
+---
+
+# 2026-04-09
+
+## fix: 22 fehlgeschlagene Tests repariert
+
+- `management.py`: `_KPI_CELL_W` von 35 mm auf 32,6 mm (163 mm Gesamtbreite) — passt in den Seitenrahmen (165,76 mm); KPI-Hintergrund auf `Colors.bg_light`, `textColor` jetzt direkt am `ParagraphStyle` gesetzt statt nur per Inline-Markup; Exposure-Box und Two-Column-Block ebenfalls auf 163 mm reduziert (verhindert `LayoutError` bei der Render-Stufe)
+- `management.py`: `gesamteinschaetzung`/`empfehlung` auf max. 800 Zeichen begrenzt — verhindert `LayoutError` bei extrem langem `management_text` in Demo-PDFs
+- `pdf_generator.py`: `_sha256` wird nicht mehr vor `prepare_pdf_elements()` in `config` geschrieben — Test `test_generate_pdf_calls_renderer_and_returns_path` erhielt das gemutete Dict statt des leeren `{}`
+- `test_management.py`: Hilfsfunktionen `_all_paragraphs()` / `_all_para_texts()` für rekursive Extraktion aus verschachtelten Tables/KeepTogether; Assertions umgestellt
+- `test_cve_overview_integration.py`: `_paragraph_text()` durchsucht jetzt Badge-Tables; `_find_detailed_table()` findet die 5-spaltige Detailtabelle zuverlässig; Spaltenreihenfolge in Assertions korrigiert (CVE=0, CVSS-Badge=1, Dienst=2, Exploit=3, Relevanz-Badge=4); Text-Suche in verschachtelten Elementen
+
+---
+
+# 2026-04-08 (3)
+
+## fix: Report-Inhaltsfehler — doppeltes "Risiko:", SHA256-Platzhalter, falscher Zielwert
+
+- `management.py`: `risk_stmt` enthielt bereits das Präfix "Risiko:" — beim Rendern wurde es erneut als Bold-Label vorangestellt (`Risiko: Risiko: ...`). Fix: `.replace("Risiko: ", "", 1)` analog zu `state_stmt` und `trend_note`
+- `conclusion.py`: Zielwert im LAUFEND-Block war hardcoded auf `2/5 senken` — auch wenn der aktuelle Exposure-Level bereits 2 war. Fix: dynamisch berechnet als `max(1, score-1)/5`; bei Level 1 stattdessen "auf 1/5 halten"
+- `pdf_generator.py` / `pdf_manager.py` / `footer.py`: SHA256 im Signaturblock auf Seite 8 zeigte `—` statt der tatsächlichen Prüfsumme. Fix: Hash wird jetzt vor `prepare_pdf_elements()` in `config["_sha256"]` hinterlegt und über `pdf_manager` → `create_footer_section(sha256=...)` durchgereicht
+
+---
+
+# 2026-04-08 (2)
+
+## fix: Logo, mkdir, .env.example, .gitignore
+
+- `assets/mg-solutions-logo.png` aus `.gitignore` entfernt → wird jetzt ins Repo eingecheckt (kein manuelles Kopieren mehr nach `git pull`)
+- `snapshot_manager.py`: `mkdir(parents=True)` ergänzt → Verzeichnis wird automatisch angelegt wenn `OUTPUT_BASE_DIR` auf einen neuen Pfad zeigt
+- `.env.example` hinzugefügt → Vorlage mit allen verfügbaren Variablen (ohne echte Werte)
+- `.gitignore` (äußeres Verzeichnis): neu erstellt → `reports/`, `archive/`, `snapshots/`, `.cache/` werden nicht versehentlich committed
+
+---
+
+# 2026-04-08
+
+## refactor: Zentrale Pfad-Konfiguration (`paths.py`)
+
+Alle Ausgabepfade waren bisher als relative Konstanten über 10 Dateien verteilt (`Path("reports")`, `Path("archive")`, etc.). Das führte dazu, dass Ausgaben je nach Arbeitsverzeichnis an unterschiedlichen Orten landeten (Datenduplikate in `shodan-report/` und `shodan-report/shodan-report/`).
+
+**Änderungen:**
+- Neue Datei `src/shodan_report/paths.py` als zentrale Anlaufstelle für alle Ausgabepfade
+- Neue `.env`-Variable `OUTPUT_BASE_DIR` (optional): setzt das Basisverzeichnis für alle Ausgaben; ohne Variable identisches Verhalten wie vorher (CWD)
+- Alle 10 betroffenen Module (`archiver/core.py`, `archiver/report_archiver.py`, `archiver/snapshot_archiver.py`, `archiver/version_manager.py`, `cli.py`, `clients/nvd_local.py`, `core/runner.py`, `pdf/pdf_generator.py`, `pdf/sections/data/cve_enricher.py`, `persistence/snapshot_manager.py`) importieren nun aus `paths.py`
+- Monkeypatches in 3 Testdateien angepasst (Patch am Verwendungsort, nicht am Definitionsort)
+
+**So nutzen:** In `.env` eintragen:
+```
+OUTPUT_BASE_DIR=C:/Users/<username>/Code/shodan-report
+```
+Dann landen `reports/`, `snapshots/`, `archive/` und `.cache/` immer im selben Basisverzeichnis, egal von wo der Befehl gestartet wird.
+
+## design: Management-Section zweispaltig, KPI-Bar modernisiert
+
+- KPI-Breite von 163 mm auf 175 mm (volle Textbreite) angepasst
+- KPI-Karten: Uppercase-Labels, einheitlicher Rahmen/Hintergrund (`#F8F8F8`, `#DDDDDD`)
+- Exposure-Box: kräftigere Akzentfarben (Rot `#C0392B`, Orange `#E67E22`, Grün `#27AE60`)
+- Management-Section: zweispaltiges Layout (links: Kernaussagen + Technische Kurzbewertung | rechts: Gesamteinschätzung + Empfehlung)
+- Fallback-Texte für leere `management_text`-Blöcke ergänzt
+
+# 2026-04-07
+- Design-Update: Die KPI-Bar im Abschnitt "Attack Surface — Domain-Discovery" ist jetzt einzeilig, mit Domain und Beschreibung linksbündig und drei schmalen, zentrierten KPIs. Einheitliches, modernes Layout wie die Tabelle darunter.
+# 2026-04-07
+- Überarbeitung: Das Design der CVE-Übersicht im PDF-Report wurde modernisiert und verbessert (KPI-Karten, CVSS-Balken, neue Tabellenstruktur, klarere Exploit- und Relevanzanzeige).
+## 2026-04-06
+
+- conclusion.py: Neue graue Intro-Box mit dynamischem Exposure-Level, darunter automatische zweispaltige Zeitplan-Tabelle (KURZFRISTIG, MITTELFRISTIG, etc.) basierend auf technical_json.
+- methodology.py: Oben Datenbasis-Box, links Begriffsdefinitionen, rechts Exposure-Level-Tabelle mit farbigen Punkten und Einschätzung, darunter Attack Surface Discovery Bullets.
+- footer.py: Große Disclaimer-Box mit OSINT-Hinweis, darunter zweispaltig GRENZEN/VERTRAULICHKEIT als separate Boxen, Signatur-Block mit ichwillsicherheit.de/BSI und SHA256-Prüfsumme.
+
+- fix: 6 failing Tests repariert
+  - `pdf/sections/technical.py`: `_extract_metadata_items()` als String-Wrapper um `_extract_metadata_items_structured()` ergänzt (Test-Import schlug fehl)
+  - `pdf/sections/technical.py`: `set_table_no_split()` aus der Services-Tabelle entfernt — große Tabellen (>30 Zeilen) konnten nicht über Seitengrenzen gesplittet werden (LayoutError)
+  - `pdf/sections/technical.py`: ungenutzten `set_table_no_split`-Import entfernt
+  - `pdf/sections/trend.py`: `_build_metrics_context()` ergänzt — rendert "Was die Kennzahlen bedeuten"-Block nach der Interpretationsbox in der Vergleichsansicht
+  - `tests/pdf/sections/test_trend_extra.py`: `find_paragraphs()`-Helper in zwei Tests korrigiert — traversierte `_cellvalues` (Liste von Zeilen-Listen) direkt statt die Zellen zu flattenen
+  - `tests/pdf/sections/test_trend_extra.py`: `_find_table_ncols()` ergänzt — sucht rekursiv nach verschachtelten Tabellen (Vergleichstabelle liegt in 2-spaltiger Layout-Table)
+  - `tests/pdf/sections/test_trend_extra.py`: TLS-Zeilen-Suche von `"TLS"` auf `"Zert"` erweitert (Anzeigename ist "Ablaufende Zert.", nicht "TLS-Schwächen")
+  - `tests/pdf/test_pdf_manager.py`: Footer-Timestamp-Test prüft jetzt das Jahr (`"%Y"`) statt `"%d.%m.%Y"` — Footer-Format ist `"06. April 2026 · HH:MM Uhr"`
+
+## 2026-04-05 (Ergänzung)
+
+- Typ-Spalte in der IP-Tabelle zeigt jetzt ein farbiges Badge (Label) für Server/Mailserver/Nameserver statt kompletter Zellenfärbung. Die Zelle bleibt weiß, nur das Label ist farbig hinterlegt und umrahmt.
+## 2026-04-05
+
+- KPI-Zeile im Abschnitt "Attack Surface — Domain-Discovery" optisch und strukturell überarbeitet:
+  - KPI-Kacheln (Exponierte IPs, CDN gefiltert, Subdomains) werden jetzt sauber zentriert und gleichmäßig dargestellt.
+  - Die linke Spalte (DOMAIN + Domainname) ist nun bündig, linksbündig und mit verbessertem Abstand.
+  - Spaltenbreiten und Padding für ein symmetrisches, modernes Layout angepasst.
+  - Beschriftungen überschreiben keine Boxen mehr.
 # Changelog
+
+## 04.04.2026 (15) — `feature/report-polish`
+
+- feat: Recommendations-Section — neues Badge-Design mit Akzentstreifen
+  - `pdf/sections/recommendations.py`: Prioritäts-Header als farbige Pill-Badges (links-ausgerichtet, 8pt, abgerundete Ecken)
+  - `pdf/sections/recommendations.py`: Jede Empfehlung als Zeile mit 3pt farbigem Akzentstreifen links statt `• text`
+  - `pdf/sections/recommendations.py`: Badge-Breite dynamisch via `stringWidth()` — immer einzeilig, unabhängig von Textlänge
+  - `pdf/sections/recommendations.py`: `_CONTENT_W = 170 * mm` für exakte Spaltenbreite (A4 − 2×2 cm Ränder)
+  - `pdf/sections/recommendations.py`: `_has_rdp()` als Modulfunktion (war inline-Closure)
+  - `pdf/sections/recommendations.py`: Whitespace zwischen P2 und P3 von `Spacer(12)` auf `Spacer(6)` reduziert
+  - `tests/pdf/sections/test_recommendations.py`: 36 neue Tests in 5 Klassen
+    - `TestPriorityBadge`: Rückgabetyp, `hAlign="LEFT"`, Breite < `_CONTENT_W`, Label-Text, alle 3 Farb-Varianten
+    - `TestItemRow`: 2 Spalten, Streifen 3pt, Gesamtbreite = `_CONTENT_W`, Paragraph, HTML passiert durch
+    - `TestHasRdp`: Port 3389, Produktname, Case-insensitive, kein RDP, leer, Objekt-Attribut
+    - `TestHelpers`: `_extract_risk_level` (str/dict/missing/other), `_extract_port` (int/dict/missing)
+    - `TestCreateRecommendationsSection`: Heading in KeepTogether, P1-Badge immer gerendert + linksbündig, Fallback-Paragraph, RDP-Fallback, kritischer CVE, context-DI, kwargs-DI
 
 ## 04.04.2026 (14)
 

@@ -9,22 +9,70 @@ def _make_styles():
     return create_styles(theme)
 
 
-def _paragraph_text(p: Paragraph) -> str:
-    try:
-        return str(p.getPlainText())
-    except Exception:
-        return str(p)
+def _paragraph_text(p) -> str:
+    """Extrahiert Plain-Text aus Paragraph oder verschachtelter Table."""
+    if isinstance(p, Paragraph):
+        try:
+            return str(p.getPlainText())
+        except Exception:
+            return str(getattr(p, "text", ""))
+    if isinstance(p, Table):
+        # Traverse into first cell to find the numeric paragraph
+        try:
+            cell = p._cellvalues[0][0]
+            return _paragraph_text(cell)
+        except Exception:
+            pass
+    return ""
+
+
+def _all_para_texts_in_elements(elements) -> list:
+    """Extrahiert rekursiv alle Paragraph-Texte aus elements (inkl. verschachtelter Tables)."""
+    texts = []
+    for e in elements:
+        if isinstance(e, Paragraph):
+            texts.append(_paragraph_text(e))
+        elif isinstance(e, Table):
+            for row in (getattr(e, "_cellvalues", None) or []):
+                for cell in row:
+                    texts.extend(_all_para_texts_in_elements([cell]))
+    return texts
 
 
 def _extract_counts_from_risk_table(tbl: Table):
-    # risk table is single-row with 5 Paragraph cells (label + count)
+    """Extrahiert die 5 Zähler aus der KPI-Karten-Zeile.
+
+    Jede Zelle der äußeren Tabelle ist eine innere Table (card).
+    Zeile 0 der inneren Table = Zahl-Paragraph.
+    """
     cells = getattr(tbl, "_cellvalues", [[]])[0]
     counts = []
     for c in cells:
+        if isinstance(c, Table):
+            # inner card: row 0 = number paragraph
+            try:
+                c = c._cellvalues[0][0]
+            except (IndexError, AttributeError):
+                pass
         txt = _paragraph_text(c)
         nums = re.findall(r"\d+", txt)
         counts.append(int(nums[0]) if nums else 0)
     return counts
+
+
+def _find_detailed_table(elements):
+    """Findet die detaillierte CVE-Tabelle (5 Spalten: CVE|CVSS|Dienst|Exploit|Relevanz)."""
+    for t in elements:
+        if isinstance(t, Table):
+            try:
+                header = t._cellvalues[0]
+                if len(header) == 5:
+                    texts = [_paragraph_text(c).upper() for c in header]
+                    if any("CVE" in tx for tx in texts):
+                        return t
+            except Exception:
+                continue
+    return None
 
 
 def test_cve_overview_counts_and_classification(monkeypatch):
@@ -108,25 +156,26 @@ def test_detailed_table_rows_contain_expected_values(monkeypatch):
     assert detailed is not None, "Detailed CVE table not found"
 
     # The first data row is at index 1
+    # Column order: CVE=0 | CVSS-badge=1 | DIENST=2 | EXPLOIT-STATUS=3 | RELEVANZ-badge=4
     first_row = detailed._cellvalues[1]
 
-    # Dienst (service) should include 'nginx'
-    svc_txt = _paragraph_text(first_row[0])
-    assert "nginx" in svc_txt.lower()
-
-    # CVE id
-    cve_txt = _paragraph_text(first_row[1])
+    # CVE id (column 0)
+    cve_txt = _paragraph_text(first_row[0])
     assert "CVE-2023-MED_A" in cve_txt
 
-    # CVSS shown as numeric string
-    cvss_txt = _paragraph_text(first_row[2])
+    # CVSS shown as numeric string (column 1 is a badge Table)
+    cvss_txt = _paragraph_text(first_row[1])
     assert "7.5" in cvss_txt
 
-    # Exploit-status mapping: 'public' -> 'öffentlich bekannt'
+    # Dienst (service) should include 'nginx' (column 2)
+    svc_txt = _paragraph_text(first_row[2])
+    assert "nginx" in svc_txt.lower()
+
+    # Exploit-status mapping: 'public' -> 'öffentlich bekannt' (column 3)
     exploit_txt = _paragraph_text(first_row[3])
     assert "öffentlich" in exploit_txt.lower()
 
-    # Relevance: current code classifies 7.5 as 'hoch'
+    # Relevance: current code classifies 7.5 as 'hoch' (column 4 is a badge Table)
     rel_txt = _paragraph_text(first_row[4])
     assert "hoch" in rel_txt.lower()
 
@@ -153,28 +202,28 @@ def test_relevance_thresholds_and_exploit_summary(monkeypatch):
 
     create_cve_overview_section(elements, styles, technical_json)
 
-    # Find detailed table and examine relevance column values in order
-    tables = [t for t in elements if isinstance(t, Table)]
-    assert tables
-    detailed = tables[-1]  # detailed table is appended after risk box
-    # extract relevance texts from each data row
+    # Find detailed table (5-spaltig)
+    detailed = _find_detailed_table(elements)
+    assert detailed is not None, "Detailed CVE table not found"
+
+    # column 4 = Relevanz-Badge (Table) — extract text from nested badge Table
     rels = []
     for row in detailed._cellvalues[1:]:
         rels.append(_paragraph_text(row[4]).lower())
 
-    # Expect ordering by CVSS desc: CRIT, HIGH, MED, LOW, UNK
+    # Expect labels: kritisch / hoch / mittel (medium) / niedrig / unbekannt
     assert any("kritisch" in r for r in rels), f"no 'kritisch' in {rels}"
     assert any("hoch" in r for r in rels), f"no 'hoch' in {rels}"
-    assert any("mittel" in r for r in rels), f"no 'mittel' in {rels}"
+    # 'medium' is used in the badge label instead of 'mittel'
+    assert any("mittel" in r or "medium" in r for r in rels), f"no 'mittel/medium' in {rels}"
     assert any("niedrig" in r for r in rels), f"no 'niedrig' in {rels}"
     assert any("unbekannt" in r for r in rels), f"no 'unbekannt' in {rels}"
 
-    # The implementation currently appends a final evaluation paragraph which
-    # contains a count of public exploits; assert that text exists.
-    paras = [p for p in elements if isinstance(p, Paragraph)]
-    final_paras = [p for p in paras if 'öffentliche exploits' in _paragraph_text(p).lower()]
-    assert final_paras, "Final evaluation paragraph with exploit summary not found"
-    assert 'öffentliche exploits' in _paragraph_text(final_paras[0]).lower()
+    # The implementation appends a final evaluation box containing "Vollständige CVE-Liste"
+    all_texts = _all_para_texts_in_elements(elements)
+    assert any("vollst" in t.lower() for t in all_texts), (
+        "Final evaluation box with CVE-Liste text not found"
+    )
 
 
 def test_service_indicator_renders_osint_label(monkeypatch):
@@ -200,12 +249,12 @@ def test_service_indicator_renders_osint_label(monkeypatch):
 
     create_cve_overview_section(elements, styles, technical_json)
 
-    tables = [t for t in elements if isinstance(t, Table)]
-    assert tables, "No tables generated"
-    detailed = tables[-1]
+    detailed = _find_detailed_table(elements)
+    assert detailed is not None, "Detailed CVE table not found"
 
+    # Column order: CVE=0 | CVSS=1 | DIENST=2 | EXPLOIT=3 | RELEVANZ=4
     first_row = detailed._cellvalues[1]
-    svc_txt = _paragraph_text(first_row[0])
+    svc_txt = _paragraph_text(first_row[2])
     assert "mysql" in svc_txt.lower()
     assert "osint" in svc_txt.lower()
 
@@ -224,8 +273,8 @@ def test_evaluation_note_is_appended(monkeypatch):
 
     create_cve_overview_section(elements, styles, technical_json)
 
-    paras = [p for p in elements if isinstance(p, Paragraph)]
-    note = [p for p in paras if "technische verifikation" in _paragraph_text(p).lower()]
+    all_texts = _all_para_texts_in_elements(elements)
+    note = [t for t in all_texts if "technische verifikation" in t.lower()]
     assert note, "Evaluation note not found"
 
 
@@ -247,6 +296,7 @@ def test_cve_hint_text_when_list_truncated(monkeypatch):
 
     create_cve_overview_section(elements, styles, technical_json)
 
-    para_texts = [_paragraph_text(p) for p in elements if isinstance(p, Paragraph)]
-    found = any("Vollständige Liste auf Anfrage verfügbar" in t for t in para_texts)
-    assert found, "Hinweistext 'Vollständige Liste auf Anfrage verfügbar' fehlt beim Truncate"
+    all_texts = _all_para_texts_in_elements(elements)
+    # Implementation uses "Vollständige CVE-Liste auf Anfrage verfügbar."
+    found = any("Liste auf Anfrage verf" in t for t in all_texts)
+    assert found, "Hinweistext 'Liste auf Anfrage verfügbar' fehlt beim Truncate"

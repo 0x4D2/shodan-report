@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional
 import json
 import re
 import time
+from shodan_report.paths import cache_dir as _cache_base
 
 try:
     from shodan_report.clients.nvd_client import NvdClient
@@ -25,7 +26,7 @@ except Exception:  # pragma: no cover - defensive for minimal environments
 
 
 def _default_cache_path() -> Path:
-    p = Path(".cache") / "shodan_report" / "cve_cache.json"
+    p = _cache_base() / "shodan_report" / "cve_cache.json"
     p.parent.mkdir(parents=True, exist_ok=True)
     return p
 

@@ -3,11 +3,13 @@ from typing import Optional, Dict, Any
 import json
 from datetime import datetime
 
+from shodan_report.paths import archive_dir
+
 
 class VersionManager:
 
-    def __init__(self, archive_root: Path = Path("archive")):
-        self.archive_root = archive_root
+    def __init__(self, archive_root: Path = None):
+        self.archive_root = archive_root if archive_root is not None else archive_dir()
         self.archive_root.mkdir(parents=True, exist_ok=True)
 
     def _parse_version(self, stem: str) -> int | None:

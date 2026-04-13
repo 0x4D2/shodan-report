@@ -124,12 +124,12 @@ def _reverse_dns(ip: str) -> Optional[str]:
 
 # ─── OSINT APIs ───────────────────────────────────────────────────────────────
 
-def _fetch_crtsh(domain: str) -> List[str]:
+def _fetch_crtsh(domain: str, timeout: int = 20) -> List[str]:
     """Holt Subdomains aus crt.sh Zertifikats-Datenbank (passiv, kein Scan)."""
     url = f"https://crt.sh/?q=%.{domain}&output=json"
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "shodan-report-scout/1.0"})
-        with urllib.request.urlopen(req, timeout=10) as r:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
             data = json.loads(r.read().decode())
         subdomains: set = set()
         for entry in data:
@@ -138,7 +138,8 @@ def _fetch_crtsh(domain: str) -> List[str]:
                 if sub.endswith(domain) and sub != domain:
                     subdomains.add(sub)
         return sorted(subdomains)
-    except Exception:
+    except Exception as e:
+        print(f"[Scout] Warnung: crt.sh nicht erreichbar ({e.__class__.__name__}) — Subdomains werden übersprungen")
         return []
 
 
@@ -251,31 +252,31 @@ def scout_domain(domain: str, verbose: bool = False, max_subdomains: int = 30) -
 
     # MX
     if verbose:
-        print("[Scout] → MX-Records ...")
+        print("[Scout] -> MX-Records ...")
     for ip in _resolve_mx(domain):
         _add(ip, "MX-Record (Mailserver)")
 
     # NS
     if verbose:
-        print("[Scout] → NS-Records ...")
+        print("[Scout] -> NS-Records ...")
     for ip in _resolve_ns(domain):
         _add(ip, "NS-Record (Nameserver)")
 
     # crt.sh
     if verbose:
-        print("[Scout] → crt.sh ...")
+        print("[Scout] -> crt.sh ...")
     subdomains = _fetch_crtsh(domain)
     if verbose:
         print(f"[Scout]    {len(subdomains)} Subdomains aus Zertifikats-Historie")
     for sub in subdomains[:max_subdomains]:
         for ip in _resolve_a(sub):
-            _add(ip, f"crt.sh → {sub}")
+            _add(ip, f"crt.sh -> {sub}")
 
     # HackerTarget
     if verbose:
-        print("[Scout] → HackerTarget ...")
+        print("[Scout] -> HackerTarget ...")
     for subdomain, ip in _fetch_hackertarget(domain):
-        _add(ip, f"HackerTarget → {subdomain}")
+        _add(ip, f"HackerTarget -> {subdomain}")
 
     # Klassifizieren
     relevant: List[ScoutedIP] = []

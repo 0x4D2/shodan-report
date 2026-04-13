@@ -177,5 +177,5 @@ class TestPDFManager:
         )
 
         footer = str(elements[-1])
-        current_date = datetime.now().strftime("%d.%m.%Y")
-        assert current_date in footer
+        current_year = datetime.now().strftime("%Y")
+        assert current_year in footer

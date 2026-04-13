@@ -13,6 +13,7 @@ import shutil
 
 from shodan_report.utils.slug import create_slug
 from shodan_report.archiver.version_manager import VersionManager
+from shodan_report.paths import archive_dir
 
 
 class ReportArchiver:
@@ -22,9 +23,9 @@ class ReportArchiver:
     - archive/{customer_slug}/{YYYY-MM}/{YYYY-MM}_{ip}.meta.json
     """
 
-    def __init__(self, archive_root: Path = Path("archive")):
+    def __init__(self, archive_root: Path = None):
 
-        self.archive_root = archive_root
+        self.archive_root = archive_root if archive_root is not None else archive_dir()
         self.archive_root.mkdir(parents=True, exist_ok=True)
         self.version_manager = VersionManager(archive_root)
 
