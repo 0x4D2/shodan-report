@@ -109,8 +109,8 @@ def prepare_pdf_elements(
 
     elements.append(_PageBreak())
 
-    # Attack Surface Discovery — professional/enterprise + domain vorhanden
-    if _is_professional and ctx.attack_surface is not None:
+    # Attack Surface Discovery — immer enthalten wenn domain vorhanden
+    if ctx.attack_surface is not None:
         elements.append(_SectionMarker())
         create_attack_surface_section(elements=elements, styles=styles, context=ctx)
 

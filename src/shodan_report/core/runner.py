@@ -78,9 +78,13 @@ def generate_report_pipeline(
     # ── Customer-YAML: IP/Domain/Package aus Konfiguration lesen ─────────────
     customer_cfg = config.get("customer", {})
 
-    # IP: explizites Argument hat Vorrang, dann YAML
+    # IP: explizites Argument hat Vorrang, dann YAML (einzeln oder Liste)
     if not ip:
         ip = customer_cfg.get("ip") or None
+    if not ip:
+        ips_list = customer_cfg.get("ips")
+        if ips_list and isinstance(ips_list, list):
+            ip = ips_list[0]
 
     # Domain: explizites Argument hat Vorrang, dann YAML
     if not domain:

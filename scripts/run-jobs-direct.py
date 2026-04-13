@@ -25,6 +25,7 @@ import sys
 import os
 import re
 import argparse
+import yaml
 from pathlib import Path
 
 if os.getenv("USE_LOCAL_SRC") == "1":
@@ -111,6 +112,32 @@ def _parse_job_line(line: str) -> dict | None:
     }
 
 
+def _get_ip_list(explicit_ip: str | None, config_path: Path | None) -> list[str | None]:
+    """Gibt die Liste der zu verarbeitenden IPs zurück.
+
+    - Explizite IP aus jobs.txt hat immer Vorrang → einelementige Liste.
+    - Sonst: customer.ips aus YAML (Liste), customer.ip aus YAML, oder [None]
+      (letzteres damit der Runner Domain-Discovery / Fehlerbehandlung übernimmt).
+    """
+    if explicit_ip:
+        return [explicit_ip]
+
+    if config_path and config_path.exists():
+        try:
+            cfg = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+            customer = cfg.get("customer", {})
+            ips = customer.get("ips")
+            if ips and isinstance(ips, list):
+                return [str(ip) for ip in ips if ip]
+            single = customer.get("ip")
+            if single:
+                return [str(single)]
+        except Exception:
+            pass
+
+    return [None]
+
+
 def main():
     parser = argparse.ArgumentParser(description="Batch-Report-Generierung aus jobs.txt")
     parser.add_argument("--jobs", default="jobs.txt", help="Pfad zur jobs.txt")
@@ -143,26 +170,30 @@ def main():
         if config_path is None:
             config_path = _find_config(job["customer"])
 
-        print(f"[{i}/{total}] {job['customer']} — {job.get('ip') or 'IP aus YAML'} — {job['month']}", end="")
-        if config_path:
-            print(f" (config: {config_path.name})", end="")
-        print()
+        ip_list = _get_ip_list(job["ip"], config_path)
 
-        result = generate_report_pipeline(
-            customer_name=job["customer"],
-            ip=job["ip"],
-            month=job["month"],
-            config_path=config_path,
-            archive=args.archive,
-            compare_month=job["compare_month"],
-            verbose=args.verbose,
-        )
+        for ip in ip_list:
+            ip_label = ip or "IP aus YAML/Domain"
+            print(f"[{i}/{total}] {job['customer']} — {ip_label} — {job['month']}", end="")
+            if config_path:
+                print(f" (config: {config_path.name})", end="")
+            print()
 
-        if result.get("success"):
-            print(f"  OK {result.get('pdf_path', '?')}")
-            success += 1
-        else:
-            print(f"  FEHLER {result.get('error', 'Unbekannter Fehler')}")
+            result = generate_report_pipeline(
+                customer_name=job["customer"],
+                ip=ip,
+                month=job["month"],
+                config_path=config_path,
+                archive=args.archive,
+                compare_month=job["compare_month"],
+                verbose=args.verbose,
+            )
+
+            if result.get("success"):
+                print(f"  OK {result.get('pdf_path', '?')}")
+                success += 1
+            else:
+                print(f"  FEHLER {result.get('error', 'Unbekannter Fehler')}")
 
     print(f"\n=== Fertig: {success}/{total} erfolgreich ===")
 

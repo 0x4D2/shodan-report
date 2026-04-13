@@ -1,3 +1,42 @@
+# 2026-04-13
+
+## fix: conclusion.py — Exposure-Label im Fazit korrigiert
+
+- [`src/shodan_report/pdf/sections/conclusion.py`](src/shodan_report/pdf/sections/conclusion.py): Im `else`-Zweig von `_build_intro_text` (Risk-Level `LOW`) war das Exposure-Label pauschal auf `"niedrig"` hardcodiert — unabhängig vom tatsächlichen `exposure_score`. Ein Score von 3/5 wurde dadurch als „niedrig (Exposure-Level 3/5)" ausgegeben, obwohl Level 3 laut Skala „erhöht" bedeutet. Fix: Label wird jetzt aus dem Score abgeleitet (`1→minimal`, `2→niedrig–mittel`, `3→erhöht`, `4→hoch`, `5→kritisch`), konsistent mit der Tabelle in `methodology.py`.
+
+## feat: Multi-IP-Support pro Kunde
+
+- [`config/customers/example.yaml`](config/customers/example.yaml): Neue YAML-Option `ips` (Liste) dokumentiert — Kommentarblock zeigt Einzeln- vs. Listen-Variante
+- [`src/shodan_report/core/runner.py`](src/shodan_report/core/runner.py): Fallback auf `customer.ips[0]` wenn `customer.ip` nicht gesetzt — erster Eintrag der Liste wird automatisch als primäre IP verwendet
+- [`scripts/run-jobs-direct.py`](scripts/run-jobs-direct.py): Neue Funktion `_get_ip_list()` — liest `customer.ips` aus YAML und iteriert automatisch über alle IPs; erzeugt einen Report pro IP; explizite IP in `jobs.txt` hat weiterhin Vorrang
+
+## fix: domain_scout.py — crt.sh Timeout erhöht, Fehlerausgabe verbessert
+
+- [`src/shodan_report/clients/domain_scout.py`](src/shodan_report/clients/domain_scout.py): `_fetch_crtsh()` erhält konfigurierbaren `timeout`-Parameter (Default 20 s statt 10 s) — verhindert Timeouts bei langsamen crt.sh-Antworten; bei Fehler wird jetzt eine Warnung ausgegeben statt still `[]` zurückzugeben
+
+## fix: management.py — Exposure-Box Layout
+
+- [`src/shodan_report/pdf/sections/management.py`](src/shodan_report/pdf/sections/management.py): Exposure-Box zweizeilig (`EXPOSURE-LEVEL` als Beschriftung, Score als großer farbiger Wert) — verbesserte Lesbarkeit; Spaltenbreiten angepasst (60/40/63 mm)
+
+## fix: pdf_manager.py — Attack-Surface-Sektion paketunabhängig
+
+- [`src/shodan_report/pdf/pdf_manager.py`](src/shodan_report/pdf/pdf_manager.py): Attack-Surface-Discovery-Sektion wird jetzt immer gerendert wenn eine Domain vorhanden ist — nicht mehr auf `professional`/`enterprise` beschränkt
+
+---
+
+# 2026-04-09 (2)
+
+## fix: Domain Scout — Windows-Encoding-Crash behoben
+
+- [`src/shodan_report/clients/domain_scout.py`](src/shodan_report/clients/domain_scout.py): `→`-Zeichen in allen `print()`-Statements durch `->` ersetzt — auf Windows (cp1252) konnte das Unicode-Pfeilzeichen nicht kodiert werden, was einen unbehandelten `UnicodeEncodeError` auslöste. Die gesamte Scout-Funktion wurde dadurch als fehlgeschlagen markiert (`except Exception`), `_attack_surface` nie gesetzt und die Attack-Surface-Sektion (inkl. crt.sh-Zertifikats-Historie) nicht im PDF gerendert.
+
+## feat: Kundenkonfiguration werning.com GmbH
+
+- [`config/customers/werning.com-gmbh.yaml`](config/customers/werning.com-gmbh.yaml): Neue Kundenkonfiguration angelegt — IP `185.237.65.209`, Domain `werning.com`, Paket `professional`, Logo `assets/mg-solutions-logo.png`
+- [`jobs.txt`](jobs.txt): Eintrag `werning.com GmbH 2026-04` im Kurzformat ergänzt (IP und Domain kommen aus der YAML)
+
+---
+
 # 2026-04-09
 
 ## fix: 22 fehlgeschlagene Tests repariert

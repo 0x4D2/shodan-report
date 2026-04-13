@@ -111,7 +111,9 @@ def _build_intro_text(
             "das Kompromittierungsrisiko bei gezielten Angriffen erhöhen."
         )
     else:
-        score_str = f"niedrig (Exposure-Level {exposure_score}/5)" if exposure_score else "niedrig"
+        _low_labels = {1: "minimal", 2: "niedrig–mittel", 3: "erhöht", 4: "hoch", 5: "kritisch"}
+        base_label = _low_labels.get(exposure_score, "niedrig") if exposure_score else "niedrig"
+        score_str = f"{base_label} (Exposure-Level {exposure_score}/5)" if exposure_score else "niedrig"
         return (
             f"Die externe Angriffsfläche ist <b>{score_str}</b>. "
             "Kein akuter Handlungsbedarf — kontinuierliche Überwachung empfohlen, "

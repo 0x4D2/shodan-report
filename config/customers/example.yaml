@@ -2,6 +2,12 @@ customer:
   name: "BEISPIEL KUNDE GMBH"
   contact: "security@beispiel.de"
   language: "de"
+  # Einzelne IP:
+  # ip: "1.2.3.4"
+  # Mehrere IPs (erzeugt einen Report pro IP):
+  # ips:
+  #   - "1.2.3.4"
+  #   - "5.6.7.8"
 
 report:
   include_trend_analysis: false  # Trend abschalten

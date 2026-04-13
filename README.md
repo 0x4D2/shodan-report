@@ -121,8 +121,8 @@ nvd:
 
 | Paket | Enthaltene Abschnitte |
 |---|---|
-| `basic` | Management, Empfehlungen, Technischer Anhang |
-| `professional` | + CVE-Übersicht, Trendanalyse, Attack Surface (wenn domain gesetzt) |
+| `basic` | Management, Empfehlungen, Technischer Anhang, Attack Surface (wenn domain gesetzt) |
+| `professional` | + CVE-Übersicht, Trendanalyse |
 | `enterprise` | wie professional + NVD Live-Lookups automatisch aktiv |
 
 ---

@@ -550,9 +550,9 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
     _exp_box = Table(
         [[
             Paragraph(
-                f'<font size="9" color="#444444"><b>EXPOSURE-LEVEL:</b></font>'
-                f'&nbsp;&nbsp;'
-                f'<font size="11" color="{_exp_color_hex}"><b>{exposure_display} ({exposure_desc})</b></font>',
+                f'<font size="8" color="#888888">EXPOSURE-LEVEL</font><br/>'
+                f'<font size="12" color="{_exp_color_hex}"><b>{exposure_display}</b></font>'
+                f'<font size="9" color="{_exp_color_hex}"> ({exposure_desc})</font>',
                 styles["normal"],
             ),
             _ampel_box,
@@ -566,7 +566,7 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
                 ),
             ),
         ]],
-        colWidths=[66 * mm, 34 * mm, 63 * mm],
+        colWidths=[60 * mm, 40 * mm, 63 * mm],
     )
     _exp_box.setStyle(TableStyle([
         ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
