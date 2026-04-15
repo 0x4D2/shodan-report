@@ -136,6 +136,83 @@ def test_list_customer_reports(tmp_path):
     assert reports_c["total_reports"] == 0
 
 
+# ─── cover_note Tests ─────────────────────────────────────────────────────────
+
+def test_save_and_load_cover_note(tmp_path):
+    """Gespeicherte Notiz wird korrekt zurückgelesen."""
+    pdf_path = tmp_path / "test.pdf"
+    pdf_path.write_text("PDF")
+    archiver = ReportArchiver(tmp_path / "archive")
+    archiver.archive_report(pdf_path, "Test GmbH", "2026-04", "1.2.3.4")
+
+    archiver.save_cover_note("Test GmbH", "2026-04", "1.2.3.4", "Alles im grünen Bereich.")
+    note = archiver.load_cover_note("Test GmbH", "2026-04", "1.2.3.4")
+
+    assert note == "Alles im grünen Bereich."
+
+
+def test_load_cover_note_returns_none_when_not_set(tmp_path):
+    """Kein Fehler wenn keine Notiz gespeichert wurde."""
+    pdf_path = tmp_path / "test.pdf"
+    pdf_path.write_text("PDF")
+    archiver = ReportArchiver(tmp_path / "archive")
+    archiver.archive_report(pdf_path, "Test GmbH", "2026-04", "1.2.3.4")
+
+    note = archiver.load_cover_note("Test GmbH", "2026-04", "1.2.3.4")
+    assert note is None
+
+
+def test_load_cover_note_returns_none_when_no_meta(tmp_path):
+    """Kein Fehler wenn noch kein Report archiviert wurde."""
+    archiver = ReportArchiver(tmp_path / "archive")
+    note = archiver.load_cover_note("Unbekannt GmbH", "2026-04", "9.9.9.9")
+    assert note is None
+
+
+def test_save_cover_note_overwrites_previous(tmp_path):
+    """Zweite Notiz überschreibt die erste."""
+    pdf_path = tmp_path / "test.pdf"
+    pdf_path.write_text("PDF")
+    archiver = ReportArchiver(tmp_path / "archive")
+    archiver.archive_report(pdf_path, "Test GmbH", "2026-04", "1.2.3.4")
+
+    archiver.save_cover_note("Test GmbH", "2026-04", "1.2.3.4", "Erste Notiz.")
+    archiver.save_cover_note("Test GmbH", "2026-04", "1.2.3.4", "Zweite Notiz.")
+
+    note = archiver.load_cover_note("Test GmbH", "2026-04", "1.2.3.4")
+    assert note == "Zweite Notiz."
+
+
+def test_save_cover_note_preserves_versions(tmp_path):
+    """Vorhandene Versions-Einträge bleiben nach save_cover_note erhalten."""
+    import json
+    pdf_path = tmp_path / "test.pdf"
+    pdf_path.write_text("PDF")
+    archiver = ReportArchiver(tmp_path / "archive")
+    archiver.archive_report(pdf_path, "Test GmbH", "2026-04", "1.2.3.4")
+    archiver.archive_report(pdf_path, "Test GmbH", "2026-04", "1.2.3.4")
+
+    archiver.save_cover_note("Test GmbH", "2026-04", "1.2.3.4", "Meine Notiz.")
+
+    meta_path = tmp_path / "archive" / "test_gmbh" / "2026-04" / "2026-04_1.2.3.4.meta.json"
+    with meta_path.open() as f:
+        data = json.load(f)
+
+    assert "1" in data["versions"]
+    assert "2" in data["versions"]
+    assert data["cover_note"] == "Meine Notiz."
+    assert "cover_note_updated_at" in data
+
+
+def test_save_cover_note_does_nothing_without_meta(tmp_path):
+    """Kein Fehler wenn meta.json noch nicht existiert."""
+    archiver = ReportArchiver(tmp_path / "archive")
+    # Soll keinen Fehler werfen
+    archiver.save_cover_note("Unbekannt", "2026-04", "1.2.3.4", "Notiz ohne Report.")
+    note = archiver.load_cover_note("Unbekannt", "2026-04", "1.2.3.4")
+    assert note is None
+
+
 def test_archive_report_slug_consistency(tmp_path):
     """Testet dass Slugs konsistent in der Archivierung verwendet werden."""
     pdf_path = tmp_path / "test.pdf"

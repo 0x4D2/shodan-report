@@ -52,6 +52,8 @@ shodan-report --customer NAME --ip IP --month YYYY-MM [Optionen]
 | `--month`, `-m` | ✅ | Berichtsmonat `YYYY-MM` |
 | `--compare` | ❌ | Vergleichsmonat für Trendanalyse |
 | `--config` | ❌ | Pfad zur Kundenkonfiguration (YAML) |
+| `--note`, `-n` | ❌ | Persönliche Ansprache auf Seite 1 (überschreibt `report.cover_note` aus YAML) |
+| `--from-snapshot` | ❌ | PDF neu rendern ohne Shodan-Aufruf — nutzt gespeicherten Snapshot |
 | `--output-dir`, `-o` | ❌ | Ausgabeverzeichnis |
 | `--no-archive` | ❌ | Revisionssichere Archivierung deaktivieren |
 | `--verbose`, `-v` | ❌ | Detaillierte Ausgabe |
@@ -71,6 +73,10 @@ shodan-report --customer "Acme GmbH" --ip "203.0.113.5" --month "2026-04" --comp
 
 # Mit Kundenkonfiguration
 shodan-report --customer "Acme GmbH" --ip "203.0.113.5" --month "2026-04" --config config/customers/acme.yaml
+
+# Persönliche Ansprache hinzufügen (kein neuer Shodan-Aufruf)
+shodan-report --customer "Acme GmbH" --month "2026-04" --config config/customers/acme.yaml \
+  --from-snapshot --note "Lage stabil, empfehle Überprüfung Port 8080."
 ```
 
 ---
@@ -111,6 +117,7 @@ styling:
   secondary_color: "#2d3748"
 
 report:
+  cover_note: ""                   # Persönliche Ansprache auf Seite 1 (oder via --note)
   debug_mdata: false               # false in Produktion (kein .mdata.json Sidecar)
 
 nvd:
@@ -174,12 +181,16 @@ Jeder Report wird revisionssicher archiviert:
 
 ```
 archive/
-└── Beispiel_GmbH/
+└── beispiel_gmbh/
     └── 2026-04/
-        ├── 1.2.3.4_v1.pdf
-        ├── 1.2.3.4_v1.meta.json   # SHA256, Erstellungsdatum, Generator-Version
-        └── 1.2.3.4_v2.pdf         # Bei Nachgenerierung automatisch neue Version
+        ├── 2026-04_1.2.3.4_v1.pdf
+        ├── 2026-04_1.2.3.4_v2.pdf  # Bei Nachgenerierung automatisch neue Version
+        └── 2026-04_1.2.3.4.meta.json
+            # Enthält: SHA256, Erstellungsdatum, Generator-Version
+            # + cover_note: persönliche Einschätzung des Analysten (gespeichert via --note)
 ```
+
+Die `cover_note` wird beim nächsten Monats-Report automatisch im Terminal angezeigt — als Erinnerung was zuletzt geschrieben wurde.
 
 ---
 
@@ -238,7 +249,7 @@ python -m pytest -q
 python -m pytest src/shodan_report/tests/pdf/ -q
 ```
 
-Aktueller Stand: **492 passed, 9 skipped** (Stand 2026-04-09)
+Aktueller Stand: **515 passed, 9 skipped** (Stand 2026-04-15)
 
 ---
 
@@ -262,4 +273,4 @@ Jeder Report enthält automatisch:
 
 ---
 
-*Stand: 2026-04-09 — Branch `feature/report-polish`*
+*Stand: 2026-04-15 — Branch `feature/data-enrichment`*

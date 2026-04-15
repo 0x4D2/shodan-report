@@ -1,3 +1,47 @@
+# 2026-04-15 (2)
+
+## feat: Persönliche Ansprache — Persistenz im Archiv + Vormonats-Erinnerung
+
+- [`src/shodan_report/archiver/report_archiver.py`](src/shodan_report/archiver/report_archiver.py): `save_cover_note(customer, month, ip, note)` schreibt die Ansprache auf Top-Level der `.meta.json` (`cover_note` + `cover_note_updated_at`) — atomar, ohne die Versions-Einträge zu berühren
+- [`src/shodan_report/archiver/report_archiver.py`](src/shodan_report/archiver/report_archiver.py): `load_cover_note(customer, month, ip)` liest die gespeicherte Ansprache zurück
+- [`src/shodan_report/core/runner.py`](src/shodan_report/core/runner.py): Beim Start jedes Report-Runs wird die Notiz des Vormonats aus dem Archiv geladen und im Terminal ausgegeben — Erinnerung was zuletzt geschrieben wurde, ohne die PDF öffnen zu müssen
+- [`src/shodan_report/core/runner.py`](src/shodan_report/core/runner.py): Nach der Archivierung wird die aktuelle Notiz (aus `--note` oder `report.cover_note` aus YAML) automatisch in die Metadaten geschrieben
+
+## fix: cover_note Box — Label „Einschätzung des Analysten" ergänzt
+
+- [`src/shodan_report/pdf/pdf_manager.py`](src/shodan_report/pdf/pdf_manager.py): cover_note-Box erhält eine Kopfzeile „Einschätzung des Analysten" (blau, fett, 7,5 pt) — ohne Label war die Box nur ein Textblock mit blauem Streifen, nicht als persönlicher Kommentar erkennbar; zwei-zeilige Tabellenstruktur (Label + Text), engerer Abstand zwischen beiden Zeilen
+
+**Vollständiger Workflow:**
+```
+1. shodan-report --customer X --month 2026-05 --config ...        # Shodan-Aufruf, leeres PDF
+2. PDF lesen, Einschätzung formulieren
+3. shodan-report ... --from-snapshot --note "Mein Kommentar"      # Kein API-Call, PDF + Notiz gespeichert
+4. shodan-report --customer X --month 2026-06 --config ...        # Nächsten Monat: Vormonats-Notiz erscheint automatisch im Terminal
+```
+
+---
+
+# 2026-04-15
+
+## feat: `--from-snapshot` — PDF neu rendern ohne Shodan-Aufruf
+
+- [`src/shodan_report/cli.py`](src/shodan_report/cli.py): Neues Flag `--from-snapshot` — überspringt Shodan-API-Aufruf und Domain-Scout, lädt den gespeicherten Snapshot vom Disk und rendert das PDF neu
+- [`src/shodan_report/core/runner.py`](src/shodan_report/core/runner.py): `from_snapshot`-Parameter in `generate_report_pipeline` — bei gesetztem Flag wird `load_snapshot()` statt `ShodanClient.get_host()` verwendet; IP wird automatisch aus dem Snapshot übernommen wenn nicht explizit angegeben; Domain-Scout-Block wird übersprungen
+- [`src/shodan_report/cli.py`](src/shodan_report/cli.py): `validate_args` lässt `--ip`/`--domain` weg wenn `--from-snapshot` gesetzt ist
+
+**Workflow:** `shodan-report generate → PDF lesen → shodan-report --from-snapshot --note "Kommentar"` — zweiter Lauf kostet keinen API-Credit und dauert Sekunden.
+
+## feat: Exposure-Level Chart — echte historische Datenpunkte statt Simulation
+
+- [`src/shodan_report/core/runner.py`](src/shodan_report/core/runner.py): Nach der Evaluation werden bis zu 5 zurückliegende Monate per `load_snapshot()` geladen und evaluiert; die Scores werden als `technical_json["exposure_history"]` weitergegeben — nur Monate mit realem Snapshot werden aufgenommen
+- [`src/shodan_report/pdf/sections/trend.py`](src/shodan_report/pdf/sections/trend.py): `_build_multi_point_chart` nutzt `exposure_history` wenn vorhanden — kein `_jitter()`-Fake mehr; X-Abstände passen sich dynamisch an die tatsächliche Punktanzahl an; neue Hilfsfunktion `_month_abbr("2026-04")` → `"Apr"` für Achsenbeschriftung
+- [`src/shodan_report/pdf/sections/trend.py`](src/shodan_report/pdf/sections/trend.py): Chart-Titel wird dynamisch: `EXPOSURE-LEVEL VERLAUF (2 MONATE)`, `(3 MONATE)` usw. — ehrliche Darstellung statt immer „6 MONATE"
+- [`src/shodan_report/pdf/sections/trend.py`](src/shodan_report/pdf/sections/trend.py): `_build_chart_cell` erhält `technical_json`-Parameter und reicht `exposure_history` durch; Fallback auf 2-Punkt-Darstellung (Vormonat → Aktuell) wenn keine History vorhanden
+
+**Vorher:** 4 erfundene Punkte + 2 echte. **Nachher:** nur echte Datenpunkte — wächst mit jedem Monat von 2 auf max. 6.
+
+---
+
 # 2026-04-13 (2)
 
 ## feat: Persönliche Ansprache (cover_note) + Haftungsausschluss auf Seite 1

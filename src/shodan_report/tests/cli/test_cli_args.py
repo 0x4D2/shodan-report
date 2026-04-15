@@ -106,3 +106,65 @@ def test_validate_rejects_invalid_compare(tmp_path):
     ])
     args.output_dir = tmp_path
     assert validate_args(args) is False
+
+
+# ─── --from-snapshot Tests ────────────────────────────────────────────────────
+
+def test_cli_parse_from_snapshot_flag():
+    args = parse_args([
+        "--customer", "Test", "--month", "2026-05", "--from-snapshot",
+    ])
+    assert args.from_snapshot is True
+
+
+def test_cli_parse_from_snapshot_default_false():
+    args = parse_args(["--customer", "Test", "--ip", "1.2.3.4", "--month", "2026-05"])
+    assert args.from_snapshot is False
+
+
+def test_validate_from_snapshot_without_ip_or_domain(tmp_path):
+    """--from-snapshot darf ohne --ip und --domain verwendet werden."""
+    args = parse_args(["--customer", "Test", "--month", "2026-05", "--from-snapshot"])
+    args.output_dir = tmp_path
+    assert validate_args(args) is True
+
+
+def test_validate_no_snapshot_requires_ip_or_domain(tmp_path):
+    """Ohne --from-snapshot muss --ip oder --domain gesetzt sein."""
+    args = parse_args(["--customer", "Test", "--month", "2026-05"])
+    args.output_dir = tmp_path
+    assert validate_args(args) is False
+
+
+def test_build_pipeline_kwargs_includes_from_snapshot():
+    from shodan_report.cli import build_pipeline_kwargs
+    args = parse_args([
+        "--customer", "Test", "--month", "2026-05",
+        "--from-snapshot", "--note", "Mein Kommentar",
+    ])
+    kwargs = build_pipeline_kwargs(args)
+    assert kwargs["from_snapshot"] is True
+    assert kwargs["note"] == "Mein Kommentar"
+
+
+# ─── --note Tests ─────────────────────────────────────────────────────────────
+
+def test_cli_parse_note_flag():
+    args = parse_args([
+        "--customer", "Test", "--ip", "1.2.3.4",
+        "--month", "2026-05", "--note", "Alles ok.",
+    ])
+    assert args.note == "Alles ok."
+
+
+def test_cli_parse_note_short_flag():
+    args = parse_args([
+        "--customer", "Test", "--ip", "1.2.3.4",
+        "--month", "2026-05", "-n", "Kurze Notiz",
+    ])
+    assert args.note == "Kurze Notiz"
+
+
+def test_cli_note_default_is_none():
+    args = parse_args(["--customer", "Test", "--ip", "1.2.3.4", "--month", "2026-05"])
+    assert args.note is None

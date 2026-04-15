@@ -79,6 +79,13 @@ Beispiele:
     )
 
     parser.add_argument(
+        "--from-snapshot",
+        action="store_true",
+        help="Kein Shodan-Aufruf — PDF aus gespeichertem Snapshot neu rendern. "
+             "Ideal um nach dem Lesen des Reports eine --note hinzuzufügen.",
+    )
+
+    parser.add_argument(
         "--verbose", "-v", action="store_true", help="Ausführliche Ausgabe"
     )
 
@@ -109,8 +116,8 @@ def validate_args(args: argparse.Namespace) -> bool:
             print(f"ERROR: Ungültiges Vergleichsmonat: {args.compare}", file=sys.stderr)
             return False
 
-    # --ip oder --domain muss vorhanden sein
-    if not args.ip and not args.domain:
+    # --ip oder --domain muss vorhanden sein (außer bei --from-snapshot)
+    if not args.ip and not args.domain and not args.from_snapshot:
         print(
             "ERROR: Entweder --ip oder --domain muss angegeben werden.",
             file=sys.stderr,
@@ -141,6 +148,7 @@ def build_pipeline_kwargs(args: argparse.Namespace) -> dict:
         "verbose": args.verbose,
         "domain": args.domain,
         "note": args.note,
+        "from_snapshot": args.from_snapshot,
     }
 
 

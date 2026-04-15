@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from shodan_report.clients.shodan_client import ShodanClient
 from shodan_report.parsing.utils import parse_shodan_host
 from shodan_report.persistence.snapshot_manager import save_snapshot, load_snapshot
+from shodan_report.pdf.sections.trend import _month_abbr as _abbr
 from shodan_report.evaluation import (
     EvaluationEngine,
     RiskLevel,
@@ -44,6 +45,16 @@ def load_customer_config(config_path: Optional[Path]) -> dict:
         return {}
 
 
+def _prev_month(month_str: str) -> str:
+    """Returns the YYYY-MM string for the month immediately before month_str."""
+    year = int(month_str[:4])
+    mon = int(month_str[5:7]) - 1
+    if mon < 1:
+        mon = 12
+        year -= 1
+    return f"{year:04d}-{mon:02d}"
+
+
 def generate_report_pipeline(
     customer_name: str,
     ip: Optional[str],
@@ -55,6 +66,7 @@ def generate_report_pipeline(
     verbose: bool = False,
     domain: Optional[str] = None,
     note: Optional[str] = None,
+    from_snapshot: bool = False,
 ) -> Dict[str, Any]:
     """
     Generiere einen vollständigen Shodan Report mit NEUER Evaluation Engine.
@@ -69,6 +81,7 @@ def generate_report_pipeline(
         archive: Ob der Report archiviert werden soll
         verbose: Ausführliche Ausgabe
         domain: Kundendomain für Attack-Surface-Discovery (passives OSINT)
+        from_snapshot: Kein Shodan-Aufruf — Snapshot aus Disk laden und PDF neu rendern
 
     Returns:
         Dictionary mit Ergebnis und Metadaten
@@ -113,8 +126,9 @@ def generate_report_pipeline(
         output_dir = reports_dir()
 
     # ── Attack Surface Discovery (passives OSINT) ──────────────────────────────────
+    # Bei --from-snapshot keinen Scout starten — IP + Domain kommen aus dem Snapshot
     attack_surface = None
-    if domain:
+    if domain and not from_snapshot:
         try:
             from shodan_report.clients.domain_scout import scout_domain
             if verbose:
@@ -138,30 +152,74 @@ def generate_report_pipeline(
                 print(f"[Scout] Warnung: Domain-Discovery fehlgeschlagen: {e}")
             # Non-fatal — Report läuft ohne Attack-Surface-Sektion weiter
 
-    if not ip:
+    if not ip and not from_snapshot:
         return {
             "success": False,
             "error": "IP-Adresse fehlt und Domain-Discovery lieferte kein Ergebnis.",
         }
 
-    api_key = os.getenv("SHODAN_API_KEY")
-    if not api_key:
-        return {
-            "success": False,
-            "error": "SHODAN_API_KEY nicht gesetzt. Bitte .env Datei prüfen.",
-        }
-
-    if verbose:
-        print(f"Lade Shodan Daten für {ip}...")
+    if not from_snapshot:
+        api_key = os.getenv("SHODAN_API_KEY")
+        if not api_key:
+            return {
+                "success": False,
+                "error": "SHODAN_API_KEY nicht gesetzt. Bitte .env Datei prüfen.",
+            }
 
     try:
-        # 1. Shodan Daten abrufen
-        client = ShodanClient(api_key)
-        raw_data = client.get_host(ip)
-        snapshot = parse_shodan_host(raw_data)
+        # ── Vormonats-Notiz anzeigen (falls vorhanden) ────────────────────────
+        try:
+            prev_note_month = _prev_month(month)
+            prev_note_snap  = load_snapshot(customer_name, prev_note_month) if not ip else None
+            prev_ip_guess   = ip or (prev_note_snap.ip if prev_note_snap else None)
+            if prev_ip_guess:
+                prev_note = ReportArchiver().load_cover_note(customer_name, prev_note_month, prev_ip_guess)
+                if prev_note:
+                    w = 60
+                    m_label = _abbr(prev_note_month)
+                    y_label = prev_note_month[:4]
+                    print(f"\n  +{'─' * w}+")
+                    print(f"  | Ihr Kommentar vom {m_label} {y_label:<{w - 22}}|")
+                    print(f"  +{'─' * w}+")
+                    words = prev_note.split()
+                    line = ""
+                    for word in words:
+                        if len(line) + len(word) + 1 > w - 4:
+                            print(f"  | {line:<{w - 4}} |")
+                            line = word
+                        else:
+                            line = f"{line} {word}".strip()
+                    if line:
+                        print(f"  | {line:<{w - 4}} |")
+                    print(f"  +{'─' * w}+\n")
+        except Exception:
+            pass
 
-        # 2. Snapshot speichern
-        save_snapshot(snapshot, customer_name, month)
+        if from_snapshot:
+            # ── Snapshot-Modus: kein Shodan-Aufruf ───────────────────────────
+            snapshot = load_snapshot(customer_name, month)
+            if not snapshot:
+                return {
+                    "success": False,
+                    "error": (
+                        f"Kein gespeicherter Snapshot für '{customer_name}' / {month} gefunden. "
+                        "Bitte erst einen Report ohne --from-snapshot generieren."
+                    ),
+                }
+            if not ip:
+                ip = snapshot.ip
+            if verbose:
+                print(f"[Snapshot] Lade gespeicherte Daten für {ip} ({month}) — kein Shodan-Aufruf.")
+        else:
+            # ── Normalmodus: Shodan-Aufruf ────────────────────────────────────
+            if verbose:
+                print(f"Lade Shodan Daten für {ip}...")
+            client = ShodanClient(api_key)
+            raw_data = client.get_host(ip)
+            snapshot = parse_shodan_host(raw_data)
+
+            # 2. Snapshot speichern
+            save_snapshot(snapshot, customer_name, month)
 
         # 3. Vorherigen Snapshot laden (falls Vergleich)
         prev_snapshot = None
@@ -171,16 +229,8 @@ def generate_report_pipeline(
                 print(f"Geladener Vergleichssnapshot für {compare_month}")
         else:
             # Auto-compare: use previous month if available
-            prev_month_match = re.match(r"^(\d{4})-(\d{2})$", str(month))
-            if prev_month_match:
-                year = int(prev_month_match.group(1))
-                mon = int(prev_month_match.group(2))
-                if mon == 1:
-                    year -= 1
-                    mon = 12
-                else:
-                    mon -= 1
-                auto_compare_month = f"{year:04d}-{mon:02d}"
+            if re.match(r"^\d{4}-\d{2}$", str(month)):
+                auto_compare_month = _prev_month(month)
                 prev_snapshot = load_snapshot(customer_name, auto_compare_month)
                 if prev_snapshot:
                     compare_month = auto_compare_month
@@ -261,6 +311,36 @@ def generate_report_pipeline(
         except Exception:
             pass
 
+        # ── Historische Exposure-Scores für 6-Monats-Chart (nur echte Daten) ──
+        if include_trend:
+            try:
+                history_entries = []
+                hist_month = month
+                for _ in range(5):
+                    hist_month = _prev_month(hist_month)
+                    hist_snap = load_snapshot(customer_name, hist_month)
+                    if hist_snap:
+                        try:
+                            hist_eval = engine.evaluate(hist_snap)
+                            history_entries.insert(0, {
+                                "month": hist_month,
+                                "score": hist_eval.exposure_score,
+                                "real": True,
+                            })
+                        except Exception:
+                            pass
+
+                history_entries.append({
+                    "month": month,
+                    "score": evaluation_result.exposure_score,
+                    "real": True,
+                })
+
+                if len(history_entries) >= 2:
+                    technical_json["exposure_history"] = history_entries
+            except Exception:
+                pass
+
 
         # Enriched CVEs for trend/high-risk counts (current + previous)
         try:
@@ -339,6 +419,20 @@ def generate_report_pipeline(
             result["archived"] = True
             result["archive_path"] = metadata["pdf_path"]
             result["version"] = metadata["version"]
+
+            # Notiz in Archiv-Metadaten speichern (aus --note oder YAML)
+            note_to_save = (config.get("report") or {}).get("cover_note")
+            if note_to_save:
+                try:
+                    report_archiver.save_cover_note(
+                        customer_name=customer_name,
+                        month=month,
+                        ip=snapshot.ip,
+                        note=note_to_save,
+                    )
+                    result["cover_note_saved"] = True
+                except Exception:
+                    pass
 
         return result
 

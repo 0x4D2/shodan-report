@@ -84,6 +84,40 @@ class ReportArchiver:
 
         return metadata
 
+    def save_cover_note(self, customer_name: str, month: str, ip: str, note: str) -> None:
+        """Schreibt eine persönliche Ansprache auf Top-Level der Monats-Metadaten."""
+        customer_slug = create_slug(customer_name)
+        target_dir = self.archive_root / customer_slug / month
+        meta_path = target_dir / f"{month}_{ip}.meta.json"
+
+        if not meta_path.exists():
+            return
+
+        try:
+            with meta_path.open("r", encoding="utf-8") as f:
+                all_metadata = json.load(f)
+        except (json.JSONDecodeError, FileNotFoundError):
+            return
+
+        all_metadata["cover_note"] = note
+        all_metadata["cover_note_updated_at"] = datetime.now().isoformat()
+        self._write_json_atomic(meta_path, all_metadata)
+
+    def load_cover_note(self, customer_name: str, month: str, ip: str) -> Optional[str]:
+        """Lädt die gespeicherte persönliche Ansprache für einen Monat."""
+        customer_slug = create_slug(customer_name)
+        meta_path = self.archive_root / customer_slug / month / f"{month}_{ip}.meta.json"
+
+        if not meta_path.exists():
+            return None
+
+        try:
+            with meta_path.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+            return data.get("cover_note") or None
+        except (json.JSONDecodeError, FileNotFoundError):
+            return None
+
     def find_previous_report(
         self, customer_name: str, month: str, ip: str
     ) -> Optional[Dict[str, Any]]:
@@ -252,21 +286,24 @@ class ReportArchiver:
         all_metadata["latest_version"] = version
         all_metadata["updated_at"] = datetime.now().isoformat()
 
-        # Schreibe atomar: in temp file im selben Verzeichnis schreiben und ersetzen
         target_dir.mkdir(parents=True, exist_ok=True)
-        tmp_meta = None
+        self._write_json_atomic(meta_path, all_metadata)
+
+    def _write_json_atomic(self, path: Path, data: Dict[str, Any]) -> None:
+        """Writes data as JSON to path atomically via a temp file in the same directory."""
+        tmp = None
         try:
             with tempfile.NamedTemporaryFile(
-                mode="w", encoding="utf-8", dir=str(target_dir), prefix=f".tmp_{base_filename}", delete=False
+                mode="w", encoding="utf-8", dir=str(path.parent),
+                prefix=f".tmp_{path.name}", delete=False,
             ) as tf:
-                tmp_meta = Path(tf.name)
-                json.dump(all_metadata, tf, indent=2, ensure_ascii=False)
-
-            tmp_meta.replace(meta_path)
+                tmp = Path(tf.name)
+                json.dump(data, tf, indent=2, ensure_ascii=False)
+            tmp.replace(path)
         finally:
-            if tmp_meta and tmp_meta.exists():
+            if tmp and tmp.exists():
                 try:
-                    tmp_meta.unlink()
+                    tmp.unlink()
                 except Exception:
                     pass
 

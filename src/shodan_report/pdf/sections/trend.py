@@ -217,7 +217,8 @@ def _add_comparison_view(
     # ── Zweispaltig: Tabelle links | Chart rechts ─────────────────────────────
     left_col  = _build_comparison_table(styles, trend_table, compare_month, prev_exposure, curr_exposure)
     right_col = _build_chart_cell(
-        styles, prev_exposure, curr_exposure, compare_month, trend_table
+        styles, prev_exposure, curr_exposure, compare_month, trend_table,
+        technical_json=technical_json,
     )
 
     two_col = Table(
@@ -503,12 +504,19 @@ def _build_chart_cell(
     curr_exposure: Optional[int],
     compare_month: str,
     trend_table: Optional[Dict],
+    technical_json: Optional[Dict] = None,
 ) -> Table:
     """
-    Rechte Spalte: Exposure-Level Verlauf als Linien-Chart
-    mit 6 Datenpunkten (simulierte Geschichte + aktuell).
+    Rechte Spalte: Exposure-Level Verlauf als Linien-Chart.
+    Nutzt echte historische Daten aus technical_json['exposure_history'] wenn vorhanden,
+    sonst Fallback auf 2-Punkt-Darstellung (Vormonat → Aktuell).
     """
-    chart = _build_multi_point_chart(prev_exposure, curr_exposure, compare_month)
+    exposure_history = (technical_json or {}).get("exposure_history")
+    chart, n_months = _build_multi_point_chart(
+        prev_exposure, curr_exposure, compare_month, exposure_history
+    )
+
+    n_label = f"{n_months} MONATE" if n_months > 1 else "AKTUELL"
 
     # Legende
     legend = Paragraph(
@@ -518,7 +526,7 @@ def _build_chart_cell(
 
     inner = Table(
         [
-            [Paragraph('<font size="8" color="#6b7280"><b>EXPOSURE-LEVEL VERLAUF (6 MONATE)</b></font>', styles["normal"])],
+            [Paragraph(f'<font size="8" color="#6b7280"><b>EXPOSURE-LEVEL VERLAUF ({n_label})</b></font>', styles["normal"])],
             [chart],
             [legend],
         ],
@@ -540,11 +548,12 @@ def _build_multi_point_chart(
     prev_score: Optional[int],
     curr_score: Optional[int],
     compare_month: str,
-) -> Drawing:
+    exposure_history: Optional[list] = None,
+) -> Tuple[Drawing, int]:
     """
-    6-Punkte Liniendiagramm: simulierte Vorwerte + Vormonat + Aktuell.
-    Stil exakt wie im Screenshot: dünne graue Gitterlinien, orange Linie,
-    runder letzter Punkt mit Highlight.
+    Liniendiagramm mit echten Datenpunkten aus exposure_history.
+    Fallback auf 2-Punkt-Darstellung wenn keine History vorhanden.
+    Gibt (Drawing, Anzahl_Monate) zurück.
     """
     w = 75 * mm
     h = 28 * mm
@@ -553,18 +562,25 @@ def _build_multi_point_chart(
     chart_h = h - 2 * py
     chart_w = w - 2 * px
 
-    # Datenpunkte aufbauen (6 Monate)
-    p = int(prev_score) if prev_score is not None else 3
-    c = int(curr_score)  if curr_score  is not None else 3
+    # ── Datenpunkte aus echter History aufbauen ───────────────────────────────
+    if exposure_history and len(exposure_history) >= 2:
+        points = [max(1, min(5, int(e["score"]))) for e in exposure_history]
+        months = [_month_abbr(e["month"]) for e in exposure_history]
+        n_months = len(points)
+    else:
+        # Fallback: nur Vormonat + Aktuell (2 Punkte, kein Fake-Jitter)
+        p = int(prev_score) if prev_score is not None else 3
+        c = int(curr_score)  if curr_score  is not None else 3
+        points = [p, c]
+        raw_months = _derive_chart_months(compare_month)
+        months = [raw_months[-2], raw_months[-1]]  # Vor + Akt
+        n_months = 2
 
-    # Simuliere plausible Geschichte (leicht variiert um Vormonat herum)
-    history = [max(1, min(5, p + _jitter(i))) for i in range(4)]
-    points = history + [p, c]  # 6 Punkte gesamt
-
-    months = _derive_chart_months(compare_month)
+    n_slots = max(len(points), 2)
+    x_step = chart_w / max(n_slots - 1, 1)
 
     def _xpos(i):
-        return px + i * (chart_w / 5)
+        return px + i * x_step
 
     def _ypos(v):
         v = max(1, min(5, v))
@@ -594,30 +610,42 @@ def _build_multi_point_chart(
         y = _ypos(val)
         is_last = (i == len(points) - 1)
         r = 1.8 * mm if not is_last else 2.2 * mm
-        fill = C_CHART_LINE
-        stroke = C_CHART_LINE
-        sw = 0
         if is_last:
             # Letzter Punkt: weißer Ring drum
             d.add(Circle(x, y, r + 0.8 * mm,
                          fillColor=white, strokeColor=C_CHART_LINE,
                          strokeWidth=0.8))
-        d.add(Circle(x, y, r, fillColor=fill, strokeColor=stroke, strokeWidth=sw))
+        d.add(Circle(x, y, r, fillColor=C_CHART_LINE, strokeColor=C_CHART_LINE, strokeWidth=0))
 
     # X-Achsen-Labels
     for i, label in enumerate(months):
         x = _xpos(i)
         is_last = (i == len(months) - 1)
         color = "#ea580c" if is_last else "#AAAAAA"
-        weight_str = ""
         d.add(String(x - 3 * mm, 1 * mm, label, fontSize=7,
                      fillColor=HexColor(color)))
 
-    return d
+    return d, n_months
+
+
+def _month_abbr(month_str: str) -> str:
+    """Konvertiert 'YYYY-MM' in dreistellige Monatsabkürzung, z.B. '2026-04' → 'Apr'."""
+    _num_to_abbr = {
+        1:"Jan",2:"Feb",3:"Mär",4:"Apr",5:"Mai",6:"Jun",
+        7:"Jul",8:"Aug",9:"Sep",10:"Okt",11:"Nov",12:"Dez"
+    }
+    try:
+        import re
+        m = re.match(r"(\d{4})-(\d{1,2})", month_str.strip())
+        if m:
+            return _num_to_abbr.get(int(m.group(2)), month_str)
+    except Exception:
+        pass
+    return month_str
 
 
 def _jitter(seed: int) -> int:
-    """Deterministisches kleines Rauschen für simulierte Verlaufswerte."""
+    """Deterministisches kleines Rauschen für simulierte Verlaufswerte (Legacy-Fallback)."""
     jitters = [0, 1, 0, -1, 1, 0, -1, 0]
     return jitters[seed % len(jitters)]
 
