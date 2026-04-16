@@ -1,3 +1,64 @@
+# 2026-04-16 (2)
+
+## feat: CPE-direktes Vendor/Product-Matching statt VENDOR_MAP-Label-Heuristik
+
+CVE-zu-Dienst-Zuordnung basierte bisher auf einem Label-Matching gegen eine statische `VENDOR_MAP` (z.B. "Apache HTTP Server" → `apache:http_server`). Shodan liefert pro Service bereits einen konkreten `cpe23`-String — dieser wird jetzt direkt genutzt, was sowohl präziser ist als auch Dienste außerhalb der VENDOR_MAP abdeckt.
+
+- [`src/shodan_report/pdf/sections/data/cve_enricher.py`](src/shodan_report/pdf/sections/data/cve_enricher.py): Neuer Helper `_vendor_product_from_cpe(cpe_str)` — extrahiert `{vendor, product}` direkt aus CPE-2.3-String; Wildcards (`*`, `-`) werden abgelehnt; macht VENDOR_MAP zum reinen Fallback
+- [`src/shodan_report/pdf/sections/data/cve_enricher.py`](src/shodan_report/pdf/sections/data/cve_enricher.py): `build_cve_port_map()` speichert jetzt `primary_cpe` pro CVE-Eintrag — erster konkreter CPE (ohne Wildcards) des meldenden Services; wird in `enrich_cves_with_local()` als `service_cpe` auf den Entry übertragen
+- [`src/shodan_report/pdf/sections/data/cve_enricher.py`](src/shodan_report/pdf/sections/data/cve_enricher.py): `match_cve_to_service()` nutzt `_vendor_product_from_cpe(entry["service_cpe"])` als primäre Quelle für Vendor/Product; VENDOR_MAP nur noch Fallback wenn kein `service_cpe` vorhanden; UNMATCHED-Guard akzeptiert jetzt auch `service_cpe` ohne Label
+- [`src/shodan_report/pdf/sections/data/cve_enricher.py`](src/shodan_report/pdf/sections/data/cve_enricher.py): `_extract_cpe_matches_for_service()` — Matching-Logik von `vendor OR product` auf `vendor AND product` geändert; verhindert Fehlzuordnungen wie `apache:mod_fcgid` bei Suche nach `apache:http_server` (gleicher Vendor, anderes Produkt); Normalisierung vereinheitlicht: Unterstriche → Leerzeichen für beide Seiten
+
+**Effekt:** CVE-2013-4365 (mod_fcgid), CVE-2012-4001 (mod_pagespeed) und ähnliche Modul-CVEs matchen nicht mehr als VERIFIED/INFERRED gegen einen Standard-Apache-Server — korrekt, da diese Module auf dem gescannten System nicht nachgewiesen sind. Jeder Dienst mit Shodan-CPE benötigt keinen VENDOR_MAP-Eintrag mehr.
+
+## fix: _parse_version_tuple — alphanumerische Versionsteile (z.B. 9.0p1)
+
+`"9.0p1"` (OpenSSH-Versionsformat) wurde als `(9,)` geparst statt `(9, 0)` weil `"0p1".isdigit()` False ergibt.
+
+- [`src/shodan_report/pdf/sections/data/cve_enricher.py`](src/shodan_report/pdf/sections/data/cve_enricher.py): `_parse_version_tuple()` nutzt jetzt `re.match(r"(\d+)", p)` pro Teil — extrahiert führende Ziffernfolge, ignoriert alphanumerischen Suffix; `"9.0p1"` → `(9, 0)`, `"2.4.66"` → `(2, 4, 66)`
+
+## test: Unit Tests für CPE-direktes Matching und _vendor_product_from_cpe
+
+- [`src/shodan_report/tests/pdf/sections/test_match_confidence.py`](src/shodan_report/tests/pdf/sections/test_match_confidence.py): 17 neue Tests in 4 Klassen — `TestVendorProductFromCpe` (8 Tests: Apache, OpenSSH, Nginx, Wildcards, mod_fcgid), `TestMatchCveToServiceCpeDirect` (4 Tests: CPE-direkt VERIFIED, mod_fcgid kein False-VERIFIED, unbekannter Dienst mit CPE → INFERRED, kein CPE/Label → UNMATCHED), `TestBuildCvePortMapPrimaryCpe` (3 Tests: primary_cpe gesetzt, Wildcards abgelehnt, Ports zusammengeführt), `TestEnrichCvesWithLocalServiceCpe` (2 Tests: service_cpe aus Snapshot übernommen, kein CPE → None)
+- Gesamtzahl Tests: **604 passed** (vorher 587)
+
+---
+
+# 2026-04-16
+
+## fix: Bug 1 — Inkonsistente CVE-Zählung in der Management Summary
+
+Management Summary zeigte „KRITISCH: 0" obwohl der CVE-Anhang CVEs mit CVSS ≥ 9.0 enthielt. Ursache: zwei unabhängige Berechnungspfade, die unterschiedliche Ergebnisse liefern konnten.
+
+- [`src/shodan_report/pdf/sections/data/management_data.py`](src/shodan_report/pdf/sections/data/management_data.py): Neuer Helper `_compute_severity_counts(enriched)` — einzige Stelle im Codebase, die critical/high/medium/low/kev zählt; wird in `prepare_management_data()` nach einmaligem Aufruf von `enrich_cves_with_local()` befüllt
+- [`src/shodan_report/pdf/sections/data/management_data.py`](src/shodan_report/pdf/sections/data/management_data.py): `prepare_management_data()` gibt jetzt `critical_count`, `high_count`, `medium_count`, `low_count`, `kev_count` und `enriched_cves` im `mdata`-Dict zurück — single source of truth für alle Abschnitte
+- [`src/shodan_report/pdf/sections/management.py`](src/shodan_report/pdf/sections/management.py): KPI-Zeile „KRITISCH (≥9)" liest `mdata["critical_count"]` und `mdata["kev_count"]` direkt — der separate `enrich_cves`-Aufruf für die KPI-Anzeige entfällt; NVD-Live-Boost für den Exposure-Score bleibt erhalten und korrigiert den Zähler nur wenn `NVD_LIVE=1`
+
+## fix: Bug 2 — CVE-Plausibilitätsfilter (NVD vulnerable:false)
+
+CVEs wurden gleichwertig behandelt unabhängig davon, ob die gescannte Komponente in NVD als verwundbar (`vulnerable:true`) oder nur als Laufzeitplattform (`vulnerable:false`, „Running on/with"-Kontext) eingetragen ist. Beispiel: CVE-2007-4723 betrifft Ragnarok Online Control Panel — Apache HTTP Server ist nur Plattformabhängigkeit.
+
+- [`src/shodan_report/pdf/sections/data/cve_enricher.py`](src/shodan_report/pdf/sections/data/cve_enricher.py): Neuer Helper `_get_cpe_vulnerable_map(nvd_json)` — parst NVD-Konfigurationen (NVD v2 + Legacy CVE\_Items) und liefert `{produkt_lower: is_vulnerable_bool}`; `vulnerable:true` überschreibt `false` wenn ein Produkt mehrfach auftaucht
+- [`src/shodan_report/pdf/sections/data/cve_enricher.py`](src/shodan_report/pdf/sections/data/cve_enricher.py): Neuer Helper `_is_platform_only(nvd_json, service_label)` — gibt `True` zurück wenn der gesuchte Service ausschließlich mit `vulnerable:false` in NVD gelistet ist und mindestens ein anderes Produkt `vulnerable:true` hat
+- [`src/shodan_report/pdf/sections/data/cve_enricher.py`](src/shodan_report/pdf/sections/data/cve_enricher.py): `enrich_cves()` sichert das lokale Service-Label (aus Snapshot-CPE) vor dem NVD-Service-Block; wenn `_is_platform_only` zutrifft → `low_confidence=True` + `low_confidence_reason` auf dem Entry; `service_indicator.confidence` wird auf `"low_confidence"` gesetzt
+- [`src/shodan_report/pdf/sections/cve_overview.py`](src/shodan_report/pdf/sections/cve_overview.py): `create_cve_overview_section()` teilt CVEs in `cve_data_main` (direkt verwundbar) und `cve_data_low` (Plattformabhängigkeiten) auf — KPI-Karten, CVSS-Balken und Tabelle zeigen nur `cve_data_main`
+- [`src/shodan_report/pdf/sections/cve_overview.py`](src/shodan_report/pdf/sections/cve_overview.py): Neue Funktion `_create_low_confidence_cve_note()` — rendert `low_confidence`-CVEs in einem gesonderten, gelblich hinterlegten Info-Abschnitt mit Erklärungstext und Quellenangabe; werden in keiner KPI-Zählung berücksichtigt
+
+## feat: Positive Befunde für aktuelle Softwareversionen
+
+Erkannte Softwareversionen, die aktuell und supported sind (z.B. Apache 2.4.66, OpenSSH 9.3), erscheinen jetzt als positiver Befund in der Management Summary statt zu schweigen.
+
+- [`src/shodan_report/pdf/sections/data/management_data.py`](src/shodan_report/pdf/sections/data/management_data.py): `_SUPPORTED_VERSION_THRESHOLDS` — Lookup-Tabelle für Apache, Nginx, OpenSSH, OpenSSL, Postfix, MySQL, MariaDB, PostgreSQL, Redis, PHP mit Mindestversion für „aktuell und supported" (Stand: August 2025)
+- [`src/shodan_report/pdf/sections/data/management_data.py`](src/shodan_report/pdf/sections/data/management_data.py): `_check_version_current(product, version)` — Versionsvergleich via Tupel-Split; `_build_positive_findings(technical_json)` — scannt alle Services und erstellt Befund-Liste; Ergebnis in `mdata["positive_findings"]`
+- [`src/shodan_report/pdf/sections/management.py`](src/shodan_report/pdf/sections/management.py): Positive Befunde werden nach dem zweispaltigen Kernaussagen-Block gerendert (grüner Text mit ✓-Präfix), nur wenn die Liste nicht leer ist
+
+## test: Unit Tests für Bug 1 und Bug 2
+
+- [`src/shodan_report/tests/pdf/sections/test_bugfix_cve_count_consistency.py`](src/shodan_report/tests/pdf/sections/test_bugfix_cve_count_consistency.py): 12 Tests — `_compute_severity_counts` (Grenzen, Sonderfälle), `prepare_management_data` (Bug-Reproduktion: CVSS 9.8 → `critical_count == 1`, Konsistenz zwischen `critical_count` und `enriched_cves`, alle Keys vorhanden)
+- [`src/shodan_report/tests/pdf/sections/test_bugfix_cve_plausibility_filter.py`](src/shodan_report/tests/pdf/sections/test_bugfix_cve_plausibility_filter.py): 17 Tests — `_get_cpe_vulnerable_map` (NVD v2, Legacy-Format, true-überschreibt-false), `_is_platform_only` (Bug-Reproduktion CVE-2007-4723/Apache, Grenzfälle, Nginx), Integration `enrich_cves` mit Mock-NVD-Client (platform-only → `low_confidence=True`, direkt verwundbar → kein Flag, kein Flag ohne NVD-Lookup)
+
+---
+
 # 2026-04-15 (2)
 
 ## feat: Persönliche Ansprache — Persistenz im Archiv + Vormonats-Erinnerung

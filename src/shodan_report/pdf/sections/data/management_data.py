@@ -1,5 +1,137 @@
 from typing import Any, Dict, List
 
+# BUGFIX: Bug 1 — Severity-Counts werden jetzt einmalig aus dem enriched CVE-Listenobjekt
+# berechnet (single source of truth). Kein zweiter Berechnungspfad mehr in management.py.
+from shodan_report.pdf.sections.data.cve_enricher import enrich_cves_with_local
+
+
+def _compute_severity_counts(enriched: List[Dict[str, Any]]) -> Dict[str, int]:
+    """Berechnet Severity-Counts direkt aus der enriched CVE-Liste.
+
+    BUGFIX: Bug 1 — einzige Stelle, an der kritisch/hoch/medium/niedrig gezählt wird.
+    Wird in prepare_management_data() befüllt; management.py und alle weiteren Abschnitte
+    lesen diese Werte aus dem mdata-Dict statt sie selbst zu berechnen.
+    """
+    critical = high = medium = low = kev = 0
+    for c in enriched:
+        if not isinstance(c, dict):
+            continue
+        raw = c.get("cvss")
+        if raw is not None:
+            try:
+                score = float(raw)
+                if score >= 9.0:
+                    critical += 1
+                elif score >= 7.0:
+                    high += 1
+                elif score >= 4.0:
+                    medium += 1
+                else:
+                    low += 1
+            except (TypeError, ValueError):
+                pass
+        if c.get("exploit_status") in ("public", "kev", "cisa"):
+            kev += 1
+    return {"critical": critical, "high": high, "medium": medium, "low": low, "kev": kev}
+
+
+# Verbesserung: Bekannte Softwareversionen positiv vermerken
+# Lookup-Tabelle: Produkt → Mindestversion für "aktuell und supported".
+# Versions-Vergleich erfolgt per Tupel-Split. Werte basieren auf dem
+# Stand der Wissensdatenbank (August 2025).
+_SUPPORTED_VERSION_THRESHOLDS: Dict[str, str] = {
+    "apache": "2.4.58",
+    "apache http server": "2.4.58",
+    "nginx": "1.24.0",
+    "openssh": "9.0",
+    "openssl": "3.0.0",
+    "postfix": "3.6.0",
+    "mysql": "8.0.0",
+    "mariadb": "10.6.0",
+    "postgresql": "14.0",
+    "redis": "7.0.0",
+    "php": "8.1.0",
+}
+
+
+def _parse_version(v: str):
+    """Parst einen Versionsstring in ein vergleichbares Tupel, z.B. '2.4.66' → (2, 4, 66)."""
+    try:
+        import re as _re
+        parts = _re.split(r"[.\-_]", str(v).strip())
+        return tuple(int(p) for p in parts if p.isdigit())
+    except Exception:
+        return ()
+
+
+def _check_version_current(product: str, version: str) -> bool:
+    """Gibt True zurück wenn version >= bekannte Minimalversion für product.
+
+    Verbesserung: Wird von prepare_management_data() genutzt um positive_findings
+    zu befüllen.
+    """
+    if not product or not version:
+        return False
+    prod_lower = str(product).lower().strip()
+    threshold_str = None
+    for key, thresh in _SUPPORTED_VERSION_THRESHOLDS.items():
+        if key in prod_lower:
+            threshold_str = thresh
+            break
+    if not threshold_str:
+        return False
+    v_tuple = _parse_version(version)
+    t_tuple = _parse_version(threshold_str)
+    if not v_tuple or not t_tuple:
+        return False
+    return v_tuple >= t_tuple
+
+
+def _build_positive_findings(technical_json: Any) -> List[Dict[str, Any]]:
+    """Erstellt eine Liste positiver Befunde für erkannte aktuelle Softwareversionen.
+
+    Verbesserung: Wenn eine erkannte Version aktuell und supported ist, erscheint
+    das als positiver Befund im Report statt nur als Schweigen.
+
+    Returns:
+        Liste von Dicts mit 'product', 'version', 'note'
+    """
+    findings: List[Dict[str, Any]] = []
+    try:
+        services = (
+            technical_json.get("services") or technical_json.get("open_ports") or []
+            if isinstance(technical_json, dict)
+            else getattr(technical_json, "services", None) or getattr(technical_json, "open_ports", []) or []
+        )
+        seen_products = set()
+        for svc in services:
+            if isinstance(svc, dict):
+                product = str(svc.get("product") or "").strip()
+                version = str(svc.get("version") or "").strip()
+            else:
+                product = str(getattr(svc, "product", "") or "").strip()
+                version = str(getattr(svc, "version", "") or "").strip()
+
+            if not product or not version:
+                continue
+            key = f"{product.lower()}:{version}"
+            if key in seen_products:
+                continue
+            seen_products.add(key)
+
+            if _check_version_current(product, version):
+                findings.append({
+                    "product": product,
+                    "version": version,
+                    "note": (
+                        f"{product} {version} ist eine aktuelle, unterstützte Version "
+                        f"(kein EOL, bekannte Sicherheitsupdates verfügbar)."
+                    ),
+                })
+    except Exception:
+        pass
+    return findings
+
 
 def prepare_management_data(technical_json: Dict[str, Any], evaluation: Any) -> Dict[str, Any]:
     """Extract canonical management-related metrics from raw snapshot and evaluation.
@@ -173,6 +305,25 @@ def prepare_management_data(technical_json: Dict[str, Any], evaluation: Any) -> 
     # return deterministic list for tests/consumers
     unique_cves_list = sorted(unique_cves)
 
+    # BUGFIX: Bug 1 — Severity-Counts werden EINMALIG hier berechnet, aus dem enriched
+    # CVE-Listenobjekt (single source of truth). management.py liest diese Werte aus
+    # dem mdata-Dict — kein zweiter enrich_cves-Aufruf für die KPI-Anzeige mehr nötig.
+    _enriched_for_counts: List[Dict[str, Any]] = []
+    try:
+        if unique_cves_list and isinstance(technical_json, dict):
+            _enriched_for_counts = enrich_cves_with_local(technical_json, unique_cves_list)
+        elif unique_cves_list:
+            # technical_json könnte ein Objekt sein; für die Anreicherung dict-Form erzwingen
+            try:
+                _tj_dict = vars(technical_json) if hasattr(technical_json, "__dict__") else {}
+            except Exception:
+                _tj_dict = {}
+            _enriched_for_counts = enrich_cves_with_local(_tj_dict, unique_cves_list)
+    except Exception:
+        _enriched_for_counts = []
+
+    cve_severity_counts = _compute_severity_counts(_enriched_for_counts)
+
     # service summary helper data (kept minimal here; renderer can call helpers)
     service_rows: List = []
     try:
@@ -181,6 +332,9 @@ def prepare_management_data(technical_json: Dict[str, Any], evaluation: Any) -> 
         service_rows = _build_service_summary(technical_json)
     except Exception:
         service_rows = []
+
+    # Verbesserung: Positive Befunde für aktuelle, unterstützte Softwareversionen
+    positive_findings = _build_positive_findings(technical_json)
 
     return {
         "exposure_score": exposure_score,
@@ -194,6 +348,15 @@ def prepare_management_data(technical_json: Dict[str, Any], evaluation: Any) -> 
         "unique_cves": unique_cves_list,
         "service_rows": service_rows,
         "top_vulns": top_vulns,
+        # BUGFIX: Bug 1 — vorab berechnete Severity-Counts (single source of truth)
+        "critical_count": cve_severity_counts["critical"],
+        "high_count": cve_severity_counts["high"],
+        "medium_count": cve_severity_counts["medium"],
+        "low_count": cve_severity_counts["low"],
+        "kev_count": cve_severity_counts["kev"],
+        "enriched_cves": _enriched_for_counts,
+        # Verbesserung: erkannte aktuelle Softwareversionen als positive Befunde
+        "positive_findings": positive_findings,
     }
 
 

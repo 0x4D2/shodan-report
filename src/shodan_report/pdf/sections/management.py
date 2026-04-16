@@ -452,14 +452,23 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
 
     # ── KPI-Zeile: IP · Ports · CVEs gesamt · Kritisch (≥9) · CISA KEV ──
     _cve_total_kpi = int(mdata.get("cve_count", 0) or 0)
-    # Enrich CVEs with CVSS — same logic as cve_overview.py so counts are consistent
+    # BUGFIX: Bug 1 — KPI-Counts direkt aus mdata (single source of truth).
+    # Kein zweiter enrich_cves-Aufruf mehr; Werte kommen aus prepare_management_data(),
+    # die exakt dieselbe enriched-CVE-Liste nutzt wie der CVE-Anhang.
+    _crit_count_kpi = int(mdata.get("critical_count", 0) or 0)
+    _cisa_count_kpi = int(mdata.get("kev_count", 0) or 0)
+    # NVD-Live-Boost: Falls CVSS-Daten per NVD nachgezogen wurden (NVD_LIVE=1),
+    # kann der kritisch-Zähler noch erhöht werden. Der Exposure-Score-Boost oben (Zeilen
+    # 292-315) bleibt davon unberührt; er läuft weiterhin mit live NVD wenn aktiviert.
     _lookup_nvd_kpi = bool((config.get("nvd") or {}).get("enabled", False))
     if os.environ.get("NVD_LIVE") == "1":
         _lookup_nvd_kpi = True
-    _kpi_cve_ids = sorted(mdata.get("unique_cves") or [])
-    _enriched_kpi = enrich_cves(_kpi_cve_ids, technical_json, lookup_nvd=_lookup_nvd_kpi) if _kpi_cve_ids else []
-    _crit_count_kpi = count_critical_cves(_enriched_kpi)
-    _cisa_count_kpi = count_kev_cves(_enriched_kpi)
+    if _lookup_nvd_kpi:
+        _kpi_cve_ids = sorted(mdata.get("unique_cves") or [])
+        if _kpi_cve_ids:
+            _enriched_kpi_live = enrich_cves(_kpi_cve_ids, technical_json, lookup_nvd=True)
+            _crit_count_kpi = count_critical_cves(_enriched_kpi_live)
+            _cisa_count_kpi = count_kev_cves(_enriched_kpi_live)
     _crit_color_kpi = Colors.risk_critical_dot if _crit_count_kpi > 0 else None
     _cisa_color_kpi = Colors.risk_critical_dot if _cisa_count_kpi > 0 else None
 
@@ -703,7 +712,21 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
     elements.append(two_col)
     elements.append(Spacer(1, 8))
 
-
+    # Verbesserung: Positive Befunde für erkannte aktuelle Softwareversionen
+    # Wird nur angezeigt wenn mindestens ein positiver Befund vorliegt.
+    _positive_findings = mdata.get("positive_findings") or []
+    if _positive_findings:
+        elements.append(Paragraph(
+            '<font size="8" color="#166534"><b>Positive Befunde — aktuelle Software</b></font>',
+            styles.get("normal") or styles.get("Normal"),
+        ))
+        elements.append(Spacer(1, 3))
+        for _pf in _positive_findings:
+            elements.append(Paragraph(
+                f'<font size="8" color="#166534">✓ {_pf.get("note", "")}</font>',
+                styles.get("normal") or styles.get("Normal"),
+            ))
+        elements.append(Spacer(1, 6))
 
 
 

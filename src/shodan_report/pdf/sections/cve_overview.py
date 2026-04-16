@@ -62,24 +62,67 @@ def create_cve_overview_section(
         ))
         return
 
-    # 1. KPI-Karten
-    _create_risk_overview(elements, styles, cve_data)
+    # Drei-Stufen-Confidence: CVEs nach confidence aufteilen.
+    # UNMATCHED  → eigener Abschnitt unten (kein Mapping möglich)
+    # low_confidence (Bug 2, platform-only) → separater Warnabschnitt
+    # VERIFIED + INFERRED → Hauptliste
+    try:
+        from shodan_report.pdf.sections.data.cve_enricher import MatchConfidence
+        _unmatched_val = MatchConfidence.UNMATCHED
+    except Exception:
+        _unmatched_val = None
+
+    def _is_unmatched(c):
+        conf = c.get("confidence")
+        if conf is None:
+            return False
+        if _unmatched_val is not None and conf == _unmatched_val:
+            return True
+        # Fallback: String-Vergleich wenn Enum-Import fehlschlägt
+        return str(conf).lower() in ("unmatched", "matchconfidence.unmatched")
+
+    cve_data_unmatched = [c for c in cve_data if _is_unmatched(c) and not c.get("low_confidence")]
+    cve_data_low       = [c for c in cve_data if c.get("low_confidence")]
+    cve_data_main      = [c for c in cve_data if not _is_unmatched(c) and not c.get("low_confidence")]
+
+    # Hauptliste leer → alle zeigen (Fallback: kein Filter wirksam)
+    if not cve_data_main and (cve_data_unmatched or cve_data_low):
+        cve_data_main      = cve_data
+        cve_data_unmatched = []
+        cve_data_low       = []
+
+    # 1. KPI-Karten (nur verifizierbare CVEs)
+    _create_risk_overview(elements, styles, cve_data_main)
 
     # 2. CVSS-Verteilungsbalken
-    _create_cvss_bar(elements, cve_data)
+    _create_cvss_bar(elements, cve_data_main)
 
-    # 3. Inferred-Hinweis
+    # 3. Confidence-Hinweis
+    try:
+        from shodan_report.pdf.sections.data.cve_enricher import MatchConfidence
+        _verified_count  = sum(1 for c in cve_data_main if c.get("confidence") == MatchConfidence.VERIFIED)
+        _inferred_count  = sum(1 for c in cve_data_main if c.get("confidence") == MatchConfidence.INFERRED)
+        _unmatched_total = len(cve_data_unmatched)
+    except Exception:
+        _verified_count = _inferred_count = _unmatched_total = 0
+
+    _parts = [f"{len(cve_data_main)} CVEs"]
+    if _verified_count:
+        _parts.append(f"{_verified_count} verifiziert")
+    if _inferred_count:
+        _parts.append(f"{_inferred_count} inferred")
+    if _unmatched_total:
+        _parts.append(f"{_unmatched_total} nicht zuordenbar (↓)")
+    _hint = " · ".join(_parts) + " · keine aktive Verifikation"
+
     elements.append(Spacer(1, 6))
     elements.append(Paragraph(
-        f'<font size="8" color="#888888">'
-        f'{len(cve_data)} CVEs zugeordnet · '
-        f'Inferred Findings (Versionszuordnung) · keine aktive Verifikation'
-        f'</font>',
+        f'<font size="8" color="#888888">{_hint}</font>',
         styles["normal"],
     ))
     elements.append(Spacer(1, 8))
 
-    # 4. Tabelle
+    # 4. Tabelle (nur Haupt-CVEs)
     show_full = False
     limit = 6
     try:
@@ -90,11 +133,19 @@ def create_cve_overview_section(
         show_full = False
         limit = 10
 
-    _create_detailed_cve_table(elements, styles, cve_data, technical_json,
+    _create_detailed_cve_table(elements, styles, cve_data_main, technical_json,
                                show_full=show_full, limit=limit)
 
     # 5. Fußnoten-Box
-    _final_evaluation_paragraph(elements, styles, cve_data)
+    _final_evaluation_paragraph(elements, styles, cve_data_main)
+
+    # 6. Separater Abschnitt für UNMATCHED CVEs (kein Dienst-Mapping möglich)
+    if cve_data_unmatched:
+        _create_unmatched_cve_note(elements, styles, cve_data_unmatched)
+
+    # 7. BUGFIX: Bug 2 — Separater Abschnitt für low_confidence CVEs (platform-only)
+    if cve_data_low:
+        _create_low_confidence_cve_note(elements, styles, cve_data_low)
 
 
 def _extract_cve_data(technical_json: Dict[str, Any], context: Optional[Any] = None) -> List[Dict]:
@@ -633,8 +684,13 @@ def _create_detailed_cve_table(
             f'<font size="9" color="#666666">{exploit_str}</font>', ns
         )
 
-        # Relevanz-Badge
-        rel_cell = _relevance_badge(styles, cvss)
+        # Relevanz-Badge + Confidence-Badge (überlagert wenn vorhanden)
+        conf_badge = _confidence_badge(styles, c.get("confidence"))
+        if conf_badge is not None:
+            # Confidence-Badge ersetzt das generische Relevanz-Badge
+            rel_cell = conf_badge
+        else:
+            rel_cell = _relevance_badge(styles, cvss)
 
         rows.append([cve_cell, cvss_cell, svc_cell, exploit_cell, rel_cell])
 
@@ -690,6 +746,43 @@ def _cvss_badge(styles: Dict, cvss: Optional[float]) -> Table:
     badge = Table(
         [[Paragraph(f'<font size="9" color="{tx}"><b>{val}</b></font>', ns)]],
         colWidths=[14 * mm],
+    )
+    badge.setStyle(TableStyle([
+        ("BACKGROUND",    (0, 0), (-1, -1), HexColor(bg)),
+        ("BOX",           (0, 0), (-1, -1), 0.5, HexColor(bd)),
+        ("TOPPADDING",    (0, 0), (-1, -1), 2),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 4),
+        ("ALIGN",         (0, 0), (-1, -1), "CENTER"),
+    ]))
+    return badge
+
+
+def _confidence_badge(styles: Dict, confidence: Any) -> Optional[Table]:
+    """Kleines Confidence-Badge — zeigt VERIFIED / INFERRED / UNMATCHED an.
+
+    Gibt None zurück wenn kein confidence-Wert vorhanden ist (Rückwärtskompatibilität).
+    """
+    try:
+        from shodan_report.pdf.sections.data.cve_enricher import MatchConfidence
+        if confidence is None:
+            return None
+        if confidence == MatchConfidence.VERIFIED:
+            bg, bd, tx, label = "#ECFDF5", "#059669", "#059669", "verifiziert"
+        elif confidence == MatchConfidence.INFERRED:
+            bg, bd, tx, label = "#FFF7ED", "#D97706", "#D97706", "inferred"
+        elif confidence == MatchConfidence.UNMATCHED:
+            bg, bd, tx, label = "#F3F4F6", "#9CA3AF", "#6B7280", "unmatched"
+        else:
+            return None
+    except Exception:
+        return None
+
+    ns = styles.get("normal") or styles.get("Normal")
+    badge = Table(
+        [[Paragraph(f'<font size="7" color="{tx}"><b>{label}</b></font>', ns)]],
+        colWidths=[18 * mm],
     )
     badge.setStyle(TableStyle([
         ("BACKGROUND",    (0, 0), (-1, -1), HexColor(bg)),
@@ -761,3 +854,132 @@ def _final_evaluation_paragraph(elements: List, styles: Dict, cve_data: List[Dic
         ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
     ]))
     elements.append(box)
+
+
+def _create_unmatched_cve_note(
+    elements: List, styles: Dict, cve_data_unmatched: List[Dict]
+) -> None:
+    """Zeigt UNMATCHED CVEs in einem eigenen transparenten Abschnitt.
+
+    UNMATCHED bedeutet: Das Tool konnte den CVE keinem erkannten Dienst zuordnen —
+    kein VENDOR_MAP-Eintrag, kein CPE-Match. Die CVEs stammen aus Shodan-Metadaten
+    und sind ohne aktive Verifikation nicht bewertbar. Sie werden NICHT in den
+    KPI-Counts berücksichtigt.
+    """
+    if not cve_data_unmatched:
+        return
+
+    ns = styles.get("normal") or styles.get("Normal")
+    _C_BORDER = HexColor("#E5E7EB")
+    _C_BG     = HexColor("#F9FAFB")
+
+    elements.append(Spacer(1, 10))
+
+    elements.append(Paragraph(
+        f'<font size="9" color="#4B5563"><b>Nicht zuordenbare CVEs ({len(cve_data_unmatched)})</b></font>',
+        ns,
+    ))
+    elements.append(Spacer(1, 4))
+
+    note_text = (
+        "Diese CVEs konnten keinem erkannten Dienst direkt zugeordnet werden. "
+        "Sie basieren auf Shodan-Metadaten und sind ohne aktive Verifikation "
+        "nicht bewertbar. Eine manuelle Prüfung durch den IT-Betrieb wird empfohlen."
+    )
+    box = Table(
+        [[Paragraph(f'<font size="8" color="#6B7280">{note_text}</font>', ns)]],
+        colWidths=[175 * mm],
+    )
+    box.setStyle(TableStyle([
+        ("BACKGROUND",    (0, 0), (-1, -1), _C_BG),
+        ("BOX",           (0, 0), (-1, -1), 0.5, _C_BORDER),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 10),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 10),
+        ("TOPPADDING",    (0, 0), (-1, -1), 7),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+    ]))
+    elements.append(box)
+    elements.append(Spacer(1, 5))
+
+    for c in sorted(cve_data_unmatched, key=lambda x: (x.get("cvss") or 0), reverse=True):
+        cid      = c.get("id") or "—"
+        cvss     = c.get("cvss")
+        note     = c.get("match_note") or "Kein Mapping möglich"
+        nvd_url  = c.get("nvd_url") or f"https://nvd.nist.gov/vuln/detail/{cid}"
+        cvss_str = f"CVSS {cvss}" if cvss is not None else "CVSS unbekannt"
+        line = (
+            f'<a href="{nvd_url}"><font size="8" color="#6B7280">{cid}</font></a>'
+            f'<font size="8" color="#9CA3AF">  {cvss_str} — {note}</font>'
+        )
+        elements.append(Paragraph(line, ns))
+
+    elements.append(Spacer(1, 4))
+    elements.append(Paragraph(
+        '<font size="7" color="#D1D5DB">confidence: unmatched · nicht in KPI-Zählung</font>',
+        ns,
+    ))
+
+
+# BUGFIX: Bug 2 — Separater Abschnitt für CVEs mit low_confidence-Flag
+# (vulnerable:false Plattformabhängigkeiten, z.B. Apache als Hosting-Plattform
+# für eine betroffene Webanwendung, nicht als direkt verwundbare Komponente).
+def _create_low_confidence_cve_note(
+    elements: List, styles: Dict, cve_data_low: List[Dict]
+) -> None:
+    """Zeigt low_confidence CVEs in einem gesonderten Info-Abschnitt.
+
+    Diese CVEs sind in NVD mit vulnerable:false für die gescannte Komponente
+    eingetragen — sie betreffen eine andere Komponente, die auf dem System läuft.
+    Sie werden NICHT in der KPI-Zählung berücksichtigt.
+
+    BUGFIX: Bug 2 — Plausibilitätsfilter-Ergebnis darstellen.
+    """
+    if not cve_data_low:
+        return
+
+    ns = styles.get("normal") or styles.get("Normal")
+    _C_BORDER = HexColor("#DDDDDD")
+    _C_BG     = HexColor("#FFFBEB")   # leicht gelblicher Hintergrund für Hinweis
+
+    elements.append(Spacer(1, 10))
+
+    # Überschrift
+    elements.append(Paragraph(
+        '<font size="9" color="#B45309"><b>Hinweis: Weitere CVEs mit geringer Relevanz '
+        f'({len(cve_data_low)})</b></font>',
+        ns,
+    ))
+    elements.append(Spacer(1, 4))
+
+    # Erklärungstext
+    note_text = (
+        "Die folgenden CVEs wurden per CPE-Matching gefunden, betreffen die gescannte Komponente "
+        "jedoch nur als Laufzeitplattform (NVD: vulnerable:false). "
+        "Sie sind möglicherweise nicht direkt ausnutzbar und werden in den KPI-Zählungen "
+        "<b>nicht</b> berücksichtigt. Manuelle Prüfung empfohlen."
+    )
+    elements.append(Paragraph(
+        f'<font size="8" color="#78350F">{note_text}</font>', ns
+    ))
+    elements.append(Spacer(1, 6))
+
+    # Kompakte Listendarstellung
+    for c in sorted(cve_data_low, key=lambda x: (x.get("cvss") or 0), reverse=True):
+        cid    = c.get("id") or "—"
+        cvss   = c.get("cvss")
+        reason = c.get("low_confidence_reason") or "Plattformabhängigkeit (vulnerable:false)"
+        nvd_url = c.get("nvd_url") or f"https://nvd.nist.gov/vuln/detail/{cid}"
+        cvss_str = f"CVSS {cvss}" if cvss is not None else "CVSS unbekannt"
+        line = (
+            f'<a href="{nvd_url}"><font size="8" color="#2563A8">{cid}</font></a>'
+            f'<font size="8" color="#666666">  {cvss_str} — {reason}</font>'
+        )
+        elements.append(Paragraph(line, ns))
+
+    elements.append(Spacer(1, 4))
+    elements.append(Paragraph(
+        '<font size="7" color="#AAAAAA">'
+        'Quelle: NVD CPE vulnerable-Flag · automatisch klassifiziert'
+        '</font>',
+        ns,
+    ))
