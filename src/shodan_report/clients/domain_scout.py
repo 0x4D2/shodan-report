@@ -15,8 +15,10 @@ import ipaddress
 import json
 import socket
 import subprocess
+import time
 import urllib.request
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 
@@ -124,23 +126,166 @@ def _reverse_dns(ip: str) -> Optional[str]:
 
 # ─── OSINT APIs ───────────────────────────────────────────────────────────────
 
-def _fetch_crtsh(domain: str, timeout: int = 20) -> List[str]:
-    """Holt Subdomains aus crt.sh Zertifikats-Datenbank (passiv, kein Scan)."""
-    url = f"https://crt.sh/?q=%.{domain}&output=json"
+def _crtsh_cache_path(domain: str) -> Path:
+    """Gibt den Pfad zur crt.sh-Cache-Datei für eine Domain zurück."""
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "shodan-report-scout/1.0"})
+        from shodan_report.paths import cache_dir as _cache_base
+        base = _cache_base() / "shodan_report" / "crtsh"
+    except Exception:
+        base = Path.home() / ".cache" / "shodan_report" / "crtsh"
+    base.mkdir(parents=True, exist_ok=True)
+    safe = domain.replace(".", "_").replace("-", "_")
+    return base / f"{safe}.json"
+
+
+def _load_crtsh_cache(domain: str) -> Optional[Dict]:
+    """Lädt gecachte crt.sh-Daten. Gibt None zurück wenn kein Cache vorhanden."""
+    try:
+        p = _crtsh_cache_path(domain)
+        if p.exists():
+            return json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    return None
+
+
+def _save_crtsh_cache(domain: str, subdomains: List[str]) -> None:
+    """Speichert crt.sh-Ergebnis mit Timestamp."""
+    try:
+        p = _crtsh_cache_path(domain)
+        p.write_text(
+            json.dumps({"ts": time.time(), "subdomains": subdomains}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+    except Exception:
+        pass
+
+
+def _fetch_certspotter(domain: str, timeout: int = 15) -> List[str]:
+    """Holt Subdomains aus CertSpotter CT-Datenbank (kostenlos, kein API-Key).
+
+    Zweite CT-Quelle neben crt.sh — unabhängige Infrastruktur, oft verfügbar
+    wenn crt.sh antwortet nicht.
+    """
+    url = (
+        f"https://api.certspotter.com/v1/issuances"
+        f"?domain={domain}&include_subdomains=true&expand=dns_names"
+    )
+    try:
+        req = urllib.request.Request(
+            url, headers={"User-Agent": "shodan-report-scout/1.0"}
+        )
         with urllib.request.urlopen(req, timeout=timeout) as r:
             data = json.loads(r.read().decode())
         subdomains: set = set()
-        for entry in data:
-            for sub in entry.get("name_value", "").splitlines():
-                sub = sub.strip().lstrip("*.")
-                if sub.endswith(domain) and sub != domain:
-                    subdomains.add(sub)
+        for entry in data if isinstance(data, list) else []:
+            for name in entry.get("dns_names") or []:
+                name = name.strip().lstrip("*.")
+                if name.endswith(domain) and name != domain:
+                    subdomains.add(name)
         return sorted(subdomains)
     except Exception as e:
-        print(f"[Scout] Warnung: crt.sh nicht erreichbar ({e.__class__.__name__}) — Subdomains werden übersprungen")
+        print(f"[Scout] CertSpotter nicht erreichbar ({e.__class__.__name__})")
         return []
+
+
+def _fetch_ct_subdomains(
+    domain: str,
+    timeout: int = 15,
+    retries: int = 3,
+    retry_delay: float = 4.0,
+    cache_ttl: int = 60 * 60 * 24 * 7,  # 7 Tage — CT-Daten ändern sich langsam
+) -> List[str]:
+    """Holt Subdomains aus Certificate-Transparency-Logs.
+
+    Quellen (in Reihenfolge):
+    1. Lokaler Cache — wenn jünger als cache_ttl
+    2. crt.sh — primäre Quelle, bis zu `retries` Versuche
+    3. CertSpotter — Fallback wenn crt.sh nicht antwortet
+    4. Stale Cache — letzter Ausweg, mit Alterswarnung
+
+    Ergebnisse beider Quellen werden zusammengeführt und dedupliziert.
+    """
+    # 1. Frischer Cache?
+    cached = _load_crtsh_cache(domain)
+    if cached and isinstance(cached, dict):
+        age = time.time() - float(cached.get("ts", 0))
+        if age < cache_ttl:
+            return cached.get("subdomains") or []
+
+    crtsh_error: Optional[Exception] = None
+    crtsh_result: Optional[List[str]] = None
+
+    # 2. crt.sh mit Retry
+    url = f"https://crt.sh/?q=%.{domain}&output=json"
+    for attempt in range(1, retries + 1):
+        try:
+            req = urllib.request.Request(
+                url, headers={"User-Agent": "shodan-report-scout/1.0"}
+            )
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                data = json.loads(r.read().decode())
+            subdomains: set = set()
+            for entry in data:
+                for sub in entry.get("name_value", "").splitlines():
+                    sub = sub.strip().lstrip("*.")
+                    if sub.endswith(domain) and sub != domain:
+                        subdomains.add(sub)
+            crtsh_result = sorted(subdomains)
+            break
+        except Exception as e:
+            crtsh_error = e
+            if attempt < retries:
+                print(
+                    f"[Scout] crt.sh Versuch {attempt}/{retries} fehlgeschlagen "
+                    f"({e.__class__.__name__}) — warte {retry_delay:.0f}s ..."
+                )
+                time.sleep(retry_delay)
+
+    # 3. CertSpotter als Fallback wenn crt.sh komplett ausgefallen
+    if crtsh_result is None:
+        print(
+            f"[Scout] crt.sh nach {retries} Versuchen nicht erreichbar "
+            f"({crtsh_error.__class__.__name__}) — versuche CertSpotter ..."
+        )
+        certspotter_result = _fetch_certspotter(domain, timeout=timeout)
+        if certspotter_result:
+            print(f"[Scout] CertSpotter: {len(certspotter_result)} Subdomains gefunden")
+            _save_crtsh_cache(domain, certspotter_result)
+            return certspotter_result
+
+        # 4. Stale-Cache-Fallback — beide Quellen ausgefallen
+        if cached and isinstance(cached, dict):
+            stale = cached.get("subdomains") or []
+            age_h = (time.time() - float(cached.get("ts", 0))) / 3600
+            print(
+                f"[Scout] Warnung: crt.sh und CertSpotter nicht erreichbar — "
+                f"nutze Cache von vor {age_h:.0f}h ({len(stale)} Subdomains)"
+            )
+            return stale
+
+        print("[Scout] Warnung: keine CT-Quelle erreichbar, kein Cache — Subdomains übersprungen")
+        return []
+
+    # crt.sh erfolgreich — mit CertSpotter zusammenführen für maximale Abdeckung
+    certspotter_result = _fetch_certspotter(domain, timeout=timeout)
+    if certspotter_result:
+        combined = sorted(set(crtsh_result) | set(certspotter_result))
+        print(
+            f"[Scout] CT-Quellen zusammengeführt: "
+            f"crt.sh={len(crtsh_result)}, CertSpotter={len(certspotter_result)}, "
+            f"gesamt={len(combined)} Subdomains"
+        )
+        _save_crtsh_cache(domain, combined)
+        return combined
+
+    _save_crtsh_cache(domain, crtsh_result)
+    return crtsh_result
+
+
+# Alias für Abwärtskompatibilität
+def _fetch_crtsh(domain: str, timeout: int = 15, **kwargs) -> List[str]:
+    return _fetch_ct_subdomains(domain, timeout=timeout, **kwargs)
 
 
 def _fetch_hackertarget(domain: str) -> List[Tuple[str, str]]:
