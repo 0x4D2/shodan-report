@@ -169,13 +169,14 @@ class TestManagementKpiGreynoise:
         create_management_section(elements=elements, styles=styles, context=ctx)
         return elements
 
-    def test_greynoise_kpi_label_present(self):
-        elements = self._render({"available": True, "noise": False, "riot": False, "classification": "unknown"})
+    def test_greynoise_in_beitragsfaktoren(self):
+        # GreyNoise is no longer a KPI cell — it appears in the Beitragsfaktoren string
+        elements = self._render({"available": True, "noise": False, "riot": False, "classification": "benign"})
         texts = []
         for el in elements:
             texts.extend(self._paragraphs(el))
         full = " ".join(texts)
-        assert "GREYNOISE" in full
+        assert "GreyNoise" in full
 
     def test_riot_shows_green_value(self):
         elements = self._render({"available": True, "noise": False, "riot": True, "classification": "benign", "name": "Google"})
@@ -193,13 +194,14 @@ class TestManagementKpiGreynoise:
         full = " ".join(texts)
         assert "MALICIOUS" in full
 
-    def test_unavailable_shows_dash(self):
+    def test_unavailable_not_shown(self):
+        # When GreyNoise is unavailable, it does not appear anywhere in the output
         elements = self._render({"available": False, "noise": False, "riot": False, "classification": "unknown"})
         texts = []
         for el in elements:
             texts.extend(self._paragraphs(el))
         full = " ".join(texts)
-        assert "GREYNOISE" in full
+        assert "GreyNoise" not in full
 
     def test_greynoise_sentence_in_gesamteinschaetzung_malicious(self):
         elements = self._render({"available": True, "noise": True, "riot": False, "classification": "malicious", "name": ""})

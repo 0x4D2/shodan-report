@@ -156,7 +156,7 @@ def test_detailed_table_rows_contain_expected_values(monkeypatch):
     assert detailed is not None, "Detailed CVE table not found"
 
     # The first data row is at index 1
-    # Column order: CVE=0 | CVSS-badge=1 | DIENST=2 | EXPLOIT-STATUS=3 | RELEVANZ-badge=4
+    # Column order: CVE=0 | CVSS-badge=1 | DIENST=2 | EXPLOIT=3 | EPSS (30T)=4
     first_row = detailed._cellvalues[1]
 
     # CVE id (column 0)
@@ -171,13 +171,13 @@ def test_detailed_table_rows_contain_expected_values(monkeypatch):
     svc_txt = _paragraph_text(first_row[2])
     assert "nginx" in svc_txt.lower()
 
-    # Exploit-status mapping: 'public' -> 'öffentlich bekannt' (column 3)
+    # Exploit cell (column 3): exploit_status='public' → CISA KEV
     exploit_txt = _paragraph_text(first_row[3])
-    assert "öffentlich" in exploit_txt.lower()
+    assert "cisa" in exploit_txt.lower() or "kev" in exploit_txt.lower()
 
-    # Relevance: current code classifies 7.5 as 'hoch' (column 4 is a badge Table)
-    rel_txt = _paragraph_text(first_row[4])
-    assert "hoch" in rel_txt.lower()
+    # EPSS cell (column 4): no epss_score in test data → "—"
+    epss_txt = _paragraph_text(first_row[4])
+    assert epss_txt.strip() != ""  # cell renders without error
 
 
 def test_relevance_thresholds_and_exploit_summary(monkeypatch):
@@ -206,18 +206,16 @@ def test_relevance_thresholds_and_exploit_summary(monkeypatch):
     detailed = _find_detailed_table(elements)
     assert detailed is not None, "Detailed CVE table not found"
 
-    # column 4 = Relevanz-Badge (Table) — extract text from nested badge Table
-    rels = []
-    for row in detailed._cellvalues[1:]:
-        rels.append(_paragraph_text(row[4]).lower())
+    # Column order: CVE=0 | CVSS=1 | DIENST=2 | EXPLOIT=3 | EPSS (30T)=4
+    # Column 3: EXPLOIT — CVE-CRIT has exploit_status='public' → CISA KEV
+    exploit_texts = [_paragraph_text(row[3]).lower() for row in detailed._cellvalues[1:]]
+    assert any("cisa" in t or "kev" in t for t in exploit_texts), \
+        f"no CISA KEV entry in exploit column: {exploit_texts}"
 
-    # Expect labels: kritisch / hoch / mittel (medium) / niedrig / unbekannt
-    assert any("kritisch" in r for r in rels), f"no 'kritisch' in {rels}"
-    assert any("hoch" in r for r in rels), f"no 'hoch' in {rels}"
-    # 'medium' is used in the badge label instead of 'mittel'
-    assert any("mittel" in r or "medium" in r for r in rels), f"no 'mittel/medium' in {rels}"
-    assert any("niedrig" in r for r in rels), f"no 'niedrig' in {rels}"
-    assert any("unbekannt" in r for r in rels), f"no 'unbekannt' in {rels}"
+    # Column 4: EPSS — no epss_score in test data → all render as "—"
+    epss_texts = [_paragraph_text(row[4]) for row in detailed._cellvalues[1:]]
+    assert all(t.strip() != "" for t in epss_texts), \
+        f"EPSS cells must render without error: {epss_texts}"
 
     # The implementation appends a final evaluation box containing "Vollständige CVE-Liste"
     all_texts = _all_para_texts_in_elements(elements)

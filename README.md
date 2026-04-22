@@ -35,6 +35,7 @@ Kopiere `.env.example` nach `.env` und passe die Werte an:
 | `NVD_API_KEY` | ❌ | NVD API Key (erhöht Rate-Limit) |
 | `NVD_LIVE` | ❌ | `1` = Live-NVD-Abfragen erzwingen |
 | `NVD_PROGRESS` | ❌ | `1` = Fortschrittsanzeige bei NVD-Abfragen |
+| `GREYNOISE_API_KEY` | ❌ | GreyNoise API Key (Community-Tier kostenlos) |
 
 ---
 
@@ -87,11 +88,11 @@ Jeder Report enthält bis zu 9 Abschnitte:
 
 | # | Abschnitt | Bedingung |
 |---|---|---|
-| 1 | **Management-Zusammenfassung** — KPI-Zeile, Exposure-Level, Kernaussagen, Empfehlung | immer |
+| 1 | **Management-Zusammenfassung** — KPI-Zeile (IP · Ports · CVEs · Kritisch · CISA KEV · Exploit), Exposure-Level, Kernaussagen, Empfehlung | immer |
 | 2 | **Handlungsempfehlungen** — priorisierte Maßnahmen | immer |
 | 3 | **Attack Surface / Domain-Discovery** — alle exponierten IPs, Subdomains, CDN-Filter | nur mit `--domain` |
 | 4 | **Technischer Anhang** — Dienste, Versionen, TLS-Findings, EOL-Erkennung | immer |
-| 5 | **CVE- & Exploit-Übersicht** — CVSS-Badges, Exploit-Status, OSINT-Indizien | wenn CVEs vorhanden |
+| 5 | **CVE- & Exploit-Übersicht** — CVSS-Badges, ExploitDB-Status, EPSS-Score (30 Tage), CISA KEV | wenn CVEs vorhanden |
 | 6 | **Trend- & Vergleichsanalyse** — Monatsvergleich mit Tabelle | wenn `--compare` oder Snapshot vorhanden |
 | 7 | **Fazit** | immer |
 | 8 | **Methodik & Grenzen** | immer |
@@ -173,6 +174,15 @@ python scripts/fetch_nvd_feeds.py --years 2026,2025,2024
 
 CVEs aus Versionszuordnungen werden im Report als **Inferred Findings** gekennzeichnet. TLS-Protokolldaten aus dem Shodan-Handshake als **Verified Findings**.
 
+Zusätzliche OSINT-Quellen pro CVE (automatisch, kein API-Key nötig):
+
+| Quelle | Beschreibung | Cache |
+|---|---|---|
+| **ExploitDB** | Öffentliche Exploit-Datenbank — bestätigt verfügbaren Angriffscode | 24 h (`~/.cache/shodan_report/exploitdb/`) |
+| **EPSS** (FIRST.org) | Exploit Prediction Scoring System — Ausnutzungswahrscheinlichkeit in 30 Tagen (0–100 %) | kein lokaler Cache, Batch à 100 CVEs |
+| **CISA KEV** | Known Exploited Vulnerabilities — aktiv in der Praxis ausgenutzte CVEs | im NVD-Feed enthalten |
+| **GreyNoise** | IP-Reputationsdienst — RIOT/CLEAN/NOISE/MALICIOUS | Community-Tier: 25 Req./Woche |
+
 ---
 
 ## Archivierung
@@ -214,6 +224,7 @@ shodan-report/
 │   │       ├── trend.py              # Trendanalyse
 │   │       ├── recommendations.py    # Handlungsempfehlungen
 │   │       ├── attack_surface.py     # Domain-Discovery-Ergebnisse
+│   │       ├── attack_scenario.py    # Realistisches Angriffsszenario
 │   │       ├── conclusion.py         # Fazit
 │   │       ├── methodology.py        # Methodik & Grenzen
 │   │       ├── header.py / footer.py
@@ -225,9 +236,9 @@ shodan-report/
 │   ├── evaluation/                   # Risikobewertung (EvaluationEngine)
 │   ├── reporting/                    # Textgenerierung
 │   ├── archiver/                     # SHA256, Versionierung
-│   ├── clients/                      # Shodan, NVD, CISA API-Clients
+│   ├── clients/                      # API-Clients (Shodan, NVD, CISA, ExploitDB, EPSS, GreyNoise)
 │   ├── persistence/                  # Snapshot-Speicherung
-│   └── tests/                        # 492 Tests, 9 skipped
+│   └── tests/                        # 749 Tests, 9 skipped
 ├── config/
 │   ├── customers/                    # Kundenkonfigurationen (YAML)
 │   ├── evaluation.yaml               # Scoring-Konfiguration
@@ -249,7 +260,7 @@ python -m pytest -q
 python -m pytest src/shodan_report/tests/pdf/ -q
 ```
 
-Aktueller Stand: **515 passed, 9 skipped** (Stand 2026-04-15)
+Aktueller Stand: **749 passed, 9 skipped** (Stand 2026-04-22)
 
 ---
 
@@ -259,6 +270,8 @@ Aktueller Stand: **515 passed, 9 skipped** (Stand 2026-04-15)
 - CVE-Servicezuordnung ist OSINT-basiert (Versionszuordnung, nicht verifiziert) — im Report als "OSINT-Indiz" gekennzeichnet
 - NVD Live-API unterliegt Rate-Limits; für Batch-Betrieb NVD-Feeds vorher laden
 - `debug_mdata: true` erzeugt `.mdata.json` Sidecar neben der PDF — in Produktion deaktivieren
+- GreyNoise Community-Tier ist auf 25 Anfragen/Woche limitiert; bei Überschreitung erscheint "–" im Exposure-Beitragsfaktor
+- ExploitDB-CSV wird täglich aktualisiert; lokaler Cache läuft nach 24 h ab und wird automatisch erneuert
 
 ---
 
@@ -273,4 +286,4 @@ Jeder Report enthält automatisch:
 
 ---
 
-*Stand: 2026-04-15 — Branch `feature/data-enrichment`*
+*Stand: 2026-04-22 — Branch `feature/data-enrichment`*
