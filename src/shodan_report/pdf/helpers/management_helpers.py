@@ -870,114 +870,318 @@ def _build_service_flags(technical_json: Dict[str, Any]) -> List[str]:
     return out
 
 
-def _build_top_risks(technical_json: Dict[str, Any], risk_level: str = "low") -> List[Dict[str, str]]:
+# ── Bekannte Admin-Dienste: Port → (Anzeigename, Schwere, Szenario-Kern) ──────
+_ADMIN_PORT_INFO: Dict[int, tuple] = {
+    22:    ("SSH",     "hoch",    "Automatisierte Brute-Force-Scanner testen Port 22 rund um die Uhr auf schwache Passwörter und bekannte CVEs."),
+    23:    ("Telnet",  "kritisch","Telnet überträgt Zugangsdaten im Klartext — vollständig abgreifbar, kein Verschlüsselungsschutz."),
+    3389:  ("RDP",    "kritisch","RDP ist der meistgenutzte Ransomware-Einstiegspunkt weltweit. Scanner indexieren Port 3389 kontinuierlich."),
+    5900:  ("VNC",    "hoch",    "VNC-Zugänge werden aktiv auf schwache oder fehlende Passwörter gescannt."),
+    2083:  ("cPanel", "hoch",    "Credential-Stuffing-Angriffe gegen cPanel laufen global 24/7 — kompromittierte Zugangsdaten aus Datenlecks werden automatisiert getestet."),
+    2087:  ("WHM",    "hoch",    "WHM ermöglicht vollständige Server-Kontrolle über alle gehosteten Accounts — ein kompromittierter WHM-Account ist ein Totalverlust."),
+    2096:  ("cPanel Webmail", "mittel", "Webmail-Zugang ist öffentlich erreichbar — Credential-Stuffing und Phishing-Relay möglich."),
+    10000: ("Webmin", "hoch",    "Webmin-Zugänge sind als einfache Angriffsziele bekannt und werden aktiv gescannt."),
+    10443: ("Webmin", "hoch",    "Webmin-Zugänge sind als einfache Angriffsziele bekannt und werden aktiv gescannt."),
+}
+
+_ADMIN_PRODUCT_KEYWORDS: Dict[str, str] = {
+    "openssh":        "SSH",
+    "dropbear":       "SSH",
+    "libssh":         "SSH",
+    "ssh":            "SSH",
+    "rdp":            "RDP",
+    "remote desktop": "RDP",
+    "ms-term":        "RDP",
+    "terminal services": "RDP",
+    "vnc":            "VNC",
+    "cpanel":         "cPanel",
+    "whm":            "WHM",
+    "webmin":         "Webmin",
+    "plesk":          "Plesk",
+    "telnet":         "Telnet",
+}
+
+# ── Bekannte DB-Dienste: Port → (Anzeigename, Szenario-Kern) ─────────────────
+_DB_PORT_INFO: Dict[int, tuple] = {
+    3306:  ("MySQL",         "Port 3306 wird automatisiert auf Standardpasswörter und Fehlkonfigurationen getestet."),
+    5432:  ("PostgreSQL",    "PostgreSQL ist direkt aus dem Internet ansprechbar — Brute-Force auf Standardkonten läuft automatisiert."),
+    27017: ("MongoDB",       "Öffentlich erreichbare MongoDB-Instanzen waren wiederholt Ziel von Massendatendiebstahl."),
+    6379:  ("Redis",         "Redis läuft standardmäßig ohne Authentifizierung — ein offener Port reicht für vollständigen Datenzugriff und bekannte RCE-Angriffe."),
+    8123:  ("ClickHouse",    "ClickHouse HTTP-Interface ist ohne Authentifizierung erreichbar."),
+    9000:  ("ClickHouse",    "ClickHouse Native-Interface ist ohne Authentifizierung erreichbar."),
+    1433:  ("MSSQL",         "MSSQL ist ein primäres Angriffsziel für automatisierte Exploitation und sa-Brute-Force."),
+    9200:  ("Elasticsearch", "Elasticsearch ohne Authentifizierung — Massendaten-Leaks sind in öffentlichen Datenbanken dokumentiert."),
+    9300:  ("Elasticsearch", "Elasticsearch-Cluster-Port ist öffentlich erreichbar."),
+    5984:  ("CouchDB",       "CouchDB-Instanzen waren mehrfach Ziel von Kryptominer-Deployments."),
+    9042:  ("Cassandra",     "Cassandra ist ohne Authentifizierung erreichbar."),
+    5601:  ("Kibana",        "Kibana-Dashboard ist ohne Authentifizierung erreichbar — vollständiger Lesezugriff auf indizierte Daten."),
+    6432:  ("PgBouncer",     "PgBouncer als DB-Proxy ist öffentlich erreichbar."),
+    27018: ("MongoDB",       "MongoDB-Shard/Replikat-Port ist öffentlich erreichbar."),
+}
+
+_DB_PRODUCT_KEYWORDS: Dict[str, str] = {
+    "mysql":          "MySQL",
+    "mariadb":        "MariaDB",
+    "postgres":       "PostgreSQL",
+    "postgresql":     "PostgreSQL",
+    "mongodb":        "MongoDB",
+    "redis":          "Redis",
+    "clickhouse":     "ClickHouse",
+    "elasticsearch":  "Elasticsearch",
+    "couchdb":        "CouchDB",
+    "cassandra":      "Cassandra",
+    "mssql":          "MSSQL",
+    "memcached":      "Memcached",
+    "kibana":         "Kibana",
+}
+
+# Severity-Ranking für Sortierung (höher = kritischer)
+_SEVERITY_RANK = {"kritisch": 4, "hoch": 3, "mittel": 2, "mittel–hoch": 2, "niedrig": 1, "niedrig–mittel": 1}
+
+
+def _svc_label(port: Optional[int], product: str, version: str, fallback: str) -> str:
+    """Baut lesbares Service-Label aus Shodan-Rohdaten.
+
+    Bevorzugt echten Produktnamen + Version, fällt auf Fallback + Port zurück.
     """
-    Liefert bis zu drei priorisierte Risiken mit Ursache, Szenario, Schaden und Empfehlung.
-    Externe Sicht, ohne interne Annahmen.
-    """
+    prod = (product or "").strip()
+    ver  = (version  or "").strip()
+    if prod and prod.lower() not in ("", "unknown", "generic"):
+        text = f"{prod} {ver}".strip() if ver else prod
+        return f"{text} (Port {port})" if port else text
+    name = fallback or ""
+    return f"{name} (Port {port})" if (name and port) else (name or f"Port {port}" if port else "unbekannter Dienst")
+
+
+def _extract_services(technical_json: Dict[str, Any]) -> List[Dict]:
+    """Normalisiert services/open_ports auf einheitliche Dicts."""
     services = technical_json.get("services") or []
     if not services and technical_json.get("open_ports"):
         services = []
         for p in technical_json.get("open_ports", []):
             if isinstance(p, dict):
-                port = p.get("port")
-                product = (
-                    p.get("service", {}).get("product")
-                    if isinstance(p.get("service"), dict)
-                    else p.get("product")
-                )
-                version = (
-                    p.get("service", {}).get("version")
-                    if isinstance(p.get("service"), dict)
-                    else p.get("version")
-                )
+                svc_sub = p.get("service") if isinstance(p.get("service"), dict) else {}
+                services.append({
+                    "port":    p.get("port"),
+                    "product": svc_sub.get("product") or p.get("product"),
+                    "version": svc_sub.get("version") or p.get("version"),
+                })
             else:
-                port = getattr(p, "port", None)
-                product = getattr(p, "product", None)
-                version = getattr(p, "version", None)
-            services.append({"port": port, "product": product, "version": version})
+                services.append({
+                    "port":    getattr(p, "port", None),
+                    "product": getattr(p, "product", None),
+                    "version": getattr(p, "version", None),
+                })
+    return [s for s in services if isinstance(s, dict)]
 
-    ports = {s.get("port") for s in services if isinstance(s, dict)}
-    products = " ".join(
-        [str(s.get("product") or "").lower() for s in services if isinstance(s, dict)]
-    )
 
-    has_db = bool(
-        ports.intersection({3306, 5432, 27017, 8123, 9000, 1433})
-        or any(k in products for k in ["mysql", "postgres", "postgresql", "mongodb", "clickhouse", "mssql", "redis"])
-    )
-    has_admin = bool(
-        ports.intersection({22, 3389, 5900, 23})
-        or any(k in products for k in ["ssh", "rdp", "vnc", "telnet"])
-    )
-    has_http = bool(ports.intersection({80, 8080, 8443, 8081}) or "http" in products)
-    has_mail = bool(ports.intersection({25, 110, 143, 587, 993, 995}))
-    has_ftp = 21 in ports
+def _build_top_risks(technical_json: Dict[str, Any], risk_level: str = "low") -> List[Dict[str, str]]:
+    """
+    Liefert bis zu drei priorisierte Risiken mit spezifischen Texten aus den
+    tatsächlich exponierten Diensten (Port, Produkt, Version aus Shodan-Daten).
 
-    risks: List[Dict[str, str]] = []
+    Jede Kategorie (Admin, DB, Mail, FTP, Web) erzeugt maximal einen Eintrag.
+    Innerhalb jeder Kategorie werden alle gefundenen Dienste namentlich aufgeführt.
+    """
+    svcs = _extract_services(technical_json)
     low_profile = str(risk_level).lower() == "low"
 
-    if has_db:
-        risks.append(
-            {
-                "title": "Öffentlich erreichbare Datenbanken" if not low_profile else "Exponierte Datenbankdienste",
-                "severity": "hoch" if not low_profile else "niedrig–mittel",
-                "cause": "Hohes theoretisches Risiko bei unkontrolliertem Datenbankzugriff; aktuell keine Hinweise auf aktive Ausnutzung.",
-                "scenario": "Unbefugter Zugriff bei Fehlkonfiguration oder kompromittierten Zugangsdaten.",
-                "impact": "Datenabfluss, Manipulation, Compliance-Risiken.",
-                "recommendation": "Zugriff per VPN/Whitelist beschränken.",
-            }
-        )
+    # ── Kategorisierung ───────────────────────────────────────────────────────
+    admin_found: List[tuple] = []   # (port, product, version, service_name, scenario_kern)
+    db_found:    List[tuple] = []
+    mail_found:  List[tuple] = []
+    ftp_found:   List[tuple] = []
+    web_found:   List[tuple] = []
 
-    if has_admin:
-        risks.append(
-            {
-                "title": "Administrationszugang (beobachtungswürdig)" if low_profile else "Exponierter Administrationszugang",
-                "severity": "mittel" if not low_profile else "niedrig–mittel",
-                "cause": "Admin-Zugänge (z.B. SSH/RDP/VNC/Telnet) sind öffentlich erreichbar.",
-                "scenario": "Erhöhter Prüfaufwand für Authentifizierung und Zugriffsschutz.",
-                "impact": "Potenzielle Kontoübernahme oder Betriebsstörung bei schwachen Zugangsdaten.",
-                "recommendation": "MFA/Keys, Rate-Limits, Zugangsbeschränkung.",
-            }
-        )
+    for s in svcs:
+        port    = s.get("port")
+        product = str(s.get("product") or "").strip()
+        version = str(s.get("version") or "").strip()
+        prod_l  = product.lower()
 
-    if has_http:
-        risks.append(
-            {
-                "title": "Webdienste mit TLS/HTTP, begrenzte Zusatzhärtung" if low_profile else "Webdienste ohne Transporthärtung",
-                "severity": "mittel–hoch" if not low_profile else "niedrig",
-                "cause": "TLS aktiv (wo verfügbar), jedoch fehlendes HSTS und sichtbare Server-Banner.",
-                "scenario": "Gezieltes Targeting durch öffentlich sichtbare Server-Details.",
-                "impact": "Erleichterte Angriffsplanung; geringes Risiko für Sitzungsabgriffe.",
-                "recommendation": "TLS-only, HSTS aktivieren, Banner reduzieren.",
+        # Admin-Erkennung: Port zuerst, dann Produkt-Keyword
+        if port in _ADMIN_PORT_INFO:
+            name, _, scenario_kern = _ADMIN_PORT_INFO[port]
+            admin_found.append((port, product, version, name, scenario_kern))
+            continue
+        matched_admin = next((name for kw, name in _ADMIN_PRODUCT_KEYWORDS.items() if kw in prod_l), None)
+        if matched_admin:
+            # Generischer SSH/RDP-Fallback-Szenariotext
+            _fallback_scenarios = {
+                "SSH":    "Automatisierte Brute-Force-Scanner testen diesen Port rund um die Uhr.",
+                "RDP":    "RDP ist der meistgenutzte Ransomware-Einstiegspunkt — Scanner indexieren diesen Host kontinuierlich.",
+                "VNC":    "VNC-Zugänge werden aktiv auf schwache Passwörter gescannt.",
+                "Telnet": "Telnet überträgt Zugangsdaten im Klartext.",
+                "cPanel": "Credential-Stuffing-Angriffe gegen cPanel laufen global 24/7.",
+                "WHM":    "WHM ermöglicht vollständige Server-Kontrolle.",
+                "Webmin": "Webmin-Zugänge sind bekannte Angriffsziele.",
+                "Plesk":  "Plesk-Panel ist ohne IP-Beschränkung erreichbar.",
             }
-        )
+            admin_found.append((port, product, version, matched_admin, _fallback_scenarios.get(matched_admin, "Öffentlich erreichbarer Admin-Zugang.")))
+            continue
 
-    if has_mail and len(risks) < 3:
-        risks.append(
-            {
-                "title": "Öffentlich erreichbare Maildienste",
-                "severity": "mittel" if not low_profile else "niedrig",
-                "cause": "Maildienste sind extern erreichbar.",
-                "scenario": "Credential-Angriffe oder Missbrauch als Einstiegspunkt.",
-                "impact": "Kontoübernahme, Datenabfluss, Reputationsschaden.",
-                "recommendation": "Strikte Authentifizierung und Zugangsbeschränkung.",
-            }
-        )
+        # DB-Erkennung
+        if port in _DB_PORT_INFO:
+            name, scenario_kern = _DB_PORT_INFO[port]
+            db_found.append((port, product, version, name, scenario_kern))
+            continue
+        matched_db = next((name for kw, name in _DB_PRODUCT_KEYWORDS.items() if kw in prod_l), None)
+        if matched_db:
+            db_found.append((port, product, version, matched_db, "Datenbankdienst ist öffentlich erreichbar."))
+            continue
 
-    if has_ftp and len(risks) < 3:
-        risks.append(
-            {
-                "title": "FTP öffentlich erreichbar (Legacy-Risiko)",
-                "severity": "mittel" if not low_profile else "niedrig",
-                "cause": "FTP ist als Bestandsdienst extern erreichbar.",
-                "scenario": "Erhöhter Schutzbedarf bei Zugangsdaten (Legacy-Protokoll).",
-                "impact": "Potenzieller Datenabfluss bei schwachen Zugangsdaten.",
-                "recommendation": "Zugriff auf interne Netze/VPN beschränken.",
-            }
-        )
+        # Mail-Erkennung
+        if port in {25, 110, 143, 587, 993, 995}:
+            mail_found.append((port, product, version))
+            continue
 
+        # FTP-Erkennung
+        if port == 21 or "ftp" in prod_l:
+            ftp_found.append((port, product, version))
+            continue
+
+        # Web-Erkennung
+        if port in {80, 443, 8080, 8443, 8081} or "http" in prod_l:
+            web_found.append((port, product, version))
+
+    # ── Risiko-Einträge bauen ─────────────────────────────────────────────────
+    risks: List[Dict[str, str]] = []
+
+    # Admin-Block — ein Eintrag, alle gefundenen Dienste namentlich
+    if admin_found:
+        risks.append(_admin_risk_entry(admin_found, low_profile))
+
+    # DB-Block — ein Eintrag, alle gefundenen DBs namentlich
+    if db_found:
+        risks.append(_db_risk_entry(db_found, low_profile))
+
+    # Mail
+    if mail_found and len(risks) < 3:
+        risks.append(_mail_risk_entry(mail_found, low_profile))
+
+    # FTP
+    if ftp_found and len(risks) < 3:
+        label = _svc_label(ftp_found[0][0], ftp_found[0][1], ftp_found[0][2], "FTP")
+        risks.append({
+            "title":          f"FTP öffentlich erreichbar — {label}",
+            "severity":       "mittel",
+            "cause":          f"{label} ist als Legacy-Protokoll öffentlich erreichbar — Zugangsdaten werden unverschlüsselt übertragen.",
+            "scenario":       "Credential-Sniffing und Brute-Force auf bekannte FTP-Standardkonten.",
+            "impact":         "Potenzieller Datenabfluss und Kompromittierung bei schwachen Zugangsdaten.",
+            "recommendation": "FTP auf interne Netze/VPN beschränken oder durch SFTP/FTPS ersetzen.",
+        })
+
+    # Web — nur eintragen wenn noch kein Platz belegt durch kritischere Dienste
+    if web_found and len(risks) < 3:
+        risks.append(_web_risk_entry(web_found, low_profile))
+
+    # Sortierung: kritischste Einträge zuerst
+    risks.sort(key=lambda r: _SEVERITY_RANK.get(r.get("severity", "niedrig"), 1), reverse=True)
     return risks[:3]
+
+
+def _join_labels(labels: List[str]) -> str:
+    """Listet Service-Labels ohne 'N weitere' — alle namentlich, ab 4 letzter als 'u.a.'"""
+    if len(labels) == 1:
+        return labels[0]
+    if len(labels) <= 3:
+        return ", ".join(labels[:-1]) + " und " + labels[-1]
+    # 4+: ersten drei namentlich + "u.a." (selten, aber kein Rendering-Artefakt)
+    return ", ".join(labels[:3]) + " u.a."
+
+
+def _admin_risk_entry(found: List[tuple], low_profile: bool) -> Dict[str, str]:
+    """Baut den Admin-Risikoblock mit namentlichen Diensten aus echten Shodan-Daten."""
+    # Severity direkt aus Port-Daten — low_profile beeinflusst nur Wording, nicht Faktenlage
+    severity_map = {"RDP": "kritisch", "Telnet": "kritisch", "cPanel": "hoch",
+                    "WHM": "hoch", "Webmin": "hoch", "Plesk": "hoch",
+                    "SSH": "hoch", "VNC": "hoch"}
+    worst = max(found, key=lambda x: _SEVERITY_RANK.get(severity_map.get(x[3], "mittel"), 2))
+    severity = severity_map.get(worst[3], "mittel")
+
+    labels = [_svc_label(p, prod, ver, name) for p, prod, ver, name, _ in found]
+    label_str = _join_labels(labels)
+
+    scenario_kern = worst[4]
+
+    has_rdp    = any(x[3] == "RDP"    for x in found)
+    has_cpanel = any(x[3] in ("cPanel", "WHM") for x in found)
+    has_ssh    = any(x[3] == "SSH"    for x in found)
+    has_telnet = any(x[3] == "Telnet" for x in found)
+
+    if has_rdp:
+        rec = "RDP hinter VPN oder Jumphost verlagern, NLA aktivieren, MFA einrichten, IP-Whitelist."
+    elif has_cpanel:
+        rec = "IP-Whitelist für Panel-Zugang, 2FA aktivieren, Login-Versuche limitieren."
+    elif has_telnet:
+        rec = "Telnet deaktivieren, durch SSH ersetzen."
+    elif has_ssh:
+        rec = "Key-Only-Authentifizierung erzwingen, Passwort-Login deaktivieren, Fail2ban aktivieren."
+    else:
+        rec = "Zugang auf bekannte IP-Adressen beschränken, MFA aktivieren."
+
+    return {
+        "title":          f"Exponierter Admin-Zugang — {label_str}",
+        "severity":       severity,
+        "cause":          f"{label_str} {'ist' if len(found) == 1 else 'sind'} ohne Zugriffsbeschränkung aus dem Internet erreichbar.",
+        "scenario":       scenario_kern,
+        "impact":         "Unbefugter Systemzugang, Ransomware-Deployment, vollständige Kompromittierung.",
+        "recommendation": rec,
+    }
+
+
+def _db_risk_entry(found: List[tuple], low_profile: bool) -> Dict[str, str]:
+    """Baut den DB-Risikoblock mit namentlichen Diensten aus echten Shodan-Daten."""
+    # Severity aus Port-Daten — Redis/Elasticsearch ohne Auth = kritisch, alles andere = hoch
+    high_risk_dbs = {"Redis", "Elasticsearch", "MongoDB", "CouchDB"}
+    severity = "kritisch" if any(x[3] in high_risk_dbs for x in found) else "hoch"
+
+    labels = [_svc_label(p, prod, ver, name) for p, prod, ver, name, _ in found]
+    label_str = _join_labels(labels)
+
+    worst = max(found, key=lambda x: 2 if x[3] in high_risk_dbs else 1)
+    scenario_kern = worst[4]
+
+    return {
+        "title":          f"Datenbankzugang exponiert — {label_str}",
+        "severity":       severity,
+        "cause":          f"{label_str} {'ist' if len(found) == 1 else 'sind'} direkt aus dem Internet erreichbar.",
+        "scenario":       scenario_kern,
+        "impact":         "Vollständiger Datenabfluss, Datenbankmanipulation, Compliance-Risiken (DSGVO).",
+        "recommendation": "Datenbank auf loopback oder VPN/Firewall-Whitelist beschränken, Authentifizierung erzwingen.",
+    }
+
+
+def _mail_risk_entry(found: List[tuple], low_profile: bool) -> Dict[str, str]:
+    """Baut den Mail-Risikoblock aus echten Shodan-Daten."""
+    port_names = {25: "SMTP", 110: "POP3", 143: "IMAP", 587: "SMTP-Submission", 993: "IMAPS", 995: "POP3S"}
+    labels = [_svc_label(p, prod, ver, port_names.get(p, "Maildienst")) for p, prod, ver in found]
+    label_str = _join_labels(labels)
+    has_smtp = any(p in (25, 587) for p, _, _ in found)
+    return {
+        "title":          f"Maildienst öffentlich erreichbar — {label_str}",
+        "severity":       "mittel",
+        "cause":          f"{label_str} {'ist' if len(found) == 1 else 'sind'} aus dem Internet erreichbar.",
+        "scenario":       "Credential-Angriffe auf Mail-Zugänge sowie" + (" Missbrauch als Open-Relay für Spam-Versand." if has_smtp else " Kontoübernahme durch Brute-Force."),
+        "impact":         "Kontoübernahme, Datenabfluss, Reputationsschaden durch Spam-Missbrauch.",
+        "recommendation": "Strikte Authentifizierung, Rate-Limiting, SMTP-Relay auf bekannte Absender beschränken.",
+    }
+
+
+def _web_risk_entry(found: List[tuple], low_profile: bool) -> Dict[str, str]:
+    """Baut den Web-Risikoblock mit namentlichen Produkten aus echten Shodan-Daten."""
+    labels = [_svc_label(p, prod, ver, "Webserver") for p, prod, ver in found]
+    label_str = _join_labels(labels)
+    products_str = ", ".join(
+        str(prod).strip() for _, prod, _ in found if (prod or "").strip().lower() not in ("", "unknown")
+    ) or "Webserver"
+    return {
+        "title":          f"Webdienst exponiert — {label_str}",
+        "severity":       "mittel–hoch",
+        "cause":          f"{label_str} {'ist' if len(found) == 1 else 'sind'} öffentlich erreichbar. Server-Banner ({products_str}) sind in Shodan indexiert.",
+        "scenario":       "Gezieltes Targeting durch öffentlich sichtbare Server-Versionsdaten — bekannte CVEs für identifizierte Produkte werden automatisiert getestet.",
+        "impact":         "Erleichterte Angriffsplanung durch Versions-Fingerprinting, Risiko für bekannte Web-Schwachstellen.",
+        "recommendation": "Server-Banner reduzieren, HSTS aktivieren, TLS-only erzwingen, regelmäßige Updates.",
+    }
 
 
 def _build_service_summary(technical_json: Dict[str, Any]) -> List[tuple]:

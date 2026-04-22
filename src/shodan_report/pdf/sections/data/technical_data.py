@@ -237,11 +237,15 @@ def _clean_display_field_local(v: Any, max_len: int = 80) -> str:
             return ""
 
 
-def _normalize_product_local(prod: Any) -> str:
+def _normalize_product_local(prod: Any, port: Optional[int] = None) -> str:
     try:
         if not prod:
             return ""
         p = str(prod).strip()
+        # Shodan-Banner-Codes (z.B. "421", "421 Too") sind kein Produktname
+        import re as _re
+        if _re.match(r"^\d{3}(\s|$)", p) or _re.match(r"^\d{3}$", p):
+            return ""
         low = p.lower()
         if "ssh-2.0" in low or "openssh" in low or "mod_sftp" in low or low.strip() == "ssh":
             if "mod_sftp" in low:
@@ -693,8 +697,10 @@ def prepare_technical_detail(technical_json: Dict[str, Any], evaluation: Any) ->
             risk = "niedrig"
 
         # Apply conservative sanitization for output fields
-        prod_out = _normalize_product_local(product)
-        ver_out = _clean_display_field_local(version, max_len=80)
+        import re as _re2
+        _is_banner_code = bool(_re2.match(r"^\d{3}(\s|$)", str(product).strip()) or _re2.match(r"^\d{3}$", str(product).strip()))
+        prod_out = _normalize_product_local(product, port=port)
+        ver_out = "" if _is_banner_code else _clean_display_field_local(version, max_len=80)
         banner_out = _clean_display_field_local(banner, max_len=200)
 
         services_out.append(

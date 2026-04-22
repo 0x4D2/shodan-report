@@ -54,7 +54,7 @@ def create_methodology_section(
     elements.append(Spacer(1, 12))
     heading_style = styles.get("heading1") or styles.get("heading2") or ns
     elements.append(Paragraph(
-        "<b>8. Einordnung &amp; Bewertungslogik</b>", heading_style
+        "<b>9. Einordnung &amp; Bewertungslogik</b>", heading_style
     ))
     elements.append(Spacer(1, 10))
 

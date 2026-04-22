@@ -160,16 +160,21 @@ def create_recommendations_section(elements: List, styles: Dict, *args, **kwargs
     elements.append(Spacer(1, 12))
 
     # ── PRIORITÄT 2 ──────────────────────────────────────────────────────────
+    elements.append(_priority_badge(
+        "Priorität 2 – Spezifische Empfehlungen",
+        COLOR_P2_BG, COLOR_P2_BORDER, COLOR_P2_TEXT, styles,
+    ))
+    elements.append(Spacer(1, 6))
     if buckets.get("priority2"):
-        elements.append(_priority_badge(
-            "Priorität 2 – Spezifische Empfehlungen",
-            COLOR_P2_BG, COLOR_P2_BORDER, COLOR_P2_TEXT, styles,
-        ))
-        elements.append(Spacer(1, 6))
         for item in buckets["priority2"]:
             elements.append(_item_row(item, COLOR_P2_BORDER, styles))
             elements.append(Spacer(1, 2))
-        elements.append(Spacer(1, 6))
+    else:
+        elements.append(Paragraph(
+            "Keine spezifischen Maßnahmen aus OSINT ableitbar — Monitoring und Härtung gemäß Priorität 3.",
+            styles["bullet"],
+        ))
+    elements.append(Spacer(1, 12))
 
     # ── PRIORITÄT 3 ──────────────────────────────────────────────────────────
     if buckets.get("priority3"):

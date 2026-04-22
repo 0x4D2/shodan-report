@@ -1,3 +1,75 @@
+# 2026-04-22
+
+## feat: TLS-Zertifikats-Übersicht im Technischen Anhang
+
+Neue kompakte Tabelle gruppiert alle TLS-Zertifikate nach Aussteller und Ablaufdatum, sortiert nach Dringlichkeit. Ersetzt die bisherige redundante Einzeldarstellung pro Port.
+
+- [`src/shodan_report/pdf/sections/technical.py`](src/shodan_report/pdf/sections/technical.py): `_render_cert_table()` — sammelt alle Services mit Zertifikatsdaten, gruppiert Ports mit identischem Zertifikat, rendert Tabelle mit Spalten PORT(S) / DIENST / AUSSTELLER / GÜLTIG BIS / STATUS; Status farbcodiert: grün (OK), orange ([!] selbstsigniert / < 30 Tage), rot ([X] abgelaufen); in `KeepTogether` eingebettet gegen Seitenumbruch
+- [`src/shodan_report/pdf/sections/technical.py`](src/shodan_report/pdf/sections/technical.py): `_parse_cert_expiry()` — parst Shodan-Datumsformate (`20260723175119Z`, ISO 8601, space-separated) zu `DD.MM.YYYY`
+- Zertifikatsmetadaten (Aussteller, Ablauf, selbstsigniert, Ciphers) aus den Per-Service-Detailblöcken entfernt — stehen nun ausschließlich in der Übersichtstabelle
+
+## fix: Produkt- und Dienstnamen-Normalisierung im Technischen Anhang
+
+Mehrere Felder zeigten falsche oder uninformative Werte in der Port-Tabelle.
+
+- [`src/shodan_report/pdf/sections/technical.py`](src/shodan_report/pdf/sections/technical.py): `_normalize_product()` — leeres Produkt fällt jetzt auf `_PORT_SERVICE_NAMES` zurück (Port 25 zeigte `-` statt `SMTP`); generische Produktnamen (`http`, `https`, `ftp` …) auf bekannten Ports werden durch den spezifischen Dienstnamen ersetzt; Admin-Ports (2082–2087, 2095–2096) erzwingen immer den Port-spezifischen Namen unabhängig vom Shodan-Produktfeld (Port 2082 zeigte `HTTP` statt `cPanel HTTP`)
+- [`src/shodan_report/pdf/sections/technical.py`](src/shodan_report/pdf/sections/technical.py): `_clean_display_field()` — filtert nicht-informative Versionsstrings (`Error`, `unknown`, `null`, `none` …); MariaDB zeigte `Error` als Version bei verweigerter Verbindung
+- [`src/shodan_report/pdf/sections/technical.py`](src/shodan_report/pdf/sections/technical.py): Cert-Tabelle Dienst-Spalte: Deduplizierung von Dienstnamen (IMAP erschien nicht mehr doppelt für Port 143 + 993); Überlauf als `FTP, POP3 (+4)` statt hartem Abschneiden
+
+## fix: Grammatik und Textkorrekturen
+
+- [`src/shodan_report/pdf/sections/management.py`](src/shodan_report/pdf/sections/management.py): `"1 kritische Dienste"` → `"1 kritischer Dienst"` (Singular-Logik)
+- [`src/shodan_report/pdf/styles.py`](src/shodan_report/pdf/styles.py): `normal`- und `methodology_body`-Style von `TA_JUSTIFY` auf `TA_LEFT` umgestellt — Blocksatz erzeugte in schmalen Tabellenzellen hässliche Wortabstände
+- [`src/shodan_report/pdf/sections/footer.py`](src/shodan_report/pdf/sections/footer.py): SHA256-Signaturblock auf letzter Seite entfernt — SHA256 steht bereits in der laufenden Fußzeile jeder Seite; leeres `—` (Henne-Ei-Problem: Hash kann erst nach PDF-Generierung berechnet werden) ersetzt durch Hinweistext
+
+# 2026-04-17
+
+## feat: GreyNoise Community API Integration
+
+GreyNoise liefert Kontext zu einer IP — ob sie als Angriffsquelle, RIOT-Infrastruktur (CDN, DNS, Cloud) oder unbekannt eingestuft ist. Die Daten fließen als 6. KPI-Zelle in die Management Summary und als automatischer Satz in die Gesamteinschätzung.
+
+- [`src/shodan_report/clients/greynoise.py`](src/shodan_report/clients/greynoise.py): Neuer Client `get_greynoise_status(ip, api_key=None) → dict` — `GET /v3/community/{ip}` mit 5 s Timeout; 404 → `available=True, noise=False` (IP clean); alle anderen Fehler → `available=False` (graceful fallback); `GREYNOISE_API_KEY` aus `.env` wenn kein expliziter Key übergeben
+- [`src/shodan_report/core/runner.py`](src/shodan_report/core/runner.py): GreyNoise-Aufruf nach Attack-Surface-Discovery, non-fatal; Ergebnis in `config["_greynoise"]` hinterlegt; bei `--verbose` wird classification/noise/riot ausgegeben
+- [`src/shodan_report/pdf/context.py`](src/shodan_report/pdf/context.py): `greynoise: Optional[Any] = None` — neues Feld in `ReportContext`
+- [`src/shodan_report/pdf/pdf_manager.py`](src/shodan_report/pdf/pdf_manager.py): `greynoise=config.get("_greynoise")` an `ReportContext` übergeben
+- [`src/shodan_report/pdf/sections/management.py`](src/shodan_report/pdf/sections/management.py): KPI-Zeile von 5 auf 6 Zellen erweitert (`_KPI_CELL_W = 163/6 ≈ 27.2 mm`); 6. Zelle zeigt `RIOT ✓` (grün), `MALICIOUS` (rot), `BENIGN` / `CLEAN` (grün), `NOISE` (orange) oder `–` wenn nicht verfügbar; GreyNoise-Satz wird an Gesamteinschätzung angehängt — kontextabhängig für riot/malicious/benign/noise
+- [`src/shodan_report/tests/clients/test_greynoise.py`](src/shodan_report/tests/clients/test_greynoise.py): 20 Tests in 4 Klassen — API-Struktur (4 Tests), API-Responses inkl. 404/500/Timeout/Header (7 Tests), Env-Key (1 Test), Management-KPI-Rendering inkl. Sätze (8 Tests)
+- [`src/shodan_report/tests/pdf/sections/test_management.py`](src/shodan_report/tests/pdf/sections/test_management.py): `_kpi_tables()` auf 6-spaltig aktualisiert
+
+## feat: CT-Subdomain-Discovery — Retry, Dual-Source und Disk-Cache
+
+crt.sh war bislang eine einzelne, ungesicherte HTTP-Anfrage ohne Fallback. Bei Timeout oder Ratenlimit wurden Subdomains stillschweigend übersprungen.
+
+- [`src/shodan_report/clients/domain_scout.py`](src/shodan_report/clients/domain_scout.py): `_fetch_ct_subdomains()` ersetzt die direkte crt.sh-Anfrage als zentrale CT-Funktion — bis zu 3 Versuche mit 4 s Wartezeit zwischen Fehlversuchen; `_fetch_crtsh()` bleibt als dünner Alias für Abwärtskompatibilität erhalten
+- [`src/shodan_report/clients/domain_scout.py`](src/shodan_report/clients/domain_scout.py): `_fetch_certspotter()` — zweite CT-Quelle via CertSpotter API (kostenlos, kein API-Key); unabhängige Infrastruktur von crt.sh; wird als Fallback aktiviert wenn crt.sh nach allen Versuchen nicht antwortet
+- [`src/shodan_report/clients/domain_scout.py`](src/shodan_report/clients/domain_scout.py): Ergebnisse beider CT-Quellen werden zusammengeführt und dedupliziert — bei Erfolg beider Quellen werden die Subdomain-Listen als Union gespeichert
+- [`src/shodan_report/clients/domain_scout.py`](src/shodan_report/clients/domain_scout.py): 7-Tage-Disk-Cache (`~/.cache/shodan_report/crtsh/<domain>.json`) — CT-Daten ändern sich langsam; bei vollständigem Ausfall beider Quellen greift ein Stale-Cache-Fallback mit Alterswarnung im Terminal
+- [`src/shodan_report/clients/domain_scout.py`](src/shodan_report/clients/domain_scout.py): Hilfsfunktionen `_crtsh_cache_path()`, `_load_crtsh_cache()`, `_save_crtsh_cache()` — schreiben/lesen JSON mit Timestamp; alle Cache-Operationen sind exception-safe
+
+## feat: Angriffsszenario-Analyse — neue Sektion mit Gate-Logik
+
+Neue Sektion „4. Angriffsszenario-Analyse" im PDF-Report. Zeigt priorisierte Angriffsszenarien aus den exponierten Diensten — oder eine Positiv-Box wenn das Risikoprofil zu niedrig ist, um sinnvolle Szenarien abzuleiten.
+
+**Gate-Logik (Option A):** Wenn weniger als 2 Rules in `_build_top_risks` matchen (typisch bei Level 2/5 mit reinem Web-Exposure), wird keine Angriffskarte gerendert. Stattdessen erscheint eine grüne Positiv-Box: *„Keine kritischen Angriffsvektoren identifiziert."* — verhindert künstlich erzeugte Angst bei Kunden mit solider Grundhärtung.
+
+- [`src/shodan_report/pdf/sections/attack_scenario.py`](src/shodan_report/pdf/sections/attack_scenario.py): Neue Datei — `create_attack_scenario_section()` als öffentlicher Einstiegspunkt; Gate `len(top_risks) < 2` → `_positive_box()`; sonst bis zu 3 `_risk_card()`-Karten mit Ursache / Szenario / Auswirkung / Empfehlung und farbigem Severity-Badge
+- [`src/shodan_report/pdf/sections/attack_scenario.py`](src/shodan_report/pdf/sections/attack_scenario.py): `_severity_colors()` — gibt konsistente Farbtripel (BG/Border/Text) für hoch/kritisch (rot), mittel (orange), niedrig (grün) zurück; Matching case-insensitiv
+- [`src/shodan_report/pdf/pdf_manager.py`](src/shodan_report/pdf/pdf_manager.py): `create_attack_scenario_section` nach `create_attack_surface_section` eingehängt — immer enthalten; Gate intern
+- Sektionsnummern der nachfolgenden Abschnitte um +1 verschoben: Technischer Anhang (4→5), CVE-Übersicht (5→6), Trend (6→7), Fazit (7→8), Einordnung (8→9)
+
+## fix: Port 443 fehlte in `has_http`-Erkennung von `_build_top_risks`
+
+`_build_top_risks` prüfte nur `{80, 8080, 8443, 8081}` auf Web-Dienste — Port 443 (HTTPS) wurde nicht erkannt. Ein Server mit ausschließlich HTTPS lieferte 0 Risiko-Einträge statt 1. Inkonsistenz zur Management-Section, die 443 korrekt einschloss.
+
+- [`src/shodan_report/pdf/helpers/management_helpers.py`](src/shodan_report/pdf/helpers/management_helpers.py): `has_http`-Set in `_build_top_risks()` um Port 443 ergänzt
+
+## test: Unit Tests für attack_scenario
+
+- [`src/shodan_report/tests/pdf/sections/test_attack_scenario.py`](src/shodan_report/tests/pdf/sections/test_attack_scenario.py): 42 Tests in 5 Klassen — `TestSeverityColors` (10 Tests: alle Farbzweige, Grenzfälle, Fallback), `TestSeverityBadge` (3 Tests), `TestRiskCard` (8 Tests: alle Felder, leeres Dict), `TestPositiveBox` (4 Tests), `TestCreateAttackScenarioSection` (17 Tests: Gate Web-only, Gate leer, Gate SSH+DB+Web, Max-3-Regel, Context-DI, kwarg-Vorrang, Heading-Nummer)
+- Gesamtzahl Tests: **646 passed** (vorher 604)
+
+---
+
 # 2026-04-16 (2)
 
 ## feat: CPE-direktes Vendor/Product-Matching statt VENDOR_MAP-Label-Heuristik

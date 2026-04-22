@@ -52,7 +52,7 @@ def create_trend_section(elements: List, styles: Dict, *args, **kwargs) -> None:
     elements.append(Spacer(1, 12))
     heading_style = styles.get("heading1", styles.get("heading2"))
     elements.append(keep_section([
-        Paragraph("<b>6. Trend- &amp; Vergleichsanalyse</b>", heading_style),
+        Paragraph("<b>7. Trend- &amp; Vergleichsanalyse</b>", heading_style),
         Spacer(1, 8),
     ]))
 

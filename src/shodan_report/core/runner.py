@@ -152,6 +152,22 @@ def generate_report_pipeline(
                 print(f"[Scout] Warnung: Domain-Discovery fehlgeschlagen: {e}")
             # Non-fatal — Report läuft ohne Attack-Surface-Sektion weiter
 
+    # ── GreyNoise Community (non-fatal) ───────────────────────────────────────
+    if ip:
+        try:
+            from shodan_report.clients.greynoise import get_greynoise_status
+            if verbose:
+                print(f"[GreyNoise] Frage Community API für {ip} ab…")
+            gn = get_greynoise_status(ip)
+            config["_greynoise"] = gn
+            if verbose and gn.get("available"):
+                cls = gn.get("classification", "unknown")
+                print(f"[GreyNoise] {ip}: classification={cls}, noise={gn.get('noise')}, riot={gn.get('riot')}")
+        except Exception as e:
+            if verbose:
+                print(f"[GreyNoise] Warnung: Abfrage fehlgeschlagen: {e}")
+            config["_greynoise"] = None
+
     if not ip and not from_snapshot:
         return {
             "success": False,

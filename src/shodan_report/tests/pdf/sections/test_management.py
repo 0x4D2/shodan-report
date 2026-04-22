@@ -391,12 +391,12 @@ class TestKpiRowInSection:
         return elements
 
     def _kpi_tables(self, elements):
-        """Gibt alle Tables mit genau 5 Spalten zurück (= unsere KPI-Zeile)."""
-        return [e for e in elements if isinstance(e, Table) and len(e._colWidths) == 5]
+        """Gibt alle Tables mit genau 6 Spalten zurück (= unsere KPI-Zeile)."""
+        return [e for e in elements if isinstance(e, Table) and len(e._colWidths) == 6]
 
     def test_kpi_row_is_present(self, styles):
         elements = self._run(styles, {"ip": "1.2.3.4", "open_ports": [{"port": 22, "product": "OpenSSH"}]})
-        assert len(self._kpi_tables(elements)) == 1, "Es muss genau eine 5-spaltige KPI-Tabelle geben"
+        assert len(self._kpi_tables(elements)) == 1, "Es muss genau eine 6-spaltige KPI-Tabelle geben"
 
     def test_kpi_total_width_equals_163mm(self, styles):
         elements = self._run(styles, {"ip": "1.2.3.4"})

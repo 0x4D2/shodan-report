@@ -20,6 +20,7 @@ from .sections.methodology import create_methodology_section
 from .sections.conclusion import create_conclusion_section
 from .sections.cve_overview import create_cve_overview_section
 from .sections.attack_surface import create_attack_surface_section
+from .sections.attack_scenario import create_attack_scenario_section
 
 
 def prepare_pdf_elements(
@@ -67,6 +68,7 @@ def prepare_pdf_elements(
         show_full_cve_list=config.get("show_full_cve_list", False),
         cve_limit=config.get("cve_limit", 6),
         attack_surface=config.get("_attack_surface"),
+        greynoise=config.get("_greynoise"),
     )
 
     # If a `sections` list was provided, call each section callable in order.
@@ -143,6 +145,12 @@ def prepare_pdf_elements(
         ]))
         elements.append(Spacer(1, 6))
         elements.append(_note_table)
+
+    elements.append(_PageBreak())
+
+    # Realistisches Angriffsszenario — Seite 2 (Gate intern: Positiv-Box bei Web-only)
+    elements.append(_SectionMarker())
+    create_attack_scenario_section(elements=elements, styles=styles, context=ctx)
 
     elements.append(_PageBreak())
 

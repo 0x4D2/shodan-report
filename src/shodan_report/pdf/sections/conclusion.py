@@ -32,7 +32,7 @@ def create_conclusion_section(
     elements.append(Spacer(1, 12))
     heading_style = styles.get("heading1") or styles.get("heading2") or ns
     elements.append(Paragraph(
-        "<b>7. Fazit &amp; Empfohlene nächste Schritte</b>", heading_style
+        "<b>8. Fazit &amp; Empfohlene nächste Schritte</b>", heading_style
     ))
     elements.append(Spacer(1, 10))
 
@@ -254,7 +254,7 @@ def _build_steps(
         "label": "LAUFEND",
         "body":  (
             "<b>Monatliche Wiederholung</b> der Analyse zur Trendbeobachtung. "
-            "CVE-Monitoring einrichten. Owner benennen (IT-Betrieb). "
+            "CVE-Monitoring einrichten. Verantwortliche im IT-Betrieb benennen. "
             + (
                 f"Ziel: Exposure-Level auf {max(1, exposure_score - 1)}/5 senken."
                 if exposure_score and exposure_score > 1

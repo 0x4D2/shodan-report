@@ -8,6 +8,10 @@ from shodan_report.pdf.sections.data.technical_data import prepare_technical_det
 from shodan_report.pdf.styles import Colors
 
 
+# Version strings from Shodan that are not real version numbers — filter them out.
+_JUNK_VERSIONS = {"error", "unknown", "none", "-", "n/a", "null", "true", "false"}
+
+
 def _clean_display_field(v: Optional[str], max_len: int = 80) -> str:
     if not v:
         return "-"
@@ -19,6 +23,9 @@ def _clean_display_field(v: Optional[str], max_len: int = 80) -> str:
         return "[SSH-Key entfernt]"
     # remove leading numeric FTP/SMTP codes (e.g., '220 ')
     s = re.sub(r"^[0-9]{3}\s+", "", s)
+    # filter out non-informative version strings (e.g. "Error" from refused DB connections)
+    if s.lower() in _JUNK_VERSIONS:
+        return "-"
     if len(s) > max_len:
         return s[: max_len - 3] + "..."
     return s
@@ -36,18 +43,32 @@ _PORT_SERVICE_NAMES = {
 }
 
 
+# Ports whose Shodan product name is too generic — override with the known service name.
+_GENERIC_PRODUCT_NAMES = {"http", "https", "ftp", "smtp", "imap", "pop3", "ssl", "tcp"}
+
+# Ports where the service-specific name should always take priority over Shodan's generic label.
+_FORCE_PORT_NAME_PORTS = {2082, 2083, 2086, 2087, 2095, 2096}
+
+
 def _normalize_product(prod: Optional[str], port: Optional[int] = None) -> str:
     if not prod:
-        return "-"
-    p = str(prod).strip()
-    # Shodan sometimes puts banner response codes (e.g. "421 Too") into the product field
-    if _BANNER_RESPONSE_PATTERN.match(p):
+        # Empty product — use port-based name if known
         return _PORT_SERVICE_NAMES.get(port, "-") if port else "-"
+    p = str(prod).strip()
+    # Shodan sometimes puts banner response codes (e.g. "421 Too" or just "421") into the product field
+    if _BANNER_RESPONSE_PATTERN.match(p) or re.match(r"^\d{3}$", p):
+        return _PORT_SERVICE_NAMES.get(port, "-") if port else "-"
+    # Admin/panel ports: always use the known specific name regardless of what Shodan says
+    if port in _FORCE_PORT_NAME_PORTS:
+        return _PORT_SERVICE_NAMES.get(port, p)
     low = p.lower()
     if "ssh-2.0" in low or "openssh" in low or "mod_sftp" in low or low.strip() == "ssh":
         if "mod_sftp" in low:
             return "SSH (mod_sftp)"
         return "SSH"
+    # Generic product label on a port with a known specific name → use the known name
+    if low in _GENERIC_PRODUCT_NAMES and port in _PORT_SERVICE_NAMES:
+        return _PORT_SERVICE_NAMES[port]
     # otherwise clean and truncate
     return _clean_display_field(p, max_len=60)
 
@@ -348,6 +369,217 @@ def _find_insecure_tls(protocols: List[str]) -> List[str]:
     return out
 
 
+def _parse_cert_expiry(raw: str) -> str:
+    """Parse Shodan cert expiry strings into DD.MM.YYYY.
+
+    Handles formats:
+      - 20260723175119Z  (compact, no separators)
+      - 2026-07-23T17:51:19Z  (ISO 8601)
+      - 2026-07-23 17:51:19  (space-separated)
+    """
+    if not raw:
+        return "—"
+    s = str(raw).strip()
+    from datetime import datetime
+    for fmt in ("%Y%m%d%H%M%SZ", "%Y%m%d%H%M%S", "%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S"):
+        try:
+            return datetime.strptime(s, fmt).strftime("%d.%m.%Y")
+        except ValueError:
+            continue
+    # Last resort: try to extract 8 leading digits YYYYMMDD
+    import re as _re
+    m = _re.match(r"(\d{4})(\d{2})(\d{2})", s)
+    if m:
+        return f"{m.group(3)}.{m.group(2)}.{m.group(1)}"
+    return s
+
+
+def _render_cert_table(elements: List, styles: Dict, services: List[Dict]) -> None:
+    """Compact grouped TLS certificate overview table.
+
+    Groups ports sharing the same certificate (same issuer + expiry),
+    sorts by days remaining ascending (most urgent first), and renders
+    a single table instead of repeating cert metadata in each detail block.
+    """
+    from reportlab.lib.colors import HexColor as _HexColor
+    from reportlab.platypus import KeepTogether
+
+    _C_BORDER = Colors.border
+    _C_HDR_BG = Colors.bg_light
+
+    # Collect services with cert data
+    cert_entries: List[Dict] = []
+    for svc in services:
+        tls = svc.get("tls") or {}
+        if not isinstance(tls, dict):
+            continue
+        expiry = tls.get("cert_expiry") or tls.get("cert_valid_to") or ""
+        days = tls.get("cert_expires_in_days")
+        issuer = tls.get("cert_issuer") or ""
+        self_signed = bool(tls.get("cert_self_signed"))
+        if not expiry and days is None:
+            continue
+        port = svc.get("port")
+        cert_entries.append({
+            "port": port,
+            "issuer": issuer,
+            "expiry": expiry,
+            "days": days,
+            "self_signed": self_signed,
+        })
+
+    if not cert_entries:
+        return
+
+    # Group by (issuer, expiry) key
+    groups: Dict[tuple, Dict] = {}
+    for e in cert_entries:
+        key = (str(e["issuer"]).strip(), str(e["expiry"]).strip())
+        if key not in groups:
+            groups[key] = {
+                "ports": [],
+                "issuer": e["issuer"],
+                "expiry": e["expiry"],
+                "days": e["days"],
+                "self_signed": e["self_signed"],
+            }
+        groups[key]["ports"].append(e["port"])
+        if e["days"] is not None:
+            existing = groups[key]["days"]
+            if existing is None or e["days"] < existing:
+                groups[key]["days"] = e["days"]
+        if e["self_signed"]:
+            groups[key]["self_signed"] = True
+
+    def _sort_key(g):
+        d = g["days"]
+        return (0, d) if d is not None else (1, 0)
+
+    sorted_groups = sorted(groups.values(), key=_sort_key)
+
+    def _hdr(text):
+        return Paragraph(
+            f'<font size="8" color="#6b7280"><b>{text}</b></font>',
+            styles["normal"],
+        )
+
+    col_w = [28 * mm, 38 * mm, 52 * mm, 22 * mm, 33 * mm]
+    header = [
+        _hdr("PORT(S)"),
+        _hdr("DIENST"),
+        _hdr("AUSSTELLER"),
+        _hdr("GÜLTIG BIS"),
+        _hdr("STATUS"),
+    ]
+    table_data = [header]
+
+    for g in sorted_groups:
+        port_list = sorted(p for p in g["ports"] if p is not None)
+        ports_str = ", ".join(str(p) for p in port_list)
+
+        # Deduplicate service names while preserving port order
+        seen_names: set = set()
+        dienst_parts = []
+        for p in port_list:
+            name = _PORT_SERVICE_NAMES.get(p, str(p))
+            if name not in seen_names:
+                seen_names.add(name)
+                dienst_parts.append(name)
+        # Fit as many names as possible within 38 chars, then append (+N) count
+        dienst_str = ", ".join(dienst_parts)
+        if len(dienst_str) > 38:
+            kept = []
+            for name in dienst_parts:
+                candidate = ", ".join(kept + [name])
+                remaining = len(dienst_parts) - len(kept) - 1
+                suffix = f" (+{remaining})" if remaining > 0 else ""
+                if len(candidate + suffix) <= 38:
+                    kept.append(name)
+                else:
+                    break
+            remaining = len(dienst_parts) - len(kept)
+            dienst_str = ", ".join(kept) + (f" (+{remaining})" if remaining else "")
+
+        issuer_str = str(g["issuer"]).strip() or "—"
+        if len(issuer_str) > 48:
+            issuer_str = issuer_str[:45] + "..."
+
+        expiry_str = _parse_cert_expiry(g["expiry"])
+
+        days = g["days"]
+        if days is None:
+            status_text = "—"
+            status_color = "#6b7280"
+            status_bg = "#f9fafb"
+        elif days < 0:
+            status_text = "[X] abgelaufen"
+            status_color = "#991b1b"
+            status_bg = "#fef2f2"
+        elif days <= 30:
+            status_text = f"[!] {days}d"
+            status_color = "#9a3412"
+            status_bg = "#fff7ed"
+        elif g["self_signed"]:
+            status_text = "[!] selbstsign."
+            status_color = "#92400e"
+            status_bg = "#fef3c7"
+        else:
+            status_text = "OK"
+            status_color = "#166534"
+            status_bg = "#f0fdf4"
+
+        status_cell = Table(
+            [[Paragraph(
+                f'<font size="8" color="{status_color}"><b>{status_text}</b></font>',
+                styles["normal"],
+            )]],
+        )
+        status_cell.setStyle(TableStyle([
+            ("BACKGROUND",    (0, 0), (-1, -1), _HexColor(status_bg)),
+            ("TOPPADDING",    (0, 0), (-1, -1), 1),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+            ("LEFTPADDING",   (0, 0), (-1, -1), 3),
+            ("RIGHTPADDING",  (0, 0), (-1, -1), 3),
+        ]))
+
+        table_data.append([
+            Paragraph(f'<font size="8">{ports_str}</font>', styles["normal"]),
+            Paragraph(f'<font size="8">{dienst_str}</font>', styles["normal"]),
+            Paragraph(f'<font size="8">{issuer_str}</font>', styles["normal"]),
+            Paragraph(f'<font size="8">{expiry_str}</font>', styles["normal"]),
+            status_cell,
+        ])
+
+    tbl = Table(table_data, colWidths=col_w)
+    ts = TableStyle([
+        ("BACKGROUND",    (0, 0), (-1, 0), _C_HDR_BG),
+        ("BOX",           (0, 0), (-1, -1), 0.5, _C_BORDER),
+        ("INNERGRID",     (0, 0), (-1, -1), 0.3, _C_BORDER),
+        ("LINEBELOW",     (0, 0), (-1, 0),  0.5, _C_BORDER),
+        ("TOPPADDING",    (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 6),
+        ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+    ])
+    for i in range(1, len(table_data)):
+        if i % 2 == 0:
+            ts.add("BACKGROUND", (0, i), (-1, i), Colors.bg_stripe)
+    tbl.setStyle(ts)
+
+    label = Paragraph(
+        '<font size="9" color="#6b7280"><b>TLS-ZERTIFIKATE — ÜBERSICHT</b></font>',
+        styles["normal"],
+    )
+    elements.append(KeepTogether([
+        Spacer(1, 10),
+        label,
+        Spacer(1, 4),
+        tbl,
+        Spacer(1, 8),
+    ]))
+
+
 def _derive_risk_and_hint(
     s: Dict[str, Any], technical_json: Dict[str, Any]
 ) -> tuple:
@@ -467,7 +699,7 @@ def create_technical_section(elements: List, styles: Dict, *args, **kwargs) -> N
     elements.append(Spacer(1, 12))
     heading_style = styles.get("heading1", styles.get("heading2"))
     elements.append(keep_section([
-        Paragraph("<b>4. Technischer Anhang — Detailanalyse</b>", heading_style),
+        Paragraph("<b>5. Technischer Anhang — Detailanalyse</b>", heading_style),
         Spacer(1, 8),
     ]))
 
@@ -568,7 +800,10 @@ def create_technical_section(elements: List, styles: Dict, *args, **kwargs) -> N
     elements.append(tbl)
     elements.append(Spacer(1, 8))
 
-    # Per-service details (TLS / SSH / Banner) — unveränderte Logik
+    # ── Zertifikats-Übersicht (kompakte Tabelle, gruppiert nach Ablaufdatum) ────
+    _render_cert_table(elements, styles, services)
+
+    # ── Per-service details: nur SSH / HTTP / Banner / TLS-Sicherheitsprobleme ─
     top_vulns_count = 0
     try:
         if isinstance(technical_json, dict):
@@ -581,64 +816,16 @@ def create_technical_section(elements: List, styles: Dict, *args, **kwargs) -> N
     for s in services:
         details = []
         tls = s.get("tls", {}) or {}
+
+        # TLS-Sicherheitsprobleme behalten (Warnungen, keine Cert-Metadaten)
         if tls.get("protocols"):
-            details.append(f"TLS-Protokolle: {', '.join(tls.get('protocols'))}")
             insecure_tls = _find_insecure_tls(tls.get("protocols") or [])
             if insecure_tls:
-                details.append(f"Unsichere TLS-Versionen: {', '.join(insecure_tls)}")
+                details.append(f"Unsichere TLS-Versionen aktiv: {', '.join(insecure_tls)}")
         if tls.get("weak_ciphers"):
             details.append("Schwache Cipher/Konfiguration identifiziert")
-        if tls.get("cert_expiry"):
-            expiry_raw = tls.get("cert_expiry")
-            days = tls.get("cert_expires_in_days")
-            try:
-                from dateutil import parser as _dtparser
-                from datetime import timezone
-                dt = None
-                try:
-                    dt = _dtparser.parse(str(expiry_raw))
-                except Exception:
-                    try:
-                        from datetime import datetime as _dt
-                        dt = _dt.strptime(str(expiry_raw), "%Y%m%d%H%M%SZ")
-                        dt = dt.replace(tzinfo=timezone.utc)
-                    except Exception:
-                        dt = None
-                fmt = dt.strftime("%d.%m.%Y") if dt else str(expiry_raw)
-            except Exception:
-                fmt = str(expiry_raw)
-            if isinstance(days, int):
-                label = f"abgelaufen vor {-days} Tagen" if days < 0 else f"in {days} Tagen"
-                details.append(f"Zertifikat gültig bis: {fmt} ({label})")
-            else:
-                details.append(f"Zertifikat gültig bis: {fmt}")
-        if tls.get("cert_valid_from"):
-            valid_raw = tls.get("cert_valid_from")
-            try:
-                from dateutil import parser as _dtparser
-                from datetime import timezone
-                dt2 = None
-                try:
-                    dt2 = _dtparser.parse(str(valid_raw))
-                except Exception:
-                    try:
-                        from datetime import datetime as _dt
-                        dt2 = _dt.strptime(str(valid_raw), "%Y%m%d%H%M%SZ")
-                        dt2 = dt2.replace(tzinfo=timezone.utc)
-                    except Exception:
-                        dt2 = None
-                fmt2 = dt2.strftime("%d.%m.%Y") if dt2 else str(valid_raw)
-            except Exception:
-                fmt2 = str(valid_raw)
-            details.append(f"Zertifikat gültig ab: {fmt2}")
-        if tls.get("cert_issuer"):
-            details.append(f"Zertifikat-Aussteller: {tls.get('cert_issuer')}")
-        if tls.get("cert_self_signed") is True:
-            details.append("Zertifikat: selbstsigniert")
-        if tls.get("ciphers"):
-            tls_ciphers = _limit_list(tls.get("ciphers") or [], max_items=4)
-            if tls_ciphers:
-                details.append(f"TLS-Cipher (Auszug): {tls_ciphers}")
+
+        # SSH-Details
         ssh = s.get("ssh", {}) or {}
         if ssh.get("version"):
             details.append(f"SSH-Software: {ssh.get('version')}")
@@ -658,6 +845,8 @@ def create_technical_section(elements: List, styles: Dict, *args, **kwargs) -> N
             mac_txt = _limit_list(ssh.get("macs") or [], max_items=3)
             if mac_txt:
                 details.append(f"SSH-MACs: {mac_txt}")
+
+        # HTTP-Details
         http = s.get("http", {}) or {}
         if http.get("hsts"):
             details.append("HSTS: aktiviert")
@@ -679,29 +868,32 @@ def create_technical_section(elements: List, styles: Dict, *args, **kwargs) -> N
                     details.append(f"Unsichere HTTP-Methoden: {', '.join(unsafe)}")
             except Exception:
                 pass
-        # Only show per-service CVE count when service has its own vulnerability list
-        # Avoid repeating the host-level total for every service.
+
+        # CVE-Zähler nur wenn servicespezifisch
         svc_cve_count = s.get("cve_count") or 0
         if svc_cve_count and svc_cve_count != top_vulns_count:
             details.append(f"Bekannte Schwachstellen: {svc_cve_count} (hoch: {s.get('high_cvss')})")
+
+        # Banner (ohne SSH-Keys und ohne reine TLS-Cert-Zeilen)
         if s.get("banner"):
             b = s.get("banner")
             if isinstance(b, str) and len(b) > 0:
                 short = b.replace('\n', ' ').strip()
-                if len(short) > 140:
-                    short = short[:137] + "..."
-                details.append(f"Banner: {short}")
+                if short not in ("[SSH-Key entfernt]",) and not short.startswith("TLS Zertifikat:"):
+                    if len(short) > 140:
+                        short = short[:137] + "..."
+                    details.append(f"Banner: {short}")
 
-        # Recompute display product/version per-service to avoid using loop-scoped vars
         prod_raw = s.get("product") or ""
         _port_num = s.get("port") if isinstance(s.get("port"), int) else None
         prod = _normalize_product(prod_raw, port=_port_num)
         ver_raw = s.get("version") or ""
-        if _BANNER_RESPONSE_PATTERN.match(prod_raw):
+        if _BANNER_RESPONSE_PATTERN.match(prod_raw) or re.match(r"^\d{3}$", prod_raw):
             ver_raw = ""
         ver = _clean_display_field(ver_raw, max_len=60)
 
-        if details:
+        _meaningful = [d for d in details if not d.startswith("Bekannte Schwachstellen:")]
+        if _meaningful:
             header_line = f"Port {s.get('port')}: {prod} ({ver})"
             elements.append(Spacer(1, 6))
             elements.append(Paragraph(f"<b>{header_line}</b>", styles["normal"]))

@@ -156,7 +156,7 @@ def create_styles(theme: Theme = DEFAULT_THEME) -> Dict[str, ParagraphStyle]:
             textColor=C.text,
             leading=13,
             spaceAfter=2,
-            alignment=TA_JUSTIFY,
+            alignment=TA_LEFT,
         ),
 
         # ── BULLET-PUNKTE ────────────────────────────────────────────────────
@@ -236,7 +236,7 @@ def create_styles(theme: Theme = DEFAULT_THEME) -> Dict[str, ParagraphStyle]:
             textColor=C.text,
             leading=11,
             spaceAfter=2,
-            alignment=TA_JUSTIFY,
+            alignment=TA_LEFT,
         ),
         "methodology_bullet": ParagraphStyle(
             "MethodologyBullet",

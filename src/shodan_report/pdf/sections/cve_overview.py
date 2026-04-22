@@ -48,7 +48,7 @@ def create_cve_overview_section(
     elements.append(Spacer(1, 8))
     heading_style = styles.get("heading1", styles.get("heading2"))
     elements.append(keep_section([
-        Paragraph("<b>5. CVE-Übersicht</b>", heading_style),
+        Paragraph("<b>6. CVE-Übersicht</b>", heading_style),
         Spacer(1, 10),
     ]))
 
@@ -113,7 +113,7 @@ def create_cve_overview_section(
         _parts.append(f"{_inferred_count} inferred")
     if _unmatched_total:
         _parts.append(f"{_unmatched_total} nicht zuordenbar (↓)")
-    _hint = " · ".join(_parts) + " · keine aktive Verifikation"
+    _hint = " · ".join(_parts)
 
     elements.append(Spacer(1, 6))
     elements.append(Paragraph(
@@ -614,7 +614,7 @@ def _create_detailed_cve_table(
         _hdr("CVE"),
         _hdr("CVSS"),
         _hdr("DIENST / KOMPONENTE"),
-        _hdr("EXPLOIT-\nSTATUS"),
+        _hdr("EXPLOIT-STATUS"),
         _hdr("RELEVANZ"),
     ]]
 

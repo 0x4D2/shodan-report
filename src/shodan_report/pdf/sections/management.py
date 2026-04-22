@@ -168,8 +168,8 @@ def get_management_risk_and_tech_note(technical_json: Dict[str, Any], evaluation
 
     return risk_stmt, tech_note
 
-# Total KPI row = 5 cells × _KPI_CELL_W mm = 163 mm (fits within page text frame)
-_KPI_CELL_W = 163.0 / 5  # = 32.6 mm
+# Total KPI row = 6 cells × _KPI_CELL_W mm = 163 mm (fits within page text frame)
+_KPI_CELL_W = 163.0 / 6  # ≈ 27.2 mm
 
 
 def _kpi_cell(label: str, value: str, value_color=None, value_size: int = 16) -> Table:
@@ -261,6 +261,16 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
         evaluation = kwargs.get("evaluation", {})
         business_risk = kwargs.get("business_risk", "")
         config = kwargs.get("config", {}) or {}
+
+    # GreyNoise — aus context oder kwargs
+    _greynoise = None
+    try:
+        if "context" in kwargs and kwargs.get("context") is not None:
+            _greynoise = getattr(kwargs["context"], "greynoise", None)
+        if _greynoise is None:
+            _greynoise = (config or {}).get("_greynoise")
+    except Exception:
+        _greynoise = None
 
     # Accept legacy trend args when `context` is not provided
     compare_month = None
@@ -473,6 +483,30 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
     _cisa_color_kpi = Colors.risk_critical_dot if _cisa_count_kpi > 0 else None
 
     _ip_display = str(technical_json.get("ip_str") or technical_json.get("ip") or "—")
+
+    # GreyNoise KPI-Zelle aufbereiten
+    _gn_value = "–"
+    _gn_color = None
+    if _greynoise and _greynoise.get("available"):
+        _gn_riot  = _greynoise.get("riot", False)
+        _gn_noise = _greynoise.get("noise", False)
+        _gn_cls   = str(_greynoise.get("classification") or "unknown").lower()
+        if _gn_riot:
+            _gn_value = "RIOT ✓"
+            _gn_color = HexColor("#27AE60")
+        elif _gn_cls == "malicious":
+            _gn_value = "MALICIOUS"
+            _gn_color = Colors.risk_critical_dot
+        elif _gn_cls == "benign":
+            _gn_value = "BENIGN"
+            _gn_color = HexColor("#27AE60")
+        elif not _gn_noise:
+            _gn_value = "CLEAN"
+            _gn_color = HexColor("#27AE60")
+        else:
+            _gn_value = "NOISE"
+            _gn_color = HexColor("#E67E22")
+
     kpi_row = Table(
         [[
             _kpi_cell("ANALYSIERTE IP",  _ip_display, value_size=9),
@@ -480,8 +514,9 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
             _kpi_cell("CVES GESAMT",     str(_cve_total_kpi)),
             _kpi_cell("KRITISCH (≥9)",   str(_crit_count_kpi), _crit_color_kpi),
             _kpi_cell("CISA KEV",        str(_cisa_count_kpi), _cisa_color_kpi),
+            _kpi_cell("GREYNOISE",       _gn_value, _gn_color, value_size=10),
         ]],
-        colWidths=[_KPI_CELL_W * mm] * 5,
+        colWidths=[_KPI_CELL_W * mm] * 6,
     )
     kpi_row.setStyle(TableStyle([
         ("ALIGN",         (0, 0), (-1, -1), "CENTER"),
@@ -518,7 +553,7 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
     if rdp_count > 0:
         _factors.append(f"RDP öffentlich erreichbar ({rdp_count}×)")
     elif critical_points_count > 0:
-        _factors.append(f"{critical_points_count} kritische Dienste")
+        _factors.append(f"{critical_points_count} kritischer Dienst" if critical_points_count == 1 else f"{critical_points_count} kritische Dienste")
     if cves_disp > 0:
         _factors.append(f"{cves_disp} CVEs (Inferred)")
     if _found_insecure_tls:
@@ -610,7 +645,7 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
         if compare_month or trend_text:
             trend_note = (
                 "Richtung: Trendbewertung verfügbar (siehe Trend- & Vergleichsanalyse). "
-                "Regelmäßige Scans und Owner benennen."
+                "Regelmäßige Scans empfohlen, Verantwortliche benennen."
             )
     except Exception:
         pass
@@ -622,7 +657,7 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
         [Paragraph(f'<font size="9" color="#444444">• <b>Richtung:</b> {trend_note.replace("Richtung: ", "")}</font>', ns)],
         [Spacer(1, 6)],
         [Paragraph('<font size="9" color="#1A1A1A"><b>Technische Kurzbewertung</b></font>', ns)],
-        [Paragraph(f'<font size="9" color="#444444">{tech_note_candidate}</font>', ns)],
+        [Paragraph(f'<font size="9" color="#444444">{tech_note_candidate.replace("Technische Kurzbewertung: ", "", 1)}</font>', ns)],
     ]
 
     left_tbl = Table(left_rows, colWidths=[78 * mm])
@@ -669,9 +704,33 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
     if not empfehlung:
         empfehlung = (
             "Kritische CVEs innerhalb 30 Tage adressieren. TLS-Konfiguration härten. "
-            "CVE-Monitoring einrichten. Nächste Schritte: IT-Betrieb bewertet Konfigurationsrisiken "
-            "(Owner: IT-Betrieb)."
+            "CVE-Monitoring einrichten. Nächste Schritte: IT-Betrieb bewertet Konfigurationsrisiken."
         )
+
+    # GreyNoise-Satz anhängen
+    if _greynoise and _greynoise.get("available"):
+        _gn_cls   = str(_greynoise.get("classification") or "unknown").lower()
+        _gn_riot  = _greynoise.get("riot", False)
+        _gn_noise = _greynoise.get("noise", False)
+        _gn_name  = _greynoise.get("name", "")
+        if _gn_riot:
+            _gn_sent = (
+                f"Die IP gehört zu bekannter, legitimer Infrastruktur"
+                + (f" ({_gn_name})" if _gn_name else "")
+                + " (GreyNoise RIOT)."
+            )
+        elif _gn_cls == "malicious":
+            _gn_sent = "Die IP ist in GreyNoise als aktiver Bedrohungsakteur klassifiziert — erhöhte Wachsamkeit empfohlen."
+        elif _gn_cls == "benign" or not _gn_noise:
+            _gn_sent = "Die IP ist nicht als bekannte Angriffsquelle gelistet (GreyNoise: unauffällig)."
+        else:
+            _gn_sent = "Die IP ist in GreyNoise als Rauschquelle bekannt (Noise-Flag gesetzt)."
+        gesamteinschaetzung = gesamteinschaetzung.rstrip(" ") + " " + _gn_sent
+
+    # "Owner: ..." Anglizismus entfernen — kommt teils aus KI-generiertem management_text
+    import re
+    empfehlung = re.sub(r'\s*\(Owner:[^)]*\)', '', empfehlung).strip()
+    gesamteinschaetzung = re.sub(r'\s*\(Owner:[^)]*\)', '', gesamteinschaetzung).strip()
 
     # Truncate to prevent oversized Table cells that exceed the page frame height
     _MAX_CELL_CHARS = 800

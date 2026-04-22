@@ -35,14 +35,9 @@ def create_footer_section(
 
     # ── Haupt-Disclaimer-Box ──────────────────────────────────────────────────
     disclaimer_text = (
-        "Dieser Bericht basiert auf öffentlich verfügbaren Informationen (OSINT), "
-        "primär aus Shodan, NVD, CISA KEV, DNS- und TLS-Daten. Er stellt keine vollständige "
-        "Sicherheitsanalyse dar und ersetzt keinen Penetrationstest oder eine interne "
-        "Sicherheitsüberprüfung. CVE-Zuordnungen erfolgen auf Basis öffentlich sichtbarer "
-        "Softwareversionen (Inferred Findings) — keine aktive Verifikation der Ausnutzbarkeit. "
-        "Keine Garantie auf Vollständigkeit oder Richtigkeit. Dient ausschließlich zu "
-        "Informationszwecken. Die Lage kann sich täglich ändern — eine Momentaufnahme "
-        "ersetzt kein kontinuierliches Monitoring."
+        "Dieser Bericht basiert ausschließlich auf passiver OSINT-Analyse öffentlich zugänglicher Quellen "
+        "(Shodan, NVD, CISA KEV, DNS- und TLS-Daten). Er ersetzt keinen Penetrationstest und stellt keine "
+        "interne Sicherheitsüberprüfung dar. Grenzen und Vertraulichkeitsbedingungen siehe unten."
     )
 
     disc_inner = Table([
@@ -173,10 +168,6 @@ def _build_signature_block(
 ) -> None:
     ns = styles.get("normal") or styles.get("Normal")
 
-    # SHA256 aus context wenn nicht übergeben
-    if not sha256 and context is not None:
-        sha256 = getattr(context, "sha256", None) or getattr(context, "report_hash", None)
-
     now_str = datetime.now().strftime("%d. %B %Y · %H:%M Uhr").replace(
         "January", "Januar").replace("February", "Februar").replace(
         "March", "März").replace("April", "April").replace(
@@ -192,6 +183,11 @@ def _build_signature_block(
         f'<font size="8" color="#AAAAAA">Stand: {now_str}</font>',
     ]
 
+    right_lines = [
+        '<font size="8" color="#666666">Prüfsumme (SHA256) jeder Seite</font>',
+        '<font size="8" color="#AAAAAA">in der Fußzeile des Reports ausgewiesen.</font>',
+    ]
+
     left_cell = Table(
         [[Paragraph(line, ns)] for line in left_lines],
         colWidths=[100 * mm],
@@ -203,25 +199,13 @@ def _build_signature_block(
         ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
     ]))
 
-    # SHA256 rechts
-    sha_text = sha256 or "—"
-    if len(sha_text) > 64:
-        # Zeilenumbruch in der Mitte
-        mid = len(sha_text) // 2
-        sha_display = sha_text[:mid] + "<br/>" + sha_text[mid:]
-    else:
-        sha_display = sha_text
-
-    right_cell = Table([[
-        Paragraph(
-            '<font size="8" color="#666666"><b>SHA256-Prüfsumme dieses Reports</b></font><br/>'
-            f'<font size="7" color="#AAAAAA">{sha_display}</font>',
-            ns,
-        )
-    ]], colWidths=[75 * mm])
+    right_cell = Table(
+        [[Paragraph(line, ns)] for line in right_lines],
+        colWidths=[75 * mm],
+    )
     right_cell.setStyle(TableStyle([
-        ("TOPPADDING",    (0, 0), (-1, -1), 0),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING",    (0, 0), (-1, -1), 2),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
         ("LEFTPADDING",   (0, 0), (-1, -1), 0),
         ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
         ("ALIGN",         (0, 0), (-1, -1), "RIGHT"),

@@ -19,3 +19,5 @@ class ReportContext:
     cve_limit: int = 6
     # Attack Surface Discovery (optional — nur wenn --domain verwendet)
     attack_surface: Optional[Any] = None  # shodan_report.clients.domain_scout.AttackSurface
+    # GreyNoise Community (optional — non-fatal, None wenn nicht verfügbar)
+    greynoise: Optional[Any] = None  # dict von shodan_report.clients.greynoise.get_greynoise_status

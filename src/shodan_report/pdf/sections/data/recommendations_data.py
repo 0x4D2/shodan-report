@@ -276,12 +276,10 @@ def prepare_recommendations_data(technical_json: Dict[str, Any], evaluation: Any
 
     for svc in sorted(found_mg):
         if svc == "SSH":
-            priority2.append(
-                "SSH (Port 22) sollte nicht öffentlich erreichbar sein. Empfohlen: "
-                "1) Zugriff über VPN einschränken, 2) Passwort-Authentifizierung deaktivieren, "
-                "nur Schlüssel, 3) Fail2ban oder ähnliche Schutzmechanismen einsetzen. "
-                "Empfohlen für: Systemadministration / IT-Security-Team."
-            )
+            priority2.append("SSH (Port 22) ist öffentlich erreichbar — Zugriff einschränken")
+            priority2.append("Zugriff ausschließlich über VPN oder Jump-Host erlauben")
+            priority2.append("Passwort-Authentifizierung deaktivieren, nur SSH-Schlüssel zulassen")
+            priority2.append("Brute-Force-Schutz einrichten (z. B. Fail2ban)")
         else:
             # Do not add generic 'Überprüfen' for RDP here — RDP is handled as P1 elsewhere
             if svc.upper() == "RDP":
@@ -351,11 +349,8 @@ def prepare_recommendations_data(technical_json: Dict[str, Any], evaluation: Any
     # Hygiene recommendations
     priority3.extend([
         "Regelmäßige Überprüfung neu auftretender Dienste",
-        "Rotation und Überwachung von TLS-Zertifikaten",
+        "TLS-Zertifikate: Gültigkeit, Ablauf und Cipher-Suite regelmäßig prüfen",
     ])
-
-    if has_tls_service:
-        priority3.append("TLS-Zertifikate: Gültigkeit und Cipher-Suite regelmäßig prüfen")
     if has_web_service:
         priority3.append("Webserver: HTTP→HTTPS-Redirect konfigurieren und HSTS aktivieren")
         priority3.append("Webserver: Security-Header (X-Frame-Options, CSP) implementieren")
