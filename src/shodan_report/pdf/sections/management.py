@@ -484,28 +484,14 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
 
     _ip_display = str(technical_json.get("ip_str") or technical_json.get("ip") or "—")
 
-    # GreyNoise KPI-Zelle aufbereiten
-    _gn_value = "–"
-    _gn_color = None
-    if _greynoise and _greynoise.get("available"):
-        _gn_riot  = _greynoise.get("riot", False)
-        _gn_noise = _greynoise.get("noise", False)
-        _gn_cls   = str(_greynoise.get("classification") or "unknown").lower()
-        if _gn_riot:
-            _gn_value = "RIOT ✓"
-            _gn_color = HexColor("#27AE60")
-        elif _gn_cls == "malicious":
-            _gn_value = "MALICIOUS"
-            _gn_color = Colors.risk_critical_dot
-        elif _gn_cls == "benign":
-            _gn_value = "BENIGN"
-            _gn_color = HexColor("#27AE60")
-        elif not _gn_noise:
-            _gn_value = "CLEAN"
-            _gn_color = HexColor("#27AE60")
-        else:
-            _gn_value = "NOISE"
-            _gn_color = HexColor("#E67E22")
+    # ExploitDB KPI-Zelle aufbereiten
+    _exploit_count_kpi = 0
+    try:
+        _exploit_map = technical_json.get("cve_exploit_map") or {}
+        _exploit_count_kpi = sum(1 for v in _exploit_map.values() if v)
+    except Exception:
+        _exploit_count_kpi = 0
+    _exploit_color_kpi = Colors.risk_critical_dot if _exploit_count_kpi > 0 else None
 
     kpi_row = Table(
         [[
@@ -514,7 +500,7 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
             _kpi_cell("CVES GESAMT",     str(_cve_total_kpi)),
             _kpi_cell("KRITISCH (≥9)",   str(_crit_count_kpi), _crit_color_kpi),
             _kpi_cell("CISA KEV",        str(_cisa_count_kpi), _cisa_color_kpi),
-            _kpi_cell("GREYNOISE",       _gn_value, _gn_color, value_size=10),
+            _kpi_cell("EXPLOIT",         str(_exploit_count_kpi), _exploit_color_kpi),
         ]],
         colWidths=[_KPI_CELL_W * mm] * 6,
     )
@@ -572,6 +558,20 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
     if not _factors:
         _dienste_label = "öffentlicher Dienst" if total_ports == 1 else "öffentliche Dienste"
         _factors.append(f"{total_ports} {_dienste_label}")
+
+    # GreyNoise-Status als letzten Beitragsfaktor anhängen
+    if _greynoise and _greynoise.get("available"):
+        _gn_cls   = str(_greynoise.get("classification") or "unknown").lower()
+        _gn_riot  = _greynoise.get("riot", False)
+        _gn_noise = _greynoise.get("noise", False)
+        if _gn_riot:
+            _factors.append("GreyNoise: RIOT")
+        elif _gn_cls == "malicious":
+            _factors.append("GreyNoise: MALICIOUS")
+        elif _gn_cls == "benign" or not _gn_noise:
+            _factors.append("GreyNoise: CLEAN")
+        else:
+            _factors.append("GreyNoise: NOISE")
 
     _factor_str = " · ".join(_factors)
 

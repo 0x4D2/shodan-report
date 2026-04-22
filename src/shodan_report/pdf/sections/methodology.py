@@ -77,7 +77,7 @@ def create_methodology_section(
     elements.append(note_tbl)
     elements.append(Spacer(1, 14))
 
-    # ── Zweispaltig: Begriffe | Exposure-Level ────────────────────────────────
+    # ── Zweispaltig: Begriffe | Exposure-Level + Discovery ───────────────────
     left  = _build_terms_column(styles)
     right = _build_exposure_column(styles)
 
@@ -91,10 +91,6 @@ def create_methodology_section(
         ("RIGHTPADDING",  (0, 0), (0, 0), 12),
     ]))
     elements.append(two_col)
-    elements.append(Spacer(1, 14))
-
-    # ── Attack Surface Discovery ──────────────────────────────────────────────
-    _build_discovery_block(elements, styles)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -126,6 +122,16 @@ def _build_terms_column(styles: Dict) -> Table:
         (
             "CISA KEV",
             "Known Exploited Vulnerabilities — aktiv in der Praxis ausgenutzte CVEs.",
+        ),
+        (
+            "ExploitDB",
+            "Öffentliche Exploit-Datenbank — ein Eintrag bestätigt, dass funktionierender "
+            "Angriffscode frei verfügbar ist.",
+        ),
+        (
+            "EPSS",
+            "Exploit Prediction Scoring System (FIRST.org) — Wahrscheinlichkeit (0–100 %), "
+            "dass eine CVE in den nächsten 30 Tagen aktiv ausgenutzt wird.",
         ),
     ]
 
@@ -209,40 +215,33 @@ def _build_exposure_column(styles: Dict) -> Table:
         ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
     ]))
 
-    # Wrapper mit Header-Text
+    # Discovery-Items für rechte Spalte
+    discovery_items = [
+        "DNS A/MX/NS-Records · crt.sh Zertifikats-Historie",
+        "HackerTarget API — passiver Subdomain-Lookup",
+        "CDN-Erkennung (Cloudflare, Akamai, Fastly, AWS)",
+        "Kein Verbindungsaufbau zum Kundensystem",
+    ]
+    discovery_rows = (
+        [[Paragraph('<font size="9" color="#1A1A1A"><b>Attack Surface Discovery</b></font>', ns)]]
+        + [[Paragraph(f'<font size="9" color="#444444">– {item}</font>', ns)]
+           for item in discovery_items]
+    )
+
+    # Wrapper mit Header-Text + Exposure-Tabelle + Discovery
     wrapper = Table([
         [Paragraph('<font size="9" color="#1A1A1A"><b>Exposure-Level (1–5)</b></font>', ns)],
         [level_tbl],
+        [Spacer(1, 10)],
+        *discovery_rows,
     ], colWidths=[88 * mm])
     wrapper.setStyle(TableStyle([
         ("TOPPADDING",    (0, 0), (-1, -1), 0),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
         ("LEFTPADDING",   (0, 0), (-1, -1), 0),
         ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
+        ("TOPPADDING",    (0, 3), (-1, -1), 3),
     ]))
     return wrapper
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# ATTACK SURFACE DISCOVERY
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _build_discovery_block(elements: List, styles: Dict) -> None:
-    ns = styles.get("normal") or styles.get("Normal")
-
-    elements.append(Paragraph(
-        '<font size="9" color="#1A1A1A"><b>Attack Surface Discovery</b></font>', ns
-    ))
-    elements.append(Spacer(1, 6))
-
-    items = [
-        "DNS A/MX/NS-Records · crt.sh Zertifikats-Historie",
-        "HackerTarget API — passiver Subdomain-Lookup",
-        "CDN-Erkennung (Cloudflare, Akamai, Fastly, AWS)",
-        "Kein Verbindungsaufbau zum Kundensystem",
-    ]
-    for item in items:
-        elements.append(Paragraph(
-            f'<font size="9" color="#444444">– {item}</font>', ns
-        ))
-        elements.append(Spacer(1, 3))
