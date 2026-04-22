@@ -103,12 +103,20 @@ def test_cve_overview_counts_and_classification(monkeypatch):
     # Call the high-level builder
     create_cve_overview_section(elements, styles, technical_json)
 
-    # Find first Table (risk overview) and validate counts
+    # Find risk overview table: 5-cell row where each cell is itself a Table (KPI card)
     tables = [e for e in elements if isinstance(e, Table)]
     assert tables, "No Table elements created"
 
-    # risk overview is expected as the first Table appended
-    risk_table = tables[0]
+    risk_table = None
+    for t in tables:
+        try:
+            row = t._cellvalues[0]
+            if len(row) == 5 and all(isinstance(c, Table) for c in row):
+                risk_table = t
+                break
+        except Exception:
+            continue
+    assert risk_table is not None, "Risk overview table (5 KPI cards) not found"
     counts = _extract_counts_from_risk_table(risk_table)
 
     # Current classification in code: 9.0+ crit, 7.0-8.99 high, 4.0-6.99 medium

@@ -73,12 +73,20 @@ def should_show_rdp_warning(technical_json: Dict[str, Any], mdata: Optional[Dict
         return False
 
 
-def get_management_risk_and_tech_note(technical_json: Dict[str, Any], evaluation: Any, mdata: Optional[Dict[str, Any]] = None, config: Optional[Dict[str, Any]] = None):
-    """Return (risk_stmt, tech_note) using the same logic as the management renderer.
+def _count_verified_cves(technical_json: Dict[str, Any]) -> tuple:
+    """Gibt (verified_count, total_count) der CVEs aus cve_enriched zurück."""
+    enriched = technical_json.get("cve_enriched") or []
+    total = len(enriched)
+    verified = 0
+    for e in enriched:
+        conf = str(e.get("confidence", "")).lower()
+        if "verified" in conf:
+            verified += 1
+    return verified, total
 
-    This helper is used by `create_management_section` and by unit tests to assert
-    the produced wording without rendering PDFs.
-    """
+
+def get_management_risk_and_tech_note(technical_json: Dict[str, Any], evaluation: Any, mdata: Optional[Dict[str, Any]] = None, config: Optional[Dict[str, Any]] = None):
+    """Return (risk_stmt, tech_note) using the same logic as the management renderer."""
     top_risks = _build_top_risks(technical_json, (mdata or {}).get("risk_level", "low"))
     rdp_primary = should_show_rdp_warning(technical_json, mdata)
 
@@ -96,41 +104,11 @@ def get_management_risk_and_tech_note(technical_json: Dict[str, Any], evaluation
         )
         return risk_stmt, tech_note
 
-    # fallback to previously existing logic for non-RDP cases
-    if top_risks:
-        primary_title = str(top_risks[0].get("title", "")).lower()
-        if "administr" in primary_title:
-            risk_stmt = (
-                "Risiko: Öffentlich erreichbare Administrationsdienste erhöhen das Risiko unbefugter Zugriffe; "
-                "Härtungsmaßnahmen empfohlen."
-            )
-        elif "datenbank" in primary_title:
-            risk_stmt = (
-                "Risiko: Öffentlich erreichbare Datenbanken erhöhen das Risiko unbefugter Datenzugriffe; "
-                "Härtungsmaßnahmen empfohlen."
-            )
-        elif "web" in primary_title:
-            risk_stmt = (
-                "Risiko: Öffentlich erreichbare Webdienste erhöhen das Targeting- und Angriffsrisiko; "
-                "Härtungsmaßnahmen empfohlen."
-            )
-        elif "mail" in primary_title:
-            risk_stmt = (
-                "Risiko: Öffentlich erreichbare Maildienste erhöhen das Risiko von Kontoübernahmen; "
-                "Härtungsmaßnahmen empfohlen."
-            )
-        else:
-            risk_stmt = (
-                "Risiko: Öffentlich erreichbare Dienste erhöhen das Risiko unbefugter Zugriffe; "
-                "Härtungsmaßnahmen empfohlen."
-            )
-    else:
-        risk_stmt = (
-            "Risiko: Öffentlich erreichbare Dienste erhöhen das Risiko unbefugter Zugriffe; "
-            "Härtungsmaßnahmen empfohlen."
-        )
+    # CVE-Konfidenz auswerten — entscheidet über Formulierung
+    _verified_cves, _total_cves = _count_verified_cves(technical_json)
+    _all_cves_inferred = _total_cves > 0 and _verified_cves == 0
 
-    # technical short note (keep original SSH/web logic)
+    # Dienste analysieren (für SSH/Web-Erkennung)
     try:
         services = technical_json.get("services") or technical_json.get("open_ports") or []
         ports = set()
@@ -145,26 +123,53 @@ def get_management_risk_and_tech_note(technical_json: Dict[str, Any], evaluation
         prod_text = " ".join(products)
         has_ssh = bool(22 in ports or "ssh" in prod_text)
         has_web = bool(ports.intersection({80, 443, 8080, 8443, 8081}) or "http" in prod_text)
-
-        if has_ssh and has_web:
-            tech_note = (
-                "Technische Kurzbewertung: SSH (Port 22) wirkt modern konfiguriert; "
-                "im OSINT-Datensatz keine schwachen Algorithmen erkennbar. Hauptrisiko: "
-                "öffentlich erreichbar, Authentifizierung prüfen (VPN, Key-Only, Fail2ban). "
-                "Webserver nur passiv bewertet."
-            )
-        elif has_ssh:
-            tech_note = (
-                "Technische Kurzbewertung: SSH (Port 22) wirkt modern konfiguriert; "
-                "im OSINT-Datensatz keine schwachen Algorithmen erkennbar. Hauptrisiko: "
-                "öffentlich erreichbar, Authentifizierung prüfen (VPN, Key-Only, Fail2ban)."
-            )
-        elif has_web:
-            tech_note = "Technische Kurzbewertung: Webserver nur passiv bewertet."
-        else:
-            tech_note = "Technische Kurzbewertung: OSINT-Perspektive ohne interne Systemprüfung."
+        has_admin = bool(ports.intersection({22, 3389, 5900, 23}) or any(k in prod_text for k in ["ssh", "rdp", "vnc", "telnet"]))
     except Exception:
-        tech_note = "Technische Kurzbewertung: OSINT-Perspektive ohne interne Systemprüfung."
+        has_ssh = has_web = has_admin = False
+
+    # Risiko-Aussage: klar zwischen "keine bestätigten Schwachstellen" und "CVEs vorhanden"
+    if _all_cves_inferred and has_admin:
+        risk_stmt = (
+            f"<b>Keine bestätigten Schwachstellen</b> — alle {_total_cves} CVE-Indizien basieren auf "
+            "Versionserkennung (nicht verifiziert). "
+            "Reales Risiko: <b>öffentlich erreichbare Administrationsdienste</b> als direkter Angriffsvektor "
+            "(Brute-Force, Credential Stuffing)."
+        )
+    elif _all_cves_inferred and _total_cves > 0:
+        risk_stmt = (
+            f"<b>Keine bestätigten Schwachstellen</b> — alle {_total_cves} CVE-Indizien basieren auf "
+            "Versionserkennung (nicht verifiziert). Öffentlich erreichbare Dienste erhöhen das Angriffspotenzial."
+        )
+    elif top_risks:
+        primary_title = str(top_risks[0].get("title", "")).lower()
+        if "administr" in primary_title:
+            risk_stmt = "Öffentlich erreichbare Administrationsdienste erhöhen das Risiko unbefugter Zugriffe; Härtungsmaßnahmen empfohlen."
+        elif "datenbank" in primary_title:
+            risk_stmt = "Öffentlich erreichbare Datenbanken erhöhen das Risiko unbefugter Datenzugriffe; Härtungsmaßnahmen empfohlen."
+        elif "web" in primary_title:
+            risk_stmt = "Öffentlich erreichbare Webdienste erhöhen das Targeting- und Angriffsrisiko; Härtungsmaßnahmen empfohlen."
+        elif "mail" in primary_title:
+            risk_stmt = "Öffentlich erreichbare Maildienste erhöhen das Risiko von Kontoübernahmen; Härtungsmaßnahmen empfohlen."
+        else:
+            risk_stmt = "Öffentlich erreichbare Dienste erhöhen das Risiko unbefugter Zugriffe; Härtungsmaßnahmen empfohlen."
+    else:
+        risk_stmt = "Öffentlich erreichbare Dienste erhöhen das Risiko unbefugter Zugriffe; Härtungsmaßnahmen empfohlen."
+
+    # Technische Kurzbewertung
+    if has_ssh and has_web:
+        tech_note = (
+            "SSH (Port 22) öffentlich erreichbar — Hauptrisiko: Brute-Force und Credential Stuffing. "
+            "Kurzfristig: IP-Whitelist, Key-Only Auth, Fail2ban. Webserver passiv bewertet."
+        )
+    elif has_ssh:
+        tech_note = (
+            "SSH (Port 22) öffentlich erreichbar — Hauptrisiko: Brute-Force und Credential Stuffing. "
+            "Kurzfristig: IP-Whitelist, Key-Only Auth, Fail2ban oder VPN-Gateway."
+        )
+    elif has_web:
+        tech_note = "Webserver öffentlich erreichbar — passiv bewertet, keine aktive Prüfung der Konfiguration."
+    else:
+        tech_note = "OSINT-Perspektive ohne interne Systemprüfung."
 
     return risk_stmt, tech_note
 
@@ -634,9 +639,17 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
         technical_json, evaluation, mdata=mdata, config=config
     )
     _state_dienste = "öffentlicher Dienst" if total_ports == 1 else "öffentliche Dienste"
+    _verified_cves_mgmt, _total_cves_mgmt = _count_verified_cves(technical_json)
+    _cve_label = (
+        f"{cve_count} potenzielle Schwachstellen (nicht verifiziert)"
+        if cve_count > 0 and _verified_cves_mgmt == 0
+        else f"{cve_count} CVE-Indikatoren ({_verified_cves_mgmt} verifiziert)"
+        if cve_count > 0
+        else "keine CVE-Indikatoren"
+    )
     state_stmt = (
         f"Zustand: Exposure-Level {exposure_display} ({exposure_desc}) — "
-        f"{total_ports} {_state_dienste}, {cve_count} CVE-Indikatoren."
+        f"{total_ports} {_state_dienste}, {_cve_label}."
     )
     trend_note = (
         "Richtung: Baseline gesetzt. Trendvergleich ab nächstem Report verfügbar."
@@ -703,8 +716,9 @@ def create_management_section(elements: List, styles: Dict, *args, **kwargs) -> 
         )
     if not empfehlung:
         empfehlung = (
-            "Kritische CVEs innerhalb 30 Tage adressieren. TLS-Konfiguration härten. "
-            "CVE-Monitoring einrichten. Nächste Schritte: IT-Betrieb bewertet Konfigurationsrisiken."
+            "SSH-Zugriff kurzfristig einschränken (IP-Whitelist, Key-Only, Fail2ban). "
+            "CVE-Indizien priorisieren — insbesondere Einträge mit ExploitDB-Treffer. "
+            "TLS-Konfiguration härten. CVE-Monitoring einrichten."
         )
 
     # GreyNoise-Satz anhängen

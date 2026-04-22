@@ -284,10 +284,12 @@ def prepare_recommendations_data(technical_json: Dict[str, Any], evaluation: Any
 
     for svc in sorted(found_mg):
         if svc == "SSH":
-            priority2.append("<b>SSH</b> (<b>Port 22</b>) ist öffentlich erreichbar — Zugriff einschränken")
-            priority2.append("Zugriff ausschließlich über <b>VPN</b> oder <b>Jump-Host</b> erlauben")
-            priority2.append("<b>Passwort-Authentifizierung</b> deaktivieren, nur <b>SSH-Schlüssel</b> zulassen")
-            priority2.append("<b>Brute-Force-Schutz</b> einrichten (z. B. <b>Fail2ban</b>)")
+            priority1.append(
+                "<b>SSH (Port 22) kurzfristig absichern</b> — Verified Finding, direkter Angriffsvektor: "
+                "Brute-Force, Credential Stuffing. "
+                "Sofortmaßnahmen: <b>IP-Whitelist</b> · <b>Key-Only Auth</b> · <b>Fail2ban</b>. "
+                "Mittelfristig: Zugriff hinter <b>VPN-Gateway</b> verlegen."
+            )
         else:
             if svc.upper() == "RDP":
                 continue

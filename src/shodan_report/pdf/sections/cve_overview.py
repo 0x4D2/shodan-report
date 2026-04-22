@@ -54,6 +54,9 @@ def create_cve_overview_section(
 
     cve_data = _extract_cve_data(technical_json, context)
 
+    # Prominente Warnbox — vor den KPI-Karten, damit klar ist: das sind Verdachtsmomente
+    _create_inferred_warning(elements, styles)
+
     if not cve_data:
         elements.append(Paragraph(
             "Keine CVE-basierten Exploit-Risiken identifiziert; "
@@ -106,18 +109,18 @@ def create_cve_overview_section(
     except Exception:
         _verified_count = _inferred_count = _unmatched_total = 0
 
-    _parts = [f"{len(cve_data_main)} CVEs"]
+    _parts = []
     if _verified_count:
-        _parts.append(f"{_verified_count} verifiziert")
+        _parts.append(f'<font color="#166534"><b>{_verified_count} Verified</b></font>')
     if _inferred_count:
-        _parts.append(f"{_inferred_count} inferred")
+        _parts.append(f'<font color="#92400e"><b>{_inferred_count} Inferred</b></font>')
     if _unmatched_total:
-        _parts.append(f"{_unmatched_total} nicht zuordenbar (↓)")
-    _hint = " · ".join(_parts)
+        _parts.append(f'<font color="#888888">{_unmatched_total} nicht zuordenbar</font>')
+    _hint_inner = " · ".join(_parts) if _parts else f"{len(cve_data_main)} CVEs"
 
     elements.append(Spacer(1, 6))
     elements.append(Paragraph(
-        f'<font size="8" color="#888888">{_hint}</font>',
+        f'<font size="9">{_hint_inner}</font>',
         styles["normal"],
     ))
     elements.append(Spacer(1, 8))
@@ -260,6 +263,51 @@ def _extract_cve_data(technical_json: Dict[str, Any], context: Optional[Any] = N
             continue
 
     return cve_data
+
+
+def _create_inferred_warning(elements: List, styles: Dict) -> None:
+    """Amber-Warnbox: macht visuell klar, dass CVEs OSINT-Verdachtsmomente sind."""
+    ns = styles.get("normal") or styles.get("Normal")
+    box = Table([[Paragraph(
+        '<font size="8" color="#92400e"><b>OSINT-Indizien — keine aktive Prüfung</b></font><br/>'
+        '<font size="8" color="#78350f">'
+        'Alle Schwachstellen basieren auf Versionserkennung (Shodan). '
+        'Ein Treffer bedeutet: diese Softwareversion ist laut NVD theoretisch anf\xe4llig — '
+        '<b>nicht</b>, dass der Exploit auf diesem System funktioniert. '
+        'VERIFIED = direkt messbar (z. B. TLS-Protokoll) · '
+        'INFERRED = Versionsmatch, nicht best\xe4tigt.'
+        '</font>',
+        ns,
+    )]], colWidths=[175 * mm])
+    box.setStyle(TableStyle([
+        ("BACKGROUND",    (0, 0), (-1, -1), HexColor("#FFFBEB")),
+        ("BOX",           (0, 0), (-1, -1), 0.5, HexColor("#F59E0B")),
+        ("LINEBEFORE",    (0, 0), (0, -1),  4,   HexColor("#F59E0B")),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 10),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 10),
+        ("TOPPADDING",    (0, 0), (-1, -1), 7),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+    ]))
+    elements.append(box)
+    elements.append(Spacer(1, 8))
+
+
+def _confidence_label(confidence) -> tuple:
+    """Gibt (label, hex_color) für einen Confidence-Wert zurück."""
+    try:
+        from shodan_report.pdf.sections.data.cve_enricher import MatchConfidence
+        if confidence == MatchConfidence.VERIFIED:
+            return "VERIFIED", "#166534"
+        if confidence == MatchConfidence.INFERRED:
+            return "INFERRED", "#92400e"
+    except Exception:
+        pass
+    s = str(confidence).lower()
+    if "verified" in s:
+        return "VERIFIED", "#166534"
+    if "inferred" in s:
+        return "INFERRED", "#92400e"
+    return "OSINT", "#888888"
 
 
 def _create_risk_overview(elements: List, styles: Dict, cve_data: List[Dict]) -> None:
@@ -641,16 +689,19 @@ def _create_detailed_cve_table(
         cvss = c.get("cvss")
         exploit = c.get("exploit_status", "unknown")
 
-        # CVE-Zelle (klickbar wenn URL vorhanden)
+        # CVE-Zelle: ID + Confidence-Badge in zweiter Zeile
+        conf_label, conf_color = _confidence_label(c.get("confidence"))
         nvd_url = c.get("nvd_url")
-        if nvd_url:
-            cve_cell = Paragraph(
-                f'<font size="9" color="#2563A8"><a href="{nvd_url}">{cid}</a></font>', ns
-            )
-        else:
-            cve_cell = Paragraph(
-                f'<font size="9" color="#1A1A1A">{cid}</font>', ns
-            )
+        id_markup = (
+            f'<font size="9" color="#2563A8"><a href="{nvd_url}">{cid}</a></font>'
+            if nvd_url else
+            f'<font size="9" color="#1A1A1A">{cid}</font>'
+        )
+        cve_cell = Paragraph(
+            f'{id_markup}<br/>'
+            f'<font size="7" color="{conf_color}">{conf_label}</font>',
+            ns,
+        )
 
         # CVSS-Badge
         cvss_cell = _cvss_badge(styles, cvss)
