@@ -1,5 +1,25 @@
 # 2026-04-22
 
+## feat: ExploitDB + EPSS Integration in CVE-Übersicht
+
+Zwei neue Datenquellen reichern die CVE-Übersicht an — ohne API-Key, non-fatal bei Netzwerkfehler.
+
+- [`src/shodan_report/clients/exploitdb.py`](src/shodan_report/clients/exploitdb.py): Neuer Client — lädt `files_exploits.csv` vom offiziellen GitLab-Mirror (`gitlab.com/exploit-database/exploitdb`), parsed die `codes`-Spalte auf CVE-IDs, cached Ergebnis 24h unter `~/.cache/shodan_report/exploitdb/exploits_index.json`; Modul-Level In-Memory-Cache verhindert Mehrfach-Downloads pro Prozess
+- [`src/shodan_report/clients/epss.py`](src/shodan_report/clients/epss.py): Neuer Client — fragt `api.first.org/data/v1/epss` mit bis zu 100 CVEs pro Request ab; gibt dict CVE-ID → float (0–1) zurück; unterstützt Batching für große Listen
+- [`src/shodan_report/core/runner.py`](src/shodan_report/core/runner.py): ExploitDB + EPSS nach CVE-Enrichment aufgerufen; Ergebnisse in `technical_json["cve_exploit_map"]` und `technical_json["cve_epss_map"]` gespeichert; bei `--verbose` Anzahl Exploit-Treffer und EPSS-Scores ausgegeben
+- [`src/shodan_report/pdf/sections/cve_overview.py`](src/shodan_report/pdf/sections/cve_overview.py): Tabellen-Spalten EXPLOIT-STATUS + RELEVANZ ersetzt durch EXPLOIT + EPSS (30T); `_exploit_cell()` zeigt `CISA KEV` (rot), `Exploit öffentlich` (orange) oder `—` (grau); `_epss_cell()` zeigt Prozentwert farbcodiert (rot ≥50%, orange ≥20%, dunkelgelb ≥5%, grau darunter); ExploitDB/EPSS-Maps aus `technical_json` in `_extract_cve_data()` gemergt
+- [`src/shodan_report/pdf/sections/data/recommendations_data.py`](src/shodan_report/pdf/sections/data/recommendations_data.py): P1-CVE-Bullet nennt Anzahl ExploitDB-Treffer und EPSS-Maximum wenn Exploits vorhanden
+- [`src/shodan_report/tests/clients/test_exploitdb.py`](src/shodan_report/tests/clients/test_exploitdb.py): 13 Tests — Struktur, Lookup (bekannt/unbekannt/case-insensitiv/mehrere CVEs pro Zeile), Fehlerbehandlung (HTTP-Fehler/Netzwerk-Exception), Cache-Logik
+- [`src/shodan_report/tests/clients/test_epss.py`](src/shodan_report/tests/clients/test_epss.py): 15 Tests — Struktur, Lookup, Fehlerbehandlung (HTTP/Netzwerk/malformed), Batching (100er/150er-Listen)
+
+## feat: Bold-Formatierung konsolidiert im gesamten Report
+
+Einheitliche Regel: Port-Nummern, Dienstnamen, Zeitrahmen und Handlungsanweisungen fett im Fließtext.
+
+- [`src/shodan_report/pdf/sections/attack_scenario.py`](src/shodan_report/pdf/sections/attack_scenario.py): Dienstnamen (`svc_list`, `target_str`), CVE-Referenzen, `Ransomware`, `vollautomatisiert`, `Minuten bis Stunden` fett
+- [`src/shodan_report/pdf/sections/data/recommendations_data.py`](src/shodan_report/pdf/sections/data/recommendations_data.py): EOL-Bullets, CVE-Patch-Bullets, TLS-Protokolle, SSH/VPN/Fail2ban, Dienstnamen fett; generisches "Überprüfen:" durch `<b>{svc}</b> einschränken` ersetzt
+- [`src/shodan_report/pdf/sections/conclusion.py`](src/shodan_report/pdf/sections/conclusion.py): Port-Nummern, Dienstnamen, IP-Whitelist, EOL-Ablaufplan fett
+
 ## feat: TLS-Zertifikats-Übersicht im Technischen Anhang
 
 Neue kompakte Tabelle gruppiert alle TLS-Zertifikate nach Aussteller und Ablaufdatum, sortiert nach Dringlichkeit. Ersetzt die bisherige redundante Einzeldarstellung pro Port.

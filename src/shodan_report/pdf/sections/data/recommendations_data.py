@@ -58,13 +58,13 @@ def prepare_recommendations_data(technical_json: Dict[str, Any], evaluation: Any
             _qualifier = " (lizenzabhängig)" if _model == "mainstream_end" else ""
             if _status == "eol":
                 priority1.append(
-                    f"EOL-System ersetzen oder isolieren: {_name}{_qualifier} — "
+                    f"<b>EOL-System</b> ersetzen oder isolieren: <b>{_name}</b>{_qualifier} — "
                     "Sicherheits-Support beendet; keine regulären Patches mehr verfügbar. "
                     "Migration auf unterstützte Version einleiten."
                 )
             elif _status == "near_eol" and _eol_date:
                 priority1.append(
-                    f"EOL-Migration planen: {_name} — Support endet {_eol_date}. "
+                    f"<b>EOL-Migration</b> planen: <b>{_name}</b> — Support endet <b>{_eol_date}</b>. "
                     "Migrationsprojekt jetzt starten."
                 )
     except Exception:
@@ -136,13 +136,21 @@ def prepare_recommendations_data(technical_json: Dict[str, Any], evaluation: Any
     _critical_7_count = sum(1 for v in _cve_by_id.values() if v >= 9.0)
     _high_count = sum(1 for v in _cve_by_id.values() if 7.0 <= v < 9.0)
 
+    # ExploitDB-Treffer aus technical_json lesen
+    _exploit_map = technical_json.get("cve_exploit_map") or {} if isinstance(technical_json, dict) else {}
+    _epss_map    = technical_json.get("cve_epss_map")    or {} if isinstance(technical_json, dict) else {}
+    _n_exploitdb = sum(1 for v in _exploit_map.values() if v)
+    _epss_max    = max((_epss_map.values()), default=None)
+
     if _critical_7_count or _high_count:
+        _exploit_suffix = f" — <b>{_n_exploitdb} mit öffentlichem Exploit (ExploitDB)</b>" if _n_exploitdb else ""
+        _epss_suffix    = f", EPSS max. {_epss_max * 100:.0f}%" if _epss_max and _epss_max >= 0.05 else ""
         priority1.append(
-            f"CVEs patchen: {_critical_7_count} kritisch (CVSS ≥9), {_high_count} hoch (CVSS 7–8.9) – siehe CVE-Übersicht im Anhang."
+            f"<b>CVEs patchen:</b> {_critical_7_count} kritisch (CVSS ≥9), {_high_count} hoch (CVSS 7–8.9)"
+            f"{_exploit_suffix}{_epss_suffix} – Details in CVE-Übersicht."
         )
     elif _cve_by_id:
-        # CVEs present but no CVSS data — report count only
-        priority1.append(f"CVEs analysieren: {len(_cve_by_id)} Schwachstellen identifiziert – CVSS-Bewertung ausstehend.")
+        priority1.append(f"<b>CVEs analysieren:</b> {len(_cve_by_id)} Schwachstellen identifiziert – CVSS-Bewertung ausstehend.")
 
     # Additionally, include CVEs discovered via management data / unique_cves
     # (kept for fallback enrichment but no longer adds duplicate priority1 items)
@@ -193,7 +201,7 @@ def prepare_recommendations_data(technical_json: Dict[str, Any], evaluation: Any
             # If we found any high/critical via management data, ensure a priority1 summary is added
             if critical_count_9 or high_count:
                 priority1.append(
-                    f"CVEs patchen: {critical_count_9} kritisch (CVSS ≥9), {high_count} hoch (CVSS 7–8.9) – siehe CVE-Übersicht im Anhang."
+                    f"<b>CVEs patchen:</b> {critical_count_9} kritisch (CVSS ≥9), {high_count} hoch (CVSS 7–8.9) – siehe CVE-Übersicht im Anhang."
                 )
     except Exception:
         # Non-fatal: do not block recommendations if enrichment/prep fails
@@ -234,10 +242,10 @@ def prepare_recommendations_data(technical_json: Dict[str, Any], evaluation: Any
         if _found_insecure_tls:
             protos = ", ".join(sorted(_found_insecure_tls))
             priority1.append(
-                f"TLS-Konfiguration: Unsichere Protokolle aktiv ({protos}) — sofort deaktivieren"
+                f"<b>TLS-Konfiguration:</b> Unsichere Protokolle aktiv (<b>{protos}</b>) — sofort deaktivieren"
             )
         else:
-            priority1.append("TLS-Konfiguration überprüfen; Schwachstellen in TLS/SSL gefunden")
+            priority1.append("<b>TLS-Konfiguration</b> überprüfen — Schwachstellen in TLS/SSL gefunden")
 
     # Management ports and other port-based recommendations
     mg_ports = {22: "SSH", 3389: "RDP", 5900: "VNC", 3306: "MySQL", 5432: "Postgres", 23: "Telnet", 21: "FTP"}
@@ -276,19 +284,17 @@ def prepare_recommendations_data(technical_json: Dict[str, Any], evaluation: Any
 
     for svc in sorted(found_mg):
         if svc == "SSH":
-            priority2.append("SSH (Port 22) ist öffentlich erreichbar — Zugriff einschränken")
-            priority2.append("Zugriff ausschließlich über VPN oder Jump-Host erlauben")
-            priority2.append("Passwort-Authentifizierung deaktivieren, nur SSH-Schlüssel zulassen")
-            priority2.append("Brute-Force-Schutz einrichten (z. B. Fail2ban)")
+            priority2.append("<b>SSH</b> (<b>Port 22</b>) ist öffentlich erreichbar — Zugriff einschränken")
+            priority2.append("Zugriff ausschließlich über <b>VPN</b> oder <b>Jump-Host</b> erlauben")
+            priority2.append("<b>Passwort-Authentifizierung</b> deaktivieren, nur <b>SSH-Schlüssel</b> zulassen")
+            priority2.append("<b>Brute-Force-Schutz</b> einrichten (z. B. <b>Fail2ban</b>)")
         else:
-            # Do not add generic 'Überprüfen' for RDP here — RDP is handled as P1 elsewhere
             if svc.upper() == "RDP":
-                # skip generic RDP check
                 continue
-            priority2.append(f"Überprüfen: erreichbarer Managementdienst: {svc}")
+            priority2.append(f"<b>{svc}</b> einschränken — Managementdienst öffentlich erreichbar")
 
     if dns_on_53:
-        priority2.append("Prüfen: DNS-Server erreichbar (Port 53) – rekursive Anfragen prüfen")
+        priority2.append("<b>DNS</b> (<b>Port 53</b>) erreichbar — rekursive Anfragen prüfen")
 
     # If RDP was detected among services, ensure priority2 contains other high items
     try:

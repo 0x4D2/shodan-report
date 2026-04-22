@@ -225,6 +225,12 @@ def _extract_cve_data(technical_json: Dict[str, Any], context: Optional[Any] = N
             ports = ent.get("ports", []) or []
             service = ",".join([str(p) for p in ports]) if ports else "Various"
             # Preserve NVD url and any service indicator populated by the enricher
+            # ExploitDB + EPSS aus technical_json mergen (vom Runner befüllt)
+            _exploit_map = technical_json.get("cve_exploit_map") or {} if isinstance(technical_json, dict) else {}
+            _epss_map    = technical_json.get("cve_epss_map")    or {} if isinstance(technical_json, dict) else {}
+            _exploitdb   = bool(_exploit_map.get(str(cid or "").upper()))
+            _epss_score  = _epss_map.get(str(cid or "").upper())
+
             cve_entry = {
                 "id": cid,
                 "cvss": cvss_val,
@@ -232,6 +238,8 @@ def _extract_cve_data(technical_json: Dict[str, Any], context: Optional[Any] = N
                 "service": service[:40],
                 "summary": ent.get("summary") or "",
                 "exploit_status": ent.get("exploit_status", "unknown"),
+                "exploitdb": _exploitdb,
+                "epss_score": float(_epss_score) if _epss_score is not None else None,
                 "nvd_url": ent.get("nvd_url") or f'https://nvd.nist.gov/vuln/detail/{cid}',
             }
             # optional structured indicator from CPE helper
@@ -614,8 +622,8 @@ def _create_detailed_cve_table(
         _hdr("CVE"),
         _hdr("CVSS"),
         _hdr("DIENST / KOMPONENTE"),
-        _hdr("EXPLOIT-STATUS"),
-        _hdr("RELEVANZ"),
+        _hdr("EXPLOIT"),
+        _hdr("EPSS (30T)"),
     ]]
 
     # Sortieren: höchster CVSS zuerst
@@ -672,41 +680,26 @@ def _create_detailed_cve_table(
             svc_text = f'<font size="9" color="#333333">{c.get("service") or "—"}</font>'
         svc_cell = Paragraph(svc_text, ns)
 
-        # Exploit-Status
-        exploit_map = {
-            "public":  "öffentlich bekannt",
-            "private": "teilweise",
-            "none":    "nicht bekannt",
-            "unknown": "unbekannt",
-        }
-        exploit_str = exploit_map.get(exploit, str(exploit) if exploit else "unbekannt")
-        exploit_cell = Paragraph(
-            f'<font size="9" color="#666666">{exploit_str}</font>', ns
-        )
+        # Exploit-Zelle: CISA KEV → rot, ExploitDB → orange, sonst grau
+        exploit_cell = _exploit_cell(styles, exploit, c.get("exploitdb", False))
 
-        # Relevanz-Badge + Confidence-Badge (überlagert wenn vorhanden)
-        conf_badge = _confidence_badge(styles, c.get("confidence"))
-        if conf_badge is not None:
-            # Confidence-Badge ersetzt das generische Relevanz-Badge
-            rel_cell = conf_badge
-        else:
-            rel_cell = _relevance_badge(styles, cvss)
+        # EPSS-Zelle
+        epss_cell = _epss_cell(styles, c.get("epss_score"))
 
-        rows.append([cve_cell, cvss_cell, svc_cell, exploit_cell, rel_cell])
+        rows.append([cve_cell, cvss_cell, svc_cell, exploit_cell, epss_cell])
 
     # "+ N weitere" Zeile
     if remaining > 0:
-        medium_low_str = "Medium /\nNiedrig"
         rows.append([
             Paragraph(f'<font size="9" color="#AAAAAA">+ {remaining} weitere CVEs</font>', ns),
-            Paragraph(f'<font size="8" color="#AAAAAA">{medium_low_str}</font>', ns),
+            Paragraph(f'<font size="8" color="#AAAAAA">Medium /\nNiedrig</font>', ns),
             Paragraph(f'<font size="9" color="#AAAAAA">verschiedene Dienste</font>', ns),
             Paragraph("", ns),
-            _relevance_badge(styles, 5.0),  # medium badge
+            Paragraph("", ns),
         ])
 
-    # Spaltenbreiten: CVE | CVSS | Dienst | Exploit | Relevanz
-    col_w = [36 * mm, 18 * mm, 55 * mm, 30 * mm, 36 * mm]
+    # Spaltenbreiten: CVE | CVSS | Dienst | Exploit | EPSS
+    col_w = [38 * mm, 18 * mm, 46 * mm, 38 * mm, 35 * mm]
     tbl = Table(rows, colWidths=col_w)
     set_table_repeat(tbl, 1)
 
@@ -794,6 +787,41 @@ def _confidence_badge(styles: Dict, confidence: Any) -> Optional[Table]:
         ("ALIGN",         (0, 0), (-1, -1), "CENTER"),
     ]))
     return badge
+
+
+def _exploit_cell(styles: Dict, exploit_status: str, exploitdb: bool) -> Paragraph:
+    """Exploit-Zelle: CISA KEV (rot) > ExploitDB (orange) > kein Exploit (grau)."""
+    ns = styles.get("normal") or styles.get("Normal")
+    is_kev = exploit_status == "public"
+    if is_kev and exploitdb:
+        text  = '<font size="8" color="#991b1b"><b>CISA KEV + ExploitDB</b></font>'
+    elif is_kev:
+        text  = '<font size="8" color="#991b1b"><b>CISA KEV</b></font>'
+    elif exploitdb:
+        text  = '<font size="8" color="#9a3412"><b>Exploit öffentlich</b></font>'
+    else:
+        text  = '<font size="8" color="#9CA3AF">—</font>'
+    return Paragraph(text, ns)
+
+
+def _epss_cell(styles: Dict, score: Optional[float]) -> Paragraph:
+    """EPSS-Score als farbiger Prozentwert."""
+    ns = styles.get("normal") or styles.get("Normal")
+    if score is None:
+        return Paragraph('<font size="8" color="#9CA3AF">—</font>', ns)
+    pct = score * 100
+    if pct >= 50:
+        color = "#991b1b"
+    elif pct >= 20:
+        color = "#9a3412"
+    elif pct >= 5:
+        color = "#92400e"
+    else:
+        color = "#6b7280"
+    return Paragraph(
+        f'<font size="8" color="{color}"><b>{pct:.1f}%</b></font>',
+        ns,
+    )
 
 
 def _relevance_badge(styles: Dict, cvss: Optional[float]) -> Table:

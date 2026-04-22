@@ -372,6 +372,24 @@ def generate_report_pipeline(
             )
             technical_json["cve_enriched"] = enriched_current
 
+            # ── ExploitDB + EPSS ──────────────────────────────────────────────
+            try:
+                cve_ids = [e.get("id") for e in enriched_current if e.get("id")]
+                if cve_ids:
+                    from shodan_report.clients.exploitdb import check_exploits
+                    from shodan_report.clients.epss import get_epss_scores
+                    exploit_map = check_exploits(cve_ids)
+                    epss_map    = get_epss_scores(cve_ids)
+                    technical_json["cve_exploit_map"] = exploit_map
+                    technical_json["cve_epss_map"]    = epss_map
+                    if verbose:
+                        n_exploits = sum(1 for v in exploit_map.values() if v)
+                        print(f"[ExploitDB] {n_exploits}/{len(cve_ids)} CVEs mit öffentlichem Exploit")
+                        print(f"[EPSS] {len(epss_map)} Scores geladen")
+            except Exception as _ex:
+                if verbose:
+                    print(f"[ExploitDB/EPSS] Warnung: {_ex}")
+
             if prev_snapshot and technical_json.get("previous_metrics") is not None:
                 prev_eval = engine.evaluate(prev_snapshot)
                 prev_eval_dict = evaluation_result_to_dict(prev_eval)

@@ -333,7 +333,7 @@ def _build_attack_chain(technical_json: Dict[str, Any], context=None) -> List[Di
         svc_list = _join_labels(all_labels)
         step1_body = (
             f"Globale Scanner (Shodan, Censys, Masscan) identifizieren offene Ports — "
-            f"darunter {svc_list}."
+            f"darunter <b>{svc_list}</b>."
         )
     else:
         step1_body = (
@@ -353,14 +353,14 @@ def _build_attack_chain(technical_json: Dict[str, Any], context=None) -> List[Di
         svc_ref = _join_labels(versioned[:2]) if versioned else "den exponierten Diensten"
         cve_ref = _join_labels(cve_snippets[:2])
         step2_body = (
-            f"Bekannte CVEs für {svc_ref} werden automatisch getestet. "
-            f"Darunter {cve_ref}."
+            f"Bekannte CVEs für <b>{svc_ref}</b> werden automatisch getestet. "
+            f"Darunter <b>{cve_ref}</b>."
         )
         step2_note = "Exploit-Frameworks wie Metasploit enthalten fertige Module für diese CVEs."
     else:
         svc_ref = _join_labels(versioned[:2]) if versioned else "der exponierten Dienste"
         step2_body = (
-            f"Produkt- und Versionserkennung ({svc_ref}) ermöglicht "
+            f"Produkt- und Versionserkennung (<b>{svc_ref}</b>) ermöglicht "
             "automatisiertes Schwachstellen-Scanning."
         )
         step2_note = "Öffentliche Exploit-Datenbanken werden täglich mit neuen Schwachstellen aktualisiert."
@@ -379,18 +379,18 @@ def _build_attack_chain(technical_json: Dict[str, Any], context=None) -> List[Di
         plural = len(access_targets) > 1
         if admin_labels:
             step3_body = (
-                f"{target_str} {'sind' if plural else 'ist'} ohne IP-Beschränkung erreichbar. "
+                f"<b>{target_str}</b> {'sind' if plural else 'ist'} ohne IP-Beschränkung erreichbar. "
                 "Credential-Stuffing und Bruteforce-Angriffe werden automatisch durchgeführt."
             )
         elif db_labels:
             step3_body = (
-                f"{target_str} {'sind' if plural else 'ist'} direkt aus dem Internet erreichbar. "
+                f"<b>{target_str}</b> {'sind' if plural else 'ist'} direkt aus dem Internet erreichbar. "
                 "Automatisierte Scans auf Standardpasswörter und Authentifizierungslücken "
                 "laufen kontinuierlich."
             )
         else:
             step3_body = (
-                f"{target_str} {'sind' if plural else 'ist'} ohne IP-Beschränkung erreichbar. "
+                f"<b>{target_str}</b> {'sind' if plural else 'ist'} ohne IP-Beschränkung erreichbar. "
                 "Automatisierte Angriffs-Scans laufen rund um die Uhr."
             )
     else:
@@ -420,8 +420,8 @@ def _build_attack_chain(technical_json: Dict[str, Any], context=None) -> List[Di
         "num":   "04",
         "title": "Datenexfiltration oder Ransomware",
         "body":  (
-            f"Nach erfolgreichem Zugriff auf {target_desc} werden Daten extrahiert "
-            "oder Systeme durch Ransomware verschlüsselt."
+            f"Nach erfolgreichem Zugriff auf <b>{target_desc}</b> werden Daten extrahiert "
+            "oder Systeme durch <b>Ransomware</b> verschlüsselt."
         ),
         "note":  "Reaktionszeit bis zur Erkennung ohne Monitoring: typischerweise Stunden bis Tage.",
     })
@@ -504,9 +504,9 @@ def _hinweis_box(styles: Dict) -> Table:
     inner = Table(
         [[Paragraph(
             '<font size="9" color="#1E40AF">'
-            '<b>Hinweis:</b> Diese Angriffskette läuft vollautomatisiert. '
+            '<b>Hinweis:</b> Diese Angriffskette läuft <b>vollautomatisiert</b>. '
             'Angriffsversuche auf exponierte Dienste beginnen typischerweise '
-            'innerhalb von Minuten bis Stunden nach erstmaliger Erreichbarkeit — '
+            'innerhalb von <b>Minuten bis Stunden</b> nach erstmaliger Erreichbarkeit — '
             'unabhängig von Unternehmensgröße oder Branche.'
             '</font>',
             ns_small,

@@ -170,17 +170,17 @@ def _build_steps(
                     and s.get("port") in (3306, 5432, 1433, 27017, 21)]
         if db_ports:
             db_str = " und ".join(
-                f"{'MySQL/MariaDB' if p == 3306 else 'FTP' if p == 21 else str(p)} (Port {p})"
+                f"<b>{'MySQL/MariaDB' if p == 3306 else 'FTP' if p == 21 else str(p)}</b> (<b>Port {p}</b>)"
                 for p in db_ports[:2]
             )
             short_parts.append(
-                f"{db_str} über Firewall-Regeln vom öffentlichen Zugriff trennen."
+                f"{db_str} über <b>Firewall-Regeln</b> vom öffentlichen Zugriff trennen."
             )
         # cPanel
         cpanel = [s.get("port") for s in services if isinstance(s, dict)
                   and s.get("port") in (2082, 2083, 2086, 2087)]
         if cpanel:
-            short_parts.append("cPanel-Zugriff per IP-Whitelist absichern.")
+            short_parts.append("<b>cPanel</b>-Zugriff per <b>IP-Whitelist</b> absichern.")
     except Exception:
         pass
 
@@ -207,9 +207,9 @@ def _build_steps(
         )
         if has_selfsigned:
             mid_parts.append(
-                "Selbstsigniertes Zertifikat auf Port 443 durch CA-signiertes Zertifikat ersetzen."
+                "Selbstsigniertes Zertifikat auf <b>Port 443</b> durch CA-signiertes Zertifikat ersetzen."
             )
-        mid_parts.append("EOL-Ablaufplan erstellen.")
+        mid_parts.append("<b>EOL-Ablaufplan</b> erstellen.")
     except Exception:
         mid_parts.append("<b>Zugriffshärtung</b> — SSH, VPN/Jumphost, MFA aktivieren.")
 
