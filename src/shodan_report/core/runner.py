@@ -390,6 +390,25 @@ def generate_report_pipeline(
                 if verbose:
                     print(f"[ExploitDB/EPSS] Warnung: {_ex}")
 
+            # ── HIBP Credential Exposure ──────────────────────────────────────
+            try:
+                _domain = (config or {}).get("customer", {}).get("domain") or ""
+                _extra  = (config or {}).get("hibp", {}).get("extra_emails") or []
+                if _domain or _extra:
+                    from shodan_report.clients.hibp import check_breaches
+                    _hibp_result = check_breaches(
+                        domain=_domain,
+                        extra_emails=_extra,
+                    )
+                    technical_json["hibp"] = _hibp_result
+                    if verbose:
+                        _mode = _hibp_result.get("mode", "manual")
+                        _n    = _hibp_result.get("total_breached")
+                        print(f"[HIBP] Modus: {_mode}" + (f", {_n} betroffen" if _n is not None else " (manuell)"))
+            except Exception as _ex:
+                if verbose:
+                    print(f"[HIBP] Warnung: {_ex}")
+
             if prev_snapshot and technical_json.get("previous_metrics") is not None:
                 prev_eval = engine.evaluate(prev_snapshot)
                 prev_eval_dict = evaluation_result_to_dict(prev_eval)

@@ -36,6 +36,7 @@ Kopiere `.env.example` nach `.env` und passe die Werte an:
 | `NVD_LIVE` | ❌ | `1` = Live-NVD-Abfragen erzwingen |
 | `NVD_PROGRESS` | ❌ | `1` = Fortschrittsanzeige bei NVD-Abfragen |
 | `GREYNOISE_API_KEY` | ❌ | GreyNoise API Key (Community-Tier kostenlos) |
+| `HIBP_API_KEY` | ❌ | HaveIBeenPwned API Key — ohne Key: manuelle Check-Links im Report |
 
 ---
 

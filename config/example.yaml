@@ -27,6 +27,17 @@ report:
 nvd:
   enabled: false                    # true = NVD-Lookups aktiv; bei package=enterprise automatisch true
 
+hibp:
+  # Stichprobenbasierte Prüfung gegen öffentlich bekannte Datenlecks (HaveIBeenPwned).
+  # Standard-Adressen (info@, admin@, support@ ...) werden automatisch aus customer.domain abgeleitet.
+  # extra_emails: zusätzliche Adressen, die immer geprüft werden (z.B. Geschäftsführung, IT-Leitung).
+  # Ohne HIBP_API_KEY: Report zeigt manuelle Check-Links.
+  # Mit HIBP_API_KEY: automatische Prüfung + Breach-Namen im Report.
+  extra_emails: []
+  # extra_emails:
+  #   - "ceo@beispiel.de"
+  #   - "it@beispiel.de"
+
 archive:
   enabled: true
   archive_dir: "archive"
