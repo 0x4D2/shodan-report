@@ -90,14 +90,14 @@ Jeder Report enthält bis zu 9 Abschnitte:
 | # | Abschnitt | Bedingung |
 |---|---|---|
 | 1 | **Management-Zusammenfassung** — KPI-Zeile (IP · Ports · CVEs · Kritisch · CISA KEV · Exploit), Exposure-Level, Kernaussagen, Empfehlung | immer |
-| 2 | **Handlungsempfehlungen** — priorisierte Maßnahmen | immer |
-| 3 | **Attack Surface / Domain-Discovery** — alle exponierten IPs, Subdomains, CDN-Filter | nur mit `--domain` |
-| 4 | **Technischer Anhang** — Dienste, Versionen, TLS-Findings, EOL-Erkennung | immer |
-| 5 | **CVE- & Exploit-Übersicht** — CVSS-Badges, ExploitDB-Status, EPSS-Score (30 Tage), CISA KEV | wenn CVEs vorhanden |
-| 6 | **Trend- & Vergleichsanalyse** — Monatsvergleich mit Tabelle | wenn `--compare` oder Snapshot vorhanden |
-| 7 | **Fazit** | immer |
-| 8 | **Methodik & Grenzen** | immer |
-| 9 | **Footer** — SHA256-Signatur, Vertraulichkeitsvermerk | immer |
+| 2 | **Realistisches Angriffsszenario** — datengetriebene 4-stufige Angriffskette (Reconnaissance → Schwachstellen → Zugriff → Impact) mit Phasen-Balken und Schnell-Fakten | immer |
+| 3 | **Handlungsempfehlungen** — Priorität 1–3 mit farbigen Badges; Credential Exposure (HIBP) direkt unter Priorität 3 integriert | immer |
+| 4 | **Attack Surface / Domain-Discovery** — alle exponierten IPs, Subdomains, CDN-Filter | nur mit `--domain` |
+| 5 | **Technischer Anhang** — Dienste, Versionen, TLS-Findings, EOL-Erkennung | immer |
+| 6 | **CVE- & Exploit-Übersicht** — CVSS-Badges, ExploitDB-Status, EPSS-Score (30 Tage), CISA KEV | wenn CVEs vorhanden |
+| 7 | **Trend- & Vergleichsanalyse** — Monatsvergleich mit Tabelle | wenn `--compare` oder Snapshot vorhanden |
+| 8 | **Fazit** | immer |
+| 9 | **Methodik & Grenzen** — Begriffe, Exposure-Level-Tabelle, Discovery-Quellen; Footer mit SHA256-Signatur | immer |
 
 ---
 
@@ -226,6 +226,7 @@ shodan-report/
 │   │       ├── recommendations.py    # Handlungsempfehlungen
 │   │       ├── attack_surface.py     # Domain-Discovery-Ergebnisse
 │   │       ├── attack_scenario.py    # Realistisches Angriffsszenario
+│   │       ├── credential_exposure.py # HIBP Credential Exposure (integriert in Empfehlungen)
 │   │       ├── conclusion.py         # Fazit
 │   │       ├── methodology.py        # Methodik & Grenzen
 │   │       ├── header.py / footer.py
@@ -261,7 +262,7 @@ python -m pytest -q
 python -m pytest src/shodan_report/tests/pdf/ -q
 ```
 
-Aktueller Stand: **749 passed, 9 skipped** (Stand 2026-04-22)
+Aktueller Stand: **768 passed, 9 skipped** (Stand 2026-04-27)
 
 ---
 
@@ -287,4 +288,4 @@ Jeder Report enthält automatisch:
 
 ---
 
-*Stand: 2026-04-22 — Branch `feature/data-enrichment`*
+*Stand: 2026-04-27 — Branch `feature/data-enrichment`*
