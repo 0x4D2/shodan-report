@@ -3,7 +3,7 @@ Credential Exposure Section.
 
 Zeigt HIBP-Ergebnisse im Report:
   - API-Modus: echte Breach-Counts + Namen
-  - Manual-Modus: Check-Links für manuelle Prüfung
+  - Manual-Modus: Hinweis für manuelle Prüfung
 
 Wird nur gerendert wenn technical_json["hibp"] vorhanden ist.
 """
@@ -23,6 +23,37 @@ _C_AMB_BAR  = HexColor("#F59E0B")
 _C_GRY_BG   = HexColor("#F8F8F8")
 _C_BORDER   = HexColor("#DDDDDD")
 
+_STANDARD_PREFIXES = {"info", "kontakt", "support", "admin"}
+
+
+_CONTENT_W = 170 * mm
+
+
+def _hibp_badge(styles: Dict) -> Table:
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.pdfbase.pdfmetrics import stringWidth
+    label = "Credential Exposure – Manuelle Pr\xfcfung"
+    badge_style = ParagraphStyle(
+        "HibpBadgeLabel",
+        parent=styles["normal"],
+        fontSize=8,
+        leading=11,
+    )
+    para = Paragraph(f'<font color="#92400E"><b>{label}</b></font>', badge_style)
+    badge_w = stringWidth(label, "Helvetica-Bold", 8) + 20
+    tbl = Table([[para]], colWidths=[badge_w])
+    tbl.hAlign = "LEFT"
+    tbl.setStyle(TableStyle([
+        ("BACKGROUND",     (0, 0), (-1, -1), HexColor("#FFFBEB")),
+        ("BOX",            (0, 0), (-1, -1), 0.8, HexColor("#F59E0B")),
+        ("TOPPADDING",     (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING",  (0, 0), (-1, -1), 3),
+        ("LEFTPADDING",    (0, 0), (-1, -1), 8),
+        ("RIGHTPADDING",   (0, 0), (-1, -1), 8),
+        ("ROUNDEDCORNERS", [4]),
+    ]))
+    return tbl
+
 
 def create_credential_exposure_section(
     elements: List[Any],
@@ -36,20 +67,18 @@ def create_credential_exposure_section(
 
     ns = styles.get("normal") or styles.get("Normal")
     mode   = hibp.get("mode", "manual")
-    emails = hibp.get("emails") or []
     total_breached = hibp.get("total_breached")
+
+    all_emails = hibp.get("emails") or []
+    emails = [e for e in all_emails if e.get("email", "").split("@")[0].lower() in _STANDARD_PREFIXES]
 
     if not emails:
         return
 
     elements.append(Spacer(1, 10))
 
-    # Titelzeile
-    elements.append(Paragraph(
-        '<font size="9" color="#1A1A1A"><b>Credential Exposure</b></font>'
-        '<font size="8" color="#888888"> — stichprobenbasierte Pr\xfcfung bekannter Datenlecks (HIBP)</font>',
-        ns,
-    ))
+    # Badge-Titelzeile
+    elements.append(_hibp_badge(styles))
     elements.append(Spacer(1, 6))
 
     if mode == "api":
@@ -125,10 +154,7 @@ def _render_manual_links(elements, styles, emails, has_ssh):
 
     # Amber-Box: manuelle Prüfung empfohlen
     lines = [
-        '<font size="8" color="#92400e"><b>Manuelle Pr\xfcfung empfohlen</b></font><br/>'
-        '<font size="8" color="#78350f">'
-        'Kein HIBP_API_KEY gesetzt — folgende Adressen bitte manuell pr\xfcfen:'
-        '</font>',
+        '<font size="8" color="#92400e"><b>Manuelle Pr\xfcfung empfohlen</b></font>',
     ]
     for e in emails:
         url = e.get("check_url", "")
@@ -145,7 +171,7 @@ def _render_manual_links(elements, styles, emails, has_ssh):
         )
 
     content = "<br/>".join(lines)
-    box = Table([[Paragraph(content, ns)]], colWidths=[175 * mm])
+    box = Table([[Paragraph(content, ns)]], colWidths=[_CONTENT_W])
     box.setStyle(TableStyle([
         ("BACKGROUND",    (0, 0), (-1, -1), _C_AMB_BG),
         ("BOX",           (0, 0), (-1, -1), 0.5, _C_AMB_BD),
@@ -156,14 +182,6 @@ def _render_manual_links(elements, styles, emails, has_ssh):
         ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
     ]))
     elements.append(box)
-
-    elements.append(Spacer(1, 4))
-    elements.append(Paragraph(
-        '<font size="7" color="#888888">'
-        'Quelle: HaveIBeenPwned.com · HIBP_API_KEY in .env setzen f\xfcr automatische Pr\xfcfung.'
-        '</font>',
-        ns,
-    ))
 
 
 def _combo_warning(elements, styles, breached_count):

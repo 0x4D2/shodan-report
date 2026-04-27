@@ -497,6 +497,104 @@ def _chain_card(step: Dict, styles: Dict) -> Table:
     return card
 
 
+def _chain_overview(steps: List[Dict], styles: Dict) -> Table:
+    """Horizontaler Phasen-Balken — kompakter visueller Überblick aller 4 Phasen."""
+    from reportlab.lib.styles import ParagraphStyle
+    ns = styles.get("Normal")
+
+    phase_styles = [
+        (HexColor("#EFF6FF"), HexColor("#2563EB"), "#1E40AF"),
+        (HexColor("#FEF3E8"), HexColor("#E67E22"), "#92400E"),
+        (HexColor("#FDECEA"), HexColor("#C0392B"), "#991B1B"),
+        (HexColor("#FEF2F2"), HexColor("#991B1B"), "#7F1D1D"),
+    ]
+    short_labels = ["RECONNAISSANCE", "SCHWACHSTELLEN", "ZUGRIFF", "IMPACT"]
+    cell_w = _CONTENT_W / 4
+
+    cells = []
+    for i, step in enumerate(steps):
+        bg, border, tx = phase_styles[i % len(phase_styles)]
+        num = step.get("num", f"0{i + 1}")
+        short = short_labels[i] if i < len(short_labels) else step.get("title", "").upper()[:12]
+        s_num = ParagraphStyle(f"_ov_num{i}", parent=ns, alignment=1, leading=18)
+        s_lbl = ParagraphStyle(f"_ov_lbl{i}", parent=ns, alignment=1, leading=9)
+        inner = Table(
+            [
+                [Paragraph(f'<font size="13" color="{tx}"><b>{num}</b></font>', s_num)],
+                [Paragraph(f'<font size="6.5" color="{tx}"><b>{short}</b></font>', s_lbl)],
+            ],
+            colWidths=[cell_w],
+        )
+        inner.setStyle(TableStyle([
+            ("BACKGROUND",    (0, 0), (-1, -1), bg),
+            ("ALIGN",         (0, 0), (-1, -1), "CENTER"),
+            ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING",    (0, 0), (-1, -1), 7),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+            ("LEFTPADDING",   (0, 0), (-1, -1), 2),
+            ("RIGHTPADDING",  (0, 0), (-1, -1), 2),
+        ]))
+        cells.append(inner)
+
+    tbl = Table([cells], colWidths=[cell_w] * 4)
+    tbl.setStyle(TableStyle([
+        ("BOX",         (0, 0), (-1, -1), 0.5, _C_CHAIN_BORDER),
+        ("LINEBETWEEN", (0, 0), (-1, -1), 0.5, _C_CHAIN_BORDER),
+        ("TOPPADDING",  (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+    ]))
+    return tbl
+
+
+def _attack_stats_bar(styles: Dict) -> Table:
+    """Schnell-Fakten-Leiste unter der Angriffskette."""
+    from reportlab.lib.styles import ParagraphStyle
+    ns = styles.get("Normal")
+
+    stats = [
+        ("24 / 7", "Automatisch aktiv"),
+        ("< 1 h", "Erste Angriffsversuche"),
+        ("> 95 %", "Automatisierungsgrad"),
+        ("Std.–Tage", "Ø Erkennungszeit"),
+    ]
+    cell_w = _CONTENT_W / 4
+
+    cells = []
+    for val, label in stats:
+        s_val = ParagraphStyle(f"_sv_{val}", parent=ns, alignment=1, leading=16)
+        s_lbl = ParagraphStyle(f"_sl_{val}", parent=ns, alignment=1, leading=9)
+        inner = Table(
+            [
+                [Paragraph(f'<font size="11" color="#1E40AF"><b>{val}</b></font>', s_val)],
+                [Paragraph(f'<font size="7" color="#64748B">{label}</font>', s_lbl)],
+            ],
+            colWidths=[cell_w],
+        )
+        inner.setStyle(TableStyle([
+            ("ALIGN",         (0, 0), (-1, -1), "CENTER"),
+            ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING",    (0, 0), (-1, -1), 7),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+            ("LEFTPADDING",   (0, 0), (-1, -1), 2),
+            ("RIGHTPADDING",  (0, 0), (-1, -1), 2),
+        ]))
+        cells.append(inner)
+
+    tbl = Table([cells], colWidths=[cell_w] * 4)
+    tbl.setStyle(TableStyle([
+        ("BACKGROUND",    (0, 0), (-1, -1), HexColor("#F8FAFC")),
+        ("BOX",           (0, 0), (-1, -1), 0.5, HexColor("#E2E8F0")),
+        ("LINEBETWEEN",   (0, 0), (-1, -1), 0.3, HexColor("#E2E8F0")),
+        ("TOPPADDING",    (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
+    ]))
+    return tbl
+
+
 def _hinweis_box(styles: Dict) -> Table:
     """Blauer Hinweis-Kasten am Ende der Angriffskette."""
     ns_small = styles.get("body_small", styles.get("Normal"))
@@ -561,7 +659,7 @@ def create_attack_scenario_section(
     sec: List = []
 
     sec.append(Paragraph(
-        "<b>Realistisches Angriffsszenario</b>",
+        "<b>2. Realistisches Angriffsszenario</b>",
         styles.get("heading1", styles.get("Heading1")),
     ))
     sec.append(Spacer(1, 6))
@@ -588,12 +686,16 @@ def create_attack_scenario_section(
         sec.append(_positive_box(styles))
     else:  # not web_only
         chain = _build_attack_chain(technical_json, context)
+        sec.append(_chain_overview(chain, styles))
+        sec.append(Spacer(1, 10))
         for i, step in enumerate(chain):
             sec.append(_chain_card(step, styles))
             if i < len(chain) - 1:
                 sec.append(Spacer(1, 6))
         sec.append(Spacer(1, 10))
         sec.append(_hinweis_box(styles))
+        sec.append(Spacer(1, 10))
+        sec.append(_attack_stats_bar(styles))
 
     elements.append(keep_section(sec))
     elements.append(Spacer(1, 12))

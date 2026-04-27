@@ -72,7 +72,7 @@ def create_attack_surface_section(
 
     # ── 1. Überschrift ────────────────────────────────────────────────────────
     sec.append(Paragraph(
-        "<b>3. Attack Surface — Domain-Discovery</b>",
+        "<b>4. Attack Surface — Domain-Discovery</b>",
         styles.get("heading1", styles.get("Heading1")),
     ))
     sec.append(Spacer(1, 8))

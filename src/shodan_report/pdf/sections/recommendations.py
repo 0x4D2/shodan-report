@@ -120,7 +120,7 @@ def create_recommendations_section(elements: List, styles: Dict, *args, **kwargs
         evaluation     = kwargs.get("evaluation", {})
 
     elements.append(keep_section([
-        Paragraph("<b>2. Priorisierte Handlungsempfehlungen</b>", styles["heading1"]),
+        Paragraph("<b>3. Priorisierte Handlungsempfehlungen</b>", styles["heading1"]),
         Spacer(1, 12),
     ]))
 
@@ -186,6 +186,22 @@ def create_recommendations_section(elements: List, styles: Dict, *args, **kwargs
         for item in buckets["priority3"]:
             elements.append(_item_row(item, COLOR_P3_BORDER, styles))
             elements.append(Spacer(1, 2))
+
+    # ── CREDENTIAL EXPOSURE — direkt unter Priorität 3 ───────────────────────
+    if technical_json.get("hibp"):
+        from shodan_report.pdf.sections.credential_exposure import create_credential_exposure_section
+        try:
+            _svcs = technical_json.get("services") or technical_json.get("open_ports") or []
+            _ports = {s.get("port") for s in _svcs if isinstance(s, dict)}
+            _prods = " ".join(str(s.get("product") or "") for s in _svcs if isinstance(s, dict)).lower()
+            _has_ssh = bool(22 in _ports or "ssh" in _prods)
+        except Exception:
+            _has_ssh = False
+        elements.append(Spacer(1, 12))
+        create_credential_exposure_section(
+            elements=elements, styles=styles,
+            technical_json=technical_json, has_ssh=_has_ssh,
+        )
 
 
 # ── Hilfsfunktionen (externe Nutzung) ────────────────────────────────────────

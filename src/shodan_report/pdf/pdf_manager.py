@@ -22,7 +22,6 @@ from .sections.cve_overview import create_cve_overview_section
 from .sections.attack_surface import create_attack_surface_section
 from .sections.attack_scenario import create_attack_scenario_section
 
-
 def prepare_pdf_elements(
     customer_name: str,
     month: str,

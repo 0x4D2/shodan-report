@@ -392,7 +392,7 @@ def generate_report_pipeline(
 
             # ── HIBP Credential Exposure ──────────────────────────────────────
             try:
-                _domain = (config or {}).get("customer", {}).get("domain") or ""
+                _domain = domain or (config or {}).get("customer", {}).get("domain") or ""
                 _extra  = (config or {}).get("hibp", {}).get("extra_emails") or []
                 if _domain or _extra:
                     from shodan_report.clients.hibp import check_breaches
