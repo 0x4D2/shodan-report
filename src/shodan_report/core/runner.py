@@ -213,7 +213,7 @@ def generate_report_pipeline(
 
         if from_snapshot:
             # ── Snapshot-Modus: kein Shodan-Aufruf ───────────────────────────
-            snapshot = load_snapshot(customer_name, month)
+            snapshot = load_snapshot(customer_name, month, ip=ip)
             if not snapshot:
                 return {
                     "success": False,
@@ -240,14 +240,14 @@ def generate_report_pipeline(
         # 3. Vorherigen Snapshot laden (falls Vergleich)
         prev_snapshot = None
         if compare_month:
-            prev_snapshot = load_snapshot(customer_name, compare_month)
+            prev_snapshot = load_snapshot(customer_name, compare_month, ip=ip)
             if verbose and prev_snapshot:
                 print(f"Geladener Vergleichssnapshot für {compare_month}")
         else:
             # Auto-compare: use previous month if available
             if re.match(r"^\d{4}-\d{2}$", str(month)):
                 auto_compare_month = _prev_month(month)
-                prev_snapshot = load_snapshot(customer_name, auto_compare_month)
+                prev_snapshot = load_snapshot(customer_name, auto_compare_month, ip=ip)
                 if prev_snapshot:
                     compare_month = auto_compare_month
                     if verbose:

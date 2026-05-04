@@ -1,5 +1,6 @@
 from pathlib import Path
 import json
+from typing import Optional
 from shodan_report.models import AssetSnapshot
 from shodan_report.paths import snapshots_dir
 
@@ -33,18 +34,28 @@ def save_snapshot(snapshot: AssetSnapshot, customer_name: str, month: str) -> Pa
     return path
 
 
-def load_snapshot(customer_name: str, month: str) -> AssetSnapshot | None:
+def load_snapshot(customer_name: str, month: str, ip: Optional[str] = None) -> AssetSnapshot | None:
 
     customer_dir = snapshots_dir() / customer_name.replace(" ", "_")
     if not customer_dir.exists():
         return None
 
-    # * erlaubt spätere mehrere IPs
-    paths = list(customer_dir.glob(f"{month}_*.json"))
-    if not paths:
-        return None
+    # IP-spezifischer Snapshot hat Vorrang — verhindert Verwechslung bei mehreren IPs pro Kunde
+    if ip:
+        exact = customer_dir / f"{month}_{ip}.json"
+        if exact.exists():
+            path = exact
+        else:
+            paths = list(customer_dir.glob(f"{month}_*.json"))
+            if not paths:
+                return None
+            path = paths[0]
+    else:
+        paths = list(customer_dir.glob(f"{month}_*.json"))
+        if not paths:
+            return None
+        path = paths[0]
 
-    path = paths[0]
     with path.open("r", encoding="utf-8") as f:
         data = json.load(f)
 

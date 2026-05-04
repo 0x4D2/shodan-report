@@ -32,7 +32,7 @@ def generate_pdf(
     if output_dir is None:
         output_dir = reports_dir()
     output_dir.mkdir(parents=True, exist_ok=True)
-    customer_dir = output_dir / customer_name.replace(" ", "_")
+    customer_dir = output_dir / customer_name.replace(" ", "_") / month
     customer_dir.mkdir(parents=True, exist_ok=True)
 
     safe_ip = ip.replace("/", "_").replace(":", "_")

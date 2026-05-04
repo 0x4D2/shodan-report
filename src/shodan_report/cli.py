@@ -161,6 +161,46 @@ def run_pipeline_with_args(args: argparse.Namespace) -> dict:
 
     return generate_report_pipeline(**build_pipeline_kwargs(args))
 
+def _resolve_ip_list(args: argparse.Namespace) -> list[str]:
+    """Gibt alle zu scannenden IPs zurück.
+
+    Reihenfolge: --ip CLI > config.ips > config.ip > leer (Domain-Scout löst auf).
+    """
+    if args.ip:
+        return [args.ip]
+
+    if args.config and args.config.exists():
+        import yaml
+        try:
+            cfg = yaml.safe_load(args.config.read_text(encoding="utf-8")) or {}
+            customer = cfg.get("customer", {})
+            ips = customer.get("ips")
+            if ips and isinstance(ips, list):
+                return ips
+            single = customer.get("ip")
+            if single:
+                return [single]
+        except Exception:
+            pass
+
+    return []  # Domain-Scout oder Fehler im Runner
+
+
+def _print_result(result: dict, args: argparse.Namespace) -> None:
+    if result.get("success"):
+        if not args.quiet:
+            print(f"\n Report erfolgreich generiert:")
+            print(f"   PDF: {result['pdf_path']}")
+            if result.get("archived"):
+                print(f"   Archiviert als: {result['archive_path']}")
+            print(f"   Business-Risiko: {result['business_risk']}")
+    else:
+        print(
+            f"\n Fehler: {result.get('error', 'Unbekannter Fehler')}",
+            file=sys.stderr,
+        )
+
+
 def main() -> int:
     """Main entry point."""
     args = parse_args()
@@ -181,22 +221,25 @@ def main() -> int:
             print(f"Konfiguration: {args.config}")
 
     try:
-        result = run_pipeline_with_args(args)
+        ip_list = _resolve_ip_list(args)
 
-        if result.get("success"):
-            if not args.quiet:
-                print(f"\n Report erfolgreich generiert:")
-                print(f"   PDF: {result['pdf_path']}")
-                if result.get("archived"):
-                    print(f"   Archiviert als: {result['archive_path']}")
-                print(f"   Business-Risiko: {result['business_risk']}")
-            return 0
-        else:
-            print(
-                f"\n Fehler: {result.get('error', 'Unbekannter Fehler')}",
-                file=sys.stderr,
-            )
-            return 1
+        # Mehrere IPs aus Config → für jede IP einen Report generieren
+        if len(ip_list) > 1:
+            errors = 0
+            for ip in ip_list:
+                if not args.quiet:
+                    print(f"\n[{ip}] Starte Report…")
+                args.ip = ip
+                result = run_pipeline_with_args(args)
+                _print_result(result, args)
+                if not result.get("success"):
+                    errors += 1
+            return 1 if errors else 0
+
+        # Einzelne IP oder Domain-Scout
+        result = run_pipeline_with_args(args)
+        _print_result(result, args)
+        return 0 if result.get("success") else 1
 
     except KeyboardInterrupt:
         print("\n Abgebrochen durch Benutzer", file=sys.stderr)
@@ -205,7 +248,6 @@ def main() -> int:
         print(f"\n Unerwarteter Fehler: {e}", file=sys.stderr)
         if args.verbose:
             import traceback
-
             traceback.print_exc()
         return 1
 
