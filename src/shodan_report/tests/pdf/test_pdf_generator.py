@@ -37,7 +37,7 @@ def test_generate_pdf_calls_renderer_and_returns_path(tmp_path, monkeypatch):
         output_dir=tmp_path / "reports",
     )
 
-    expected_dir = tmp_path / "reports" / customer.replace(" ", "_")
+    expected_dir = tmp_path / "reports" / customer.replace(" ", "_") / month
     expected_file = f"{month}_{ip}.pdf"
     expected_path = expected_dir / expected_file
 

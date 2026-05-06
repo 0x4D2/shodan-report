@@ -1,7 +1,12 @@
 import re
 from reportlab.platypus import Table, Paragraph
 from shodan_report.pdf.styles import create_styles, create_theme
-from shodan_report.pdf.sections.cve_overview import create_cve_overview_section
+from shodan_report.pdf.sections.cve_overview import (
+    create_cve_overview_section,
+    _exploit_cell,
+    _epss_cell,
+    _cvss_badge,
+)
 
 
 def _make_styles():
@@ -387,3 +392,151 @@ def test_cve_hint_text_when_list_truncated(monkeypatch):
     # Implementation uses "Vollständige CVE-Liste auf Anfrage verfügbar."
     found = any("Liste auf Anfrage verf" in t for t in all_texts)
     assert found, "Hinweistext 'Liste auf Anfrage verfügbar' fehlt beim Truncate"
+
+
+# ── Unit-Tests: _exploit_cell ─────────────────────────────────────────────────
+
+def test_exploit_cell_kev_only():
+    styles = _make_styles()
+    p = _exploit_cell(styles, "public", False)
+    txt = p.getPlainText().lower()
+    assert "cisa" in txt or "kev" in txt
+    assert "exploitdb" not in txt.lower()
+
+
+def test_exploit_cell_kev_and_exploitdb():
+    styles = _make_styles()
+    p = _exploit_cell(styles, "public", True)
+    txt = p.getPlainText().lower()
+    assert "cisa" in txt or "kev" in txt
+    assert "exploit" in txt
+
+
+def test_exploit_cell_exploitdb_only():
+    styles = _make_styles()
+    p = _exploit_cell(styles, "none", True)
+    txt = p.getPlainText().lower()
+    assert "exploit" in txt
+    assert "kev" not in txt
+
+
+def test_exploit_cell_no_exploit():
+    styles = _make_styles()
+    p = _exploit_cell(styles, "none", False)
+    txt = p.getPlainText()
+    assert txt.strip() == "—"
+
+
+# ── Unit-Tests: _epss_cell ────────────────────────────────────────────────────
+
+def test_epss_cell_none():
+    styles = _make_styles()
+    p = _epss_cell(styles, None)
+    assert p.getPlainText().strip() == "—"
+
+
+def test_epss_cell_high():
+    styles = _make_styles()
+    p = _epss_cell(styles, 0.60)
+    assert "60.0%" in p.getPlainText()
+
+
+def test_epss_cell_thresholds():
+    styles = _make_styles()
+    for score, expected in [(0.50, "50.0%"), (0.20, "20.0%"), (0.05, "5.0%"), (0.01, "1.0%")]:
+        p = _epss_cell(styles, score)
+        assert expected in p.getPlainText(), f"EPSS {score} → erwartet {expected}"
+
+
+# ── Unit-Tests: _cvss_badge ───────────────────────────────────────────────────
+
+def test_cvss_badge_boundaries():
+    styles = _make_styles()
+    for cvss, expected in [(9.0, "9.0"), (7.0, "7.0"), (4.0, "4.0"), (3.9, "3.9")]:
+        badge = _cvss_badge(styles, cvss)
+        txt = _paragraph_text(badge)
+        assert expected in txt, f"CVSS {cvss} → erwartet {expected} in Badge-Text"
+
+
+def test_cvss_badge_none():
+    styles = _make_styles()
+    badge = _cvss_badge(styles, None)
+    txt = _paragraph_text(badge)
+    assert "n/a" in txt.lower()
+
+
+# ── Integrationstests: fehlende Szenarien ─────────────────────────────────────
+
+def test_exploit_map_key_case_insensitive(monkeypatch):
+    """cve_exploit_map mit lowercase-Key muss trotzdem greifen (.upper()-Lookup)."""
+    styles = _make_styles()
+    elements = []
+    technical_json = {"services": [], "cve_exploit_map": {"cve-2024-1234": True}}
+
+    enriched = [
+        {"id": "CVE-2024-1234", "cvss": 7.0, "ports": [], "service": "Various",
+         "summary": "", "exploit_status": "none"},
+    ]
+
+    import shodan_report.pdf.sections.cve_overview as mod
+    monkeypatch.setattr(mod, "enrich_cves", lambda ids, technical_json=None, lookup_nvd=False: enriched)
+
+    create_cve_overview_section(elements, styles, technical_json)
+
+    detailed = _find_detailed_table(elements)
+    assert detailed is not None
+    exploit_txt = _paragraph_text(detailed._cellvalues[1][3]).lower()
+    assert "exploit" in exploit_txt, f"Lowercase-Key in exploit_map nicht erkannt: '{exploit_txt}'"
+
+
+def test_epss_map_rendered_in_table(monkeypatch):
+    """EPSS-Score aus technical_json['cve_epss_map'] erscheint in der EPSS-Spalte."""
+    styles = _make_styles()
+    elements = []
+    technical_json = {
+        "services": [],
+        "cve_epss_map": {"CVE-2024-9001": 0.75},
+    }
+
+    enriched = [
+        {"id": "CVE-2024-9001", "cvss": 8.0, "ports": [], "service": "Various",
+         "summary": "", "exploit_status": "none"},
+    ]
+
+    import shodan_report.pdf.sections.cve_overview as mod
+    monkeypatch.setattr(mod, "enrich_cves", lambda ids, technical_json=None, lookup_nvd=False: enriched)
+
+    create_cve_overview_section(elements, styles, technical_json)
+
+    detailed = _find_detailed_table(elements)
+    assert detailed is not None
+    epss_txt = _paragraph_text(detailed._cellvalues[1][4])
+    assert "75.0%" in epss_txt, f"EPSS-Score nicht gerendert: '{epss_txt}'"
+
+
+def test_kpi_cisa_kev_count(monkeypatch):
+    """Die 5. KPI-Karte (CISA KEV) zählt korrekt."""
+    styles = _make_styles()
+    elements = []
+    technical_json = {"services": []}
+
+    enriched = [
+        {"id": "CVE-2024-1001", "cvss": 9.0, "ports": [], "service": "Various", "summary": "", "exploit_status": "public"},
+        {"id": "CVE-2024-1002", "cvss": 7.5, "ports": [], "service": "Various", "summary": "", "exploit_status": "public"},
+        {"id": "CVE-2024-1003", "cvss": 5.0, "ports": [], "service": "Various", "summary": "", "exploit_status": "none"},
+    ]
+
+    import shodan_report.pdf.sections.cve_overview as mod
+    monkeypatch.setattr(mod, "enrich_cves", lambda ids, technical_json=None, lookup_nvd=False: enriched)
+
+    create_cve_overview_section(elements, styles, technical_json)
+
+    tables = [e for e in elements if isinstance(e, Table)]
+    risk_table = next(
+        (t for t in tables if len(getattr(t, "_cellvalues", [[]])[0]) == 5
+         and all(isinstance(c, Table) for c in t._cellvalues[0])),
+        None,
+    )
+    assert risk_table is not None, "KPI-Karten-Tabelle nicht gefunden"
+    counts = _extract_counts_from_risk_table(risk_table)
+    assert counts[4] == 2, f"CISA-KEV-Karte muss 2 zeigen, got: {counts}"

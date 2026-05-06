@@ -140,7 +140,8 @@ def test_pdf_and_archive_integration(tmp_path, monkeypatch):
     assert archive_data["ip"] == curr.ip
     assert len(archive_data["services"]) == 2
 
-    assert pdf_path.parent.name == customer_name.replace(" ", "_")
+    assert pdf_path.parent.name == month
+    assert pdf_path.parent.parent.name == customer_name.replace(" ", "_")
     assert pdf_path.name == f"{month}_{curr.ip}.pdf"
 
 

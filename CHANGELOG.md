@@ -1,5 +1,13 @@
 # 2026-05-06
 
+## test: Sortier-Priorität KEV/ExploitDB in CVE-Tabelle abgesichert
+
+3 neue Integrationstests verifizieren die Reihenfolge der CVE-Tabelle gegen Regressionen.
+
+- [`src/shodan_report/tests/pdf/sections/test_cve_overview_integration.py`](src/shodan_report/tests/pdf/sections/test_cve_overview_integration.py): `test_sort_kev_before_higher_cvss` — KEV-CVE (CVSS 5.0) erscheint vor CVSS-9.8 ohne Exploit; `test_sort_exploitdb_before_plain_cvss` — ExploitDB-Eintrag schlägt höheren CVSS ohne Exploit; `test_sort_full_priority_chain` — vollständige Kette KEV > ExploitDB > plain CVSS verifiziert; Hilfsfunktion `_row_cve_ids()` extrahiert CVE-IDs per Regex aus Paragraph-Plaintext (Confidence-Label wird abgeschnitten)
+
+---
+
 ## feat: CVE-Tabelle priorisiert CISA KEV und ExploitDB-Einträge
 
 CVEs mit aktivem Exploit oder CISA-KEV-Eintrag erscheinen nun ganz oben in der CVE-Übersichtstabelle — unabhängig vom CVSS-Score.

@@ -229,8 +229,10 @@ def _extract_cve_data(technical_json: Dict[str, Any], context: Optional[Any] = N
             service = ",".join([str(p) for p in ports]) if ports else "Various"
             # Preserve NVD url and any service indicator populated by the enricher
             # ExploitDB + EPSS aus technical_json mergen (vom Runner befüllt)
-            _exploit_map = technical_json.get("cve_exploit_map") or {} if isinstance(technical_json, dict) else {}
-            _epss_map    = technical_json.get("cve_epss_map")    or {} if isinstance(technical_json, dict) else {}
+            _raw_exploit = technical_json.get("cve_exploit_map") or {} if isinstance(technical_json, dict) else {}
+            _raw_epss    = technical_json.get("cve_epss_map")    or {} if isinstance(technical_json, dict) else {}
+            _exploit_map = {k.upper(): v for k, v in _raw_exploit.items()}
+            _epss_map    = {k.upper(): v for k, v in _raw_epss.items()}
             _exploitdb   = bool(_exploit_map.get(str(cid or "").upper()))
             _epss_score  = _epss_map.get(str(cid or "").upper())
 
