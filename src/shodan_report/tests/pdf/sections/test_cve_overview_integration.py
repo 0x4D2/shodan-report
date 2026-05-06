@@ -284,6 +284,87 @@ def test_evaluation_note_is_appended(monkeypatch):
     assert note, "Evaluation note not found"
 
 
+def _row_cve_ids(detailed_table) -> list:
+    """Gibt die CVE-IDs der Datenzeilen (ohne Header) in Reihenfolge zurück."""
+    ids = []
+    for row in detailed_table._cellvalues[1:]:
+        txt = _paragraph_text(row[0])
+        if txt.startswith("+") or "weitere" in txt.lower():
+            continue
+        # CVE-Zelle enthält ID + Confidence-Label (z.B. "CVE-2024-1001OSINT") — nur CVE-Teil
+        m = re.search(r"(CVE-\d{4}-\d+)", txt, re.IGNORECASE)
+        ids.append(m.group(1) if m else txt.strip())
+    return ids
+
+
+def test_sort_kev_before_higher_cvss(monkeypatch):
+    """Ein CVE mit CISA-KEV aber niedrigerem CVSS muss vor einem reinen CVSS-9.8 erscheinen."""
+    styles = _make_styles()
+    elements = []
+    technical_json = {"services": []}
+
+    enriched = [
+        {"id": "CVE-2024-9001", "cvss": 9.8, "ports": [], "service": "Various", "summary": "", "exploit_status": "none",   "exploitdb": False},
+        {"id": "CVE-2024-5001", "cvss": 5.0, "ports": [], "service": "Various", "summary": "", "exploit_status": "public", "exploitdb": False},
+    ]
+
+    import shodan_report.pdf.sections.cve_overview as mod
+    monkeypatch.setattr(mod, "enrich_cves", lambda ids, technical_json=None, lookup_nvd=False: enriched)
+
+    create_cve_overview_section(elements, styles, technical_json)
+
+    detailed = _find_detailed_table(elements)
+    assert detailed is not None
+    ids = _row_cve_ids(detailed)
+    assert ids[0] == "CVE-2024-5001", f"KEV-Eintrag muss zuerst stehen, got: {ids}"
+
+
+def test_sort_exploitdb_before_plain_cvss(monkeypatch):
+    """Ein CVE mit ExploitDB-Eintrag muss vor einem höheren CVSS ohne Exploit stehen."""
+    styles = _make_styles()
+    elements = []
+    # exploitdb wird aus technical_json["cve_exploit_map"] gelesen
+    technical_json = {"services": [], "cve_exploit_map": {"CVE-2024-6001": True}}
+
+    enriched = [
+        {"id": "CVE-2024-9002", "cvss": 9.0, "ports": [], "service": "Various", "summary": "", "exploit_status": "none"},
+        {"id": "CVE-2024-6001", "cvss": 6.5, "ports": [], "service": "Various", "summary": "", "exploit_status": "none"},
+    ]
+
+    import shodan_report.pdf.sections.cve_overview as mod
+    monkeypatch.setattr(mod, "enrich_cves", lambda ids, technical_json=None, lookup_nvd=False: enriched)
+
+    create_cve_overview_section(elements, styles, technical_json)
+
+    detailed = _find_detailed_table(elements)
+    assert detailed is not None
+    ids = _row_cve_ids(detailed)
+    assert ids[0] == "CVE-2024-6001", f"ExploitDB-Eintrag muss vor reinem CVSS stehen, got: {ids}"
+
+
+def test_sort_full_priority_chain(monkeypatch):
+    """Vollständige Prioritätskette: KEV > ExploitDB > plain CVSS (absteigend)."""
+    styles = _make_styles()
+    elements = []
+    technical_json = {"services": [], "cve_exploit_map": {"CVE-2024-7001": True}}
+
+    enriched = [
+        {"id": "CVE-2024-9999", "cvss": 9.9, "ports": [], "service": "Various", "summary": "", "exploit_status": "none"},
+        {"id": "CVE-2024-7001", "cvss": 7.0, "ports": [], "service": "Various", "summary": "", "exploit_status": "none"},
+        {"id": "CVE-2024-5002", "cvss": 5.0, "ports": [], "service": "Various", "summary": "", "exploit_status": "public"},
+    ]
+
+    import shodan_report.pdf.sections.cve_overview as mod
+    monkeypatch.setattr(mod, "enrich_cves", lambda ids, technical_json=None, lookup_nvd=False: enriched)
+
+    create_cve_overview_section(elements, styles, technical_json)
+
+    detailed = _find_detailed_table(elements)
+    assert detailed is not None
+    ids = _row_cve_ids(detailed)
+    assert ids == ["CVE-2024-5002", "CVE-2024-7001", "CVE-2024-9999"], f"Falsche Reihenfolge: {ids}"
+
+
 def test_cve_hint_text_when_list_truncated(monkeypatch):
     """Wenn mehr CVEs vorliegen als angezeigt werden, erscheint der
     kundenfreundliche Hinweis 'Vollständige Liste auf Anfrage verfügbar' (30.03.2026)."""
