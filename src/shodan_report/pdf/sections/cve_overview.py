@@ -674,11 +674,13 @@ def _create_detailed_cve_table(
         _hdr("EPSS (30T)"),
     ]]
 
-    # Sortieren: höchster CVSS zuerst
+    # Sortieren: CISA KEV > ExploitDB > service_indicator > CVSS
     def _sort_key(x):
         v = x.get("cvss")
-        has_ind = 1 if x.get("service_indicator") else 0
-        return (has_ind, v if v is not None else -1)
+        is_kev     = 1 if x.get("exploit_status") == "public" else 0
+        has_exploit = 1 if x.get("exploitdb") else 0
+        has_ind    = 1 if x.get("service_indicator") else 0
+        return (is_kev, has_exploit, has_ind, v if v is not None else -1)
 
     sorted_all  = sorted(cve_data, key=_sort_key, reverse=True)
     to_display  = sorted_all if show_full else sorted_all[:max(0, int(limit or 6))]

@@ -1,3 +1,13 @@
+# 2026-05-06
+
+## feat: CVE-Tabelle priorisiert CISA KEV und ExploitDB-Einträge
+
+CVEs mit aktivem Exploit oder CISA-KEV-Eintrag erscheinen nun ganz oben in der CVE-Übersichtstabelle — unabhängig vom CVSS-Score.
+
+- [`src/shodan_report/pdf/sections/cve_overview.py`](src/shodan_report/pdf/sections/cve_overview.py): Sort-Key in `_create_detailed_cve_table()` erweitert — neue Priorität: **CISA KEV** (`exploit_status == "public"`) > **ExploitDB-Exploit** (`exploitdb == True`) > Service-Indicator > CVSS-Score (absteigend); ein CVE mit aktivem KEV-Eintrag steht damit vor einem theoretischen CVSS 9.8 ohne bekannten Exploit
+
+---
+
 # 2026-04-22
 
 ## feat: ExploitDB + EPSS Integration in CVE-Übersicht
