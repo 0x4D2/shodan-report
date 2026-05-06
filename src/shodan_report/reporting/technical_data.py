@@ -34,7 +34,7 @@ def build_technical_data(
 
     # Open Ports (kompakt) + Services (mit Detailfeldern)
     technical["services"] = []
-    for service in snapshot.services:
+    for service in (snapshot.services or []):
         # Daten aus dem erweiterten raw-Dict extrahieren
 
         raw = getattr(service, "raw", None)
@@ -163,7 +163,7 @@ def _identify_critical_services(open_ports: list) -> list:
 
     for port_info in open_ports:
         port = port_info["port"]
-        extra_info = port_info.get("extra_info", "").lower()
+        extra_info = (port_info.get("extra_info") or "").lower()
 
         # DNS mit Recursion ist kritisch
         if port == 53 and "recursion enabled" in extra_info:

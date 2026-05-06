@@ -51,7 +51,9 @@ def convert_to_cve_objects(vulnerabilities: List) -> List[CVE]:
         if isinstance(vuln, dict):
             cve_id = vuln.get("id", "UNKNOWN-CVE")
             cvss = vuln.get("cvss", 0.0)
-            if isinstance(cvss, str):
+            if cvss is None:
+                cvss = 0.0
+            elif isinstance(cvss, str):
                 try:
                     cvss = float(cvss)
                 except ValueError:
