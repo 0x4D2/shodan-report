@@ -1,26 +1,16 @@
-""""markdown
 # Shodan Report — Detaillierte Dokumentation
 
-Automatisierter Report-Generator für externe Sicherheitsanalysen (OSINT).
+Automatisierter Report-Generator für externe Sicherheitsanalysen auf Basis von OSINT- und Shodan-Daten.
 
-Dieser Text erklärt Zweck, Architektur, Installation, typische Abläufe und wichtige Dateien.
+Diese Datei ergänzt das Haupt-README um mehr Kontext zu Installation, Architektur, CVE-Enrichment, PDF-Aufbau und produktivem Betrieb.
 
 ## Kurzbeschreibung
 
-`shodan-report` erstellt monatliche, reproduzierbare und revisionssichere PDF-Reports über die externe Angriffsfläche einer IP-Adresse basierend auf Shodan-Snapshots. Zielgruppen sind technische Teams (Details) und Management (Executive Summary).
+`shodan-report` erstellt monatliche, reproduzierbare und revisionssichere PDF-Reports über die externe Angriffsfläche eines Assets. Zielgruppen sind sowohl Management als auch technische Teams: Management erhält verdichtete Kernaussagen und Prioritäten, technische Leser die zugrundeliegenden Dienste, Findings und Bewertungsdetails.
 
-## Hauptfunktionen
+## Installation
 
-- Shodan-Daten abrufen und normalisieren
-- Regelbasierte Risiko-Evaluation (zentral: `EvaluationEngine`)
-- Trendanalyse (Monatsvergleiche)
-- Professionelle PDF-Erzeugung mit Management- und Technik-Abschnitten
-- Revisionssichere Archivierung mit Versionierung und SHA256
-- CLI für Einzel- und Batchverarbeitung
-
-## Schnellstart
-
-1. Repository klonen
+Für die normale Nutzung:
 
 ```powershell
 git clone <repo-url>
@@ -30,208 +20,203 @@ python -m venv .venv
 pip install -e .
 ```
 
-2. API-Key (PowerShell)
+Für Entwicklung, Tests und CI:
+
+```powershell
+pip install -e .[dev]
+
+# alternativ über den Dev-Shortcut
+pip install -r requirements.txt
+```
+
+`pyproject.toml` ist die führende Quelle für Runtime- und Dev-Abhängigkeiten. `requirements.txt` dient nur als bequemer Einstiegspunkt für Dev-Umgebungen und installiert `-e .[dev]`.
+
+## Schnellstart
+
+API-Key in PowerShell setzen:
 
 ```powershell
 $env:SHODAN_API_KEY = "DEIN_API_KEY"
 ```
 
-3. Einfache Nutzung
+Einfacher Reportlauf:
 
 ```powershell
 shodan-report --customer "Testkunde" --ip "8.8.8.8" --month "2025-01"
 ```
 
-4. Batch mit `jobs.txt`
+Batch-Verarbeitung:
 
 ```powershell
 python scripts/run-jobs-direct.py
 ```
 
-## CLI-Optionen (Auszug)
+## CLI-Optionen im Überblick
 
-- `--customer`, `-c` : Kundenname
-- `--ip`, `-i` : Ziel-IP
-- `--month`, `-m` : Monat (YYYY-MM)
-- `--compare` : Vergleichsmonat
-- `--config` : Kundenkonfiguration (`config/customers/*.yaml`)
-- `--output-dir`, `-o` : Ausgabeordner
-- `--verbose`, `-v` / `--quiet`, `-q`
+- `--customer`, `-c`: Kundenname
+- `--ip`, `-i`: Ziel-IP
+- `--domain`, `-d`: Ziel-Domain für Attack-Surface-Discovery
+- `--month`, `-m`: Monat im Format `YYYY-MM`
+- `--compare`: Vergleichsmonat
+- `--config`: Kundenkonfiguration unter `config/customers/*.yaml`
+- `--output-dir`, `-o`: Ausgabeordner
+- `--from-snapshot`: PDF aus gespeichertem Snapshot neu rendern
+- `--verbose`, `-v` und `--quiet`, `-q`: Ausgabesteuerung
 
 ## Konfiguration
 
-Kundenkonfigurationen liegen in `config/customers/`. Beispielstruktur:
+Kundenkonfigurationen liegen unter `config/customers/`. Beispiel:
 
 ```yaml
 customer:
   name: "Beispiel GmbH"
-  language: "de"
+  ip: "1.2.3.4"
+  domain: "beispiel.de"
+  package: "professional"
 
 report:
   include_trend_analysis: true
+  cover_note: ""
 
 styling:
   primary_color: "#1a365d"
+  secondary_color: "#2d3748"
+
+nvd:
+  enabled: false
 ```
 
-## Architektur & Workflow (Kurz)
+Wichtige Felder:
 
-Ziel: Klar getrennte, testbare Schritte von Datenaufnahme bis Archiv.
+- `customer.name`: Anzeigename im Report und in Archivpfaden
+- `customer.ip` oder `customer.ips`: explizite Zieladresse(n)
+- `customer.domain`: aktiviert Domain-Discovery
+- `customer.package`: steuert enthaltene Berichtsteile und NVD-Verhalten
+- `report.include_trend_analysis`: schaltet Trendabschnitte ein oder aus
+- `report.cover_note`: persönliche Analysten-Notiz auf Seite 1
+- `styling.*`: Corporate-Farben für das PDF
+- `nvd.enabled`: Live-NVD-Abfragen aktivieren
 
-Hauptkomponenten (Ort und Aufgabe):
+## Architektur und Workflow
 
-- `src/shodan_report/cli.py` — CLI-Entrypoint
-- `src/shodan_report/core/runner.py` — Orchestrierung der Pipeline
-- `src/shodan_report/evaluation/` — Bewertungslogik (`EvaluationEngine`)
-- `src/shodan_report/pdf/` — PDF-Generierung und Layout
-- `src/shodan_report/archiver/` — Revisionssichere Archivierung
-- `config/customers/` — Kunden-spezifische Einstellungen
-- `scripts/` — Utility- und Batch-Skripte (z. B. `run-jobs-direct.py`)
+Die Anwendung ist entlang klarer Verantwortungen geschnitten:
 
-Pipeline (vereinfacht):
+- `src/shodan_report/cli.py`: CLI-Entrypoint und Argumentvalidierung
+- `src/shodan_report/core/runner.py`: Pipeline-Orchestrierung
+- `src/shodan_report/clients/`: externe Datenquellen wie Shodan, NVD, CISA, EPSS, GreyNoise
+- `src/shodan_report/parsing/`: Normalisierung der Rohdaten in interne Modelle
+- `src/shodan_report/evaluation/`: Risikoermittlung und Priorisierung
+- `src/shodan_report/reporting/`: Management- und Techniktexte
+- `src/shodan_report/pdf/`: PDF-Komposition, Layout und Rendering
+- `src/shodan_report/persistence/`: Snapshot-Speicherung
+- `src/shodan_report/archiver/`: revisionssichere Archivierung mit Versionierung und Hashes
 
-1. Kundenkonfiguration laden
-2. Shodan-Daten abrufen oder lokalen Snapshot verwenden
-3. Snapshot normalisieren (Asset-Model)
-4. Evaluation: Risiko-Level und Prioritäten bestimmen
-5. Trendanalyse (optional)
-6. Management- und Techniktexte generieren
-7. PDF erzeugen
-8. Archivierung (SHA256, Versionierung)
+Vereinfachter Ablauf:
+
+1. Kundenkonfiguration laden.
+2. Daten per Shodan oder aus vorhandenem Snapshot beziehen.
+3. Rohdaten in `AssetSnapshot` und `Service`-Objekte überführen.
+4. Risiken, Exposure und Prioritäten berechnen.
+5. Optional Trenddaten und Zusatzquellen anreichern.
+6. Management- und Technikdaten vorbereiten.
+7. PDF rendern.
+8. Report archivieren und Metadaten schreiben.
 
 ## Wichtige Konzepte
 
-- `Snapshot` — internal Modell für Shodan-Hostdaten
-- `EvaluationResult` — strukturierte Bewertung (risk, exposure_score, critical_points)
-- `evaluation_result_to_dict()` — Normiert Ergebnis für PDF-Templates
+- `AssetSnapshot`: internes Modell eines Host- oder Asset-Zustands
+- `Service`: einzelner exponierter Dienst mit Port, Produkt, Version und Findings
+- `EvaluationResult`: strukturierte Bewertung mit Risiko, Exposure und Empfehlungen
+- `evaluation_result_to_dict()`: Übergabeformat für PDF-Rendering und Reporting
 
-## Tests
+## CVE-Ermittlung und Enrichment
 
-Tests befinden sich unter `src/shodan_report/tests/`. Lokal ausführen mit:
+Die CVE-Aufbereitung läuft in mehreren Stufen:
+
+1. Shodan-Snapshot lesen.
+2. Im Parser CVEs, Banner, Produkte und Versionshinweise extrahieren.
+3. CVEs lokal pro Port, CVSS und CPE aggregieren.
+4. Optional zusätzliche Daten aus NVD, CISA KEV, EPSS oder ExploitDB anreichern.
+5. Die Ergebnisse in die Risiko-Evaluierung und den PDF-Kontext übernehmen.
+
+Wichtige Bausteine:
+
+- `src/shodan_report/parsing/utils.py`: erstellt `AssetSnapshot`-Objekte aus Shodan-Rohdaten
+- `src/shodan_report/evaluation/evaluators/cve_evaluator.py`: bewertet CVEs und erzeugt kritische Punkte
+- `src/shodan_report/pdf/sections/data/cve_enricher.py`: reichert CVEs für den Bericht an
+- `src/shodan_report/clients/nvd_client.py`: NVD-v2-Lookups
+- `src/shodan_report/clients/cisa_client.py`: CISA-KEV-Abgleich
+
+Hinweis: Ein Teil der Zuordnung bleibt OSINT-basiert. Im Report wird zwischen direkt beobachteten und hergeleiteten Findings unterschieden.
+
+## PDF-Aufbau und Seitenlogik
+
+Das PDF trennt Management- und Technikperspektive bewusst voneinander. Wichtige Ziele sind Lesbarkeit, Druckbarkeit und ein stabiler, wiederholbarer Aufbau.
+
+Typische Abschnitte:
+
+- Management-Zusammenfassung
+- realistisches Angriffsszenario
+- Handlungsempfehlungen
+- Attack Surface bei Domain-Scans
+- technischer Anhang
+- CVE- und Exploit-Übersicht
+- Trendanalyse
+- Fazit
+- Methodik und Grenzen
+
+Warum explizite Seitenumbrüche und zusammengehaltene Blöcke genutzt werden:
+
+- Tabellen und Kernabschnitte sollen nicht unkontrolliert zerrissen werden.
+- Der Report bleibt beim Drucken und Archivieren konsistent.
+- Der Seitenaufbau ist für wiederkehrende Monatsberichte leichter vergleichbar.
+
+## Archivierung und Metadaten
+
+Archivierte Reports liegen typischerweise unter `archive/{customer_slug}/{YYYY-MM}/`.
+
+Die zugehörige `meta.json` enthält unter anderem:
+
+- `customer_slug`
+- `customer_name`
+- `ip`
+- `month`
+- `pdf_path`
+- `sha256`
+- `size_bytes`
+- `version`
+- `generator`
+- `created_at`
+
+Die Kombination aus Versionierung und SHA256 dient der Nachvollziehbarkeit und Integritätsprüfung.
+
+## Tests und Entwicklung
+
+Tests liegen unter `src/shodan_report/tests/`.
 
 ```powershell
-pytest -q
+python -m pytest -q
 ```
 
-## Wartung & Weiterentwicklung
+Für fokussierte Läufe können Teilbereiche direkt ausgeführt werden, zum Beispiel:
 
-- PDF-Layout soll schrittweise modularisiert werden (`src/shodan_report/pdf/sections/`).
-- `EvaluationEngine` ist zentral: Änderungen sollen hier getestet werden.
-- Bekannte Probleme und Teststatus sind im Repository-TODO bzw. CI dokumentiert.
+```powershell
+python -m pytest src/shodan_report/tests/pdf/ -q
+python -m pytest src/shodan_report/tests/core/ -q
+```
 
-## Lizenz
+Die zuletzt verifizierte Suite lief am 2026-05-07 mit 913 grünen Tests.
 
-MIT — siehe `LICENSE`.
+## Empfehlungen für den produktiven Betrieb
 
-## Kontakt
+- Für Batch-Jobs NVD-Feeds vorab mit `scripts/fetch_nvd_feeds.py` laden.
+- Live-APIs nur gezielt aktivieren, um Rate-Limits zu vermeiden.
+- Cache-Verhalten und TTLs für regelmäßige Reportläufe bewusst einstellen.
+- Änderungen an der `EvaluationEngine` immer mit gezielten Tests absichern.
+- Debug- und Demo-Ausgaben nicht als Produktionsartefakte übernehmen.
 
-Bei Fragen öffne ein Issue oder kontaktiere das Team über die Repository-Kanäle.
+## Lizenz und Kontakt
 
-"""" # Detaillierte Dokumentation: Konfiguration, CVE‑Ermittlung & PDF‑Metadaten
+Lizenz: MIT, siehe `LICENSE`.
 
-Diese Datei beschreibt detailliert die Konfigurationsfelder, wie CVEs aus Shodan‑Snapshots ermittelt und angereichert werden, welche Metadaten beim Archivieren erzeugt werden und wie das PDF strukturiert ist — inklusive Gründen für Seitenumbrüche.
-
-## 1) Konfiguration (Detailliert)
-
-Pfad: `config/customers/{name}.yaml`
-
-Wichtige Felder und Bedeutungen:
-
-- `customer.name` (string): Anzeigename des Kunden, wird in PDF Header und Archiv‑Pfaden verwendet.
-- `customer.language` (string): `de` oder `en` — wählt Sprache der generierten Texte.
-- `report.include_trend_analysis` (bool): Bei `false` werden Trend‑Sektionen übersprungen.
-- `report.nvd.enabled` (bool): Aktiviert Live‑NVD‑Lookups für CVE‑Anreicherung.
-- `styling.primary_color`, `styling.secondary_color` (hex): Corporate Farben für Diagramme/Highlights.
-- `pdf.include_toc` (bool): Fügt ein Inhaltsverzeichnis ein, nützlich für lange Reports.
-- `disclaimer.enabled`, `disclaimer.text`: Footer‑Disclaimer aktivieren und anpassen.
-- `archive.enabled`, `archive.root`: Archivierung aktivieren und alternativen Ort setzen.
-
-Empfehlungen:
-- Für Batch‑Runs `report.nvd.enabled` standardmäßig `false` und stattdessen die NVD‑Feeds vorab herunterladen.
-- Stelle sicher, dass `customer.name` einzigartig ist, da daraus der `customer_slug` für Archivrechte abgeleitet wird.
-
-## 2) PDF‑Metadaten & Archiv‑Meta (Format)
-
-Archiv‑Metadatei: `archive/{customer_slug}/{YYYY-MM}/{YYYY-MM}_{ip}.meta.json`
-
-Beispielfelder (aus `ReportArchiver._create_metadata`):
-
-- `customer_slug`: slugifizierter Kundenname (z. B. `beispiel_gmbh`)
-- `customer_name`: Originalname
-- `ip`: Zieladresse
-- `month`: YYYY‑MM
-- `pdf_path`: Pfad relativ zum Archivverzeichnis
-- `sha256`: SHA256 Hash des PDF (Integrität)
-- `size_bytes`: Dateigröße in Bytes
-- `version`: numerische Version (1,2,...)
-- `generator`: z. B. "shodan-report"
-- `created_at`: ISO Timestamp
-- `extra`: optionales Freifeld
-
-Hinweis: Für Revisionssicherheit nutze die `meta.json` zur Verifikation (SHA256 + Versionierung).
-
-## 3) Wie CVEs ermittelt werden (Step‑by‑Step)
-
-1) Rohdatenquelle: Shodan Host JSON
-- Shodan liefert pro Service Einträge (`data[]`), oft mit `vulns` (Liste von CVE IDs oder Objekten).
-
-2) Parsing
-- `src/shodan_report/parsing/utils.py::parse_shodan_host` erzeugt ein `AssetSnapshot` mit `Service`‑Objekten.
-- `parse_service` extrahiert `product`, `version`, `raw` Banner, `vulnerabilities` und strukturiert Zusatzinfos (`_extra_info`).
-
-3) Lokale Aggregation
-- `cve_enricher.build_cve_port_map(technical_json)` aggregiert für jede CVE: beobachtete Ports, max CVSS (wenn im Snapshot vorhanden) und CPEs.
-
-4) Evaluierung
-- `evaluation/evaluators/cve_evaluator.py` konvertiert Rohdaten über Helper (`convert_to_cve_objects`) in interne `CVE`–Objekte (id, cvss, description, etc.).
-- `count_cves_by_severity` und `_calculate_cve_risk_score` führen zu einem numerischen CVE‑Score.
-- `CVEEvaluator._generate_detailed_critical_points` erzeugt menschenlesbare `critical_points` (z. B. "3 kritische CVEs", "Kritischste CVE: CVE‑XXXX (CVSS 9.8)").
-
-5) Optionales externes Enrichment
-- NVD: `src/shodan_report/clients/nvd_client.py` (NVD v2 API) kann zusätzliche Felder liefern: `summary`, konsistente `cvss`, CPEs.
-- CISA KEV: `src/shodan_report/clients/cisa_client.py` liefert KEV IDs; Treffer → `exploit_status = "public"`.
-- `cve_enricher.enrich_cves(..., lookup_nvd=True)` führt Lookup + Cache (TTL, `.cache/shodan_report/cve_cache.json`) durch.
-
-6) Aggregation in Report
-- `EvaluationEngine` summiert Service‑Risiken inkl. CVE‑Contributions und produziert ein `EvaluationResult` (ip, risk enum, exposure_score, critical_points, recommendations).
-- `evaluation_result_to_dict()` konvertiert für das PDF‑Template.
-
-Konfigurierbar / ToDo:
-- Scoring‑Schwellen sollten in `EvaluationConfig` liegende Parameter sein (anstatt hartkodiert).
-
-## 4) PDF‑Aufbau & Seitenumbrüche — Warum so gestaltet?
-
-Ziele des Layouts:
-- Zielgruppentrennung: Management benötigt kompakte, nicht fragmentierte Kernaussagen. Techniker benötigt detaillierte Listen.
-- Druckbarkeit & Signatur: Feste Abschnitte erleichtern das Ausdrucken und Unterzeichnen.
-- Lesbarkeit: Tabellen und Diagramme sollen nicht über Seiten hinweg zerrissen werden.
-
-Konkrete Sections (entsprechend dem Generator):
-- Cover / Header: Metadaten, Generator‑Version
-- Executive Summary: Kurzbewertung + Top‑Risiken
-- Scorecards: Visualisierungen (Risk/Exposure/Trend)
-- Trendvergleich: Tabellen/Charts
-- Empfehlungen: Handlungsorientierte To‑Dos
-- Technischer Anhang: Lange Tabellen, Services, Banners
-- CVE Übersicht: Tabellarische CVE‑Liste, Links zu NVD
-- Methodik & Grenzen: Transparenz über Datenquellen und Limitationen
-- Footer / Disclaimer
-
-Warum PageBreaks verwendet werden:
-- ReportLab verwendet Flowables; `PageBreak` sorgt dafür, dass ein neuer Abschnitt sauber auf einer neuen Seite beginnt.
-- Regeln wie "halte Tabelle zusammen" oder "Umbruch vor Tabelle" verhindern unschöne Layoutbrüche.
-- Ein konsistenter Seitenaufbau erleichtert das Nachschlagen (TOC), die Archivierung und die Darstellung in Clients.
-
-Technische Hinweise für Entwickler:
-- Sections in `src/shodan_report/pdf/sections/` geben Flowable‑Listen zurück; `generate_pdf` fügt diese zusammen.
-- Für Tests sind Sections als Callables injizierbar (Mock‑Sections), was Rendering ohne ReportLab erlaubt.
-
-## 5) Empfehlungen für den produktiven Betrieb
-
-- Batch‑Jobs: NVD‑Feeds vorab herunterladen (`scripts/fetch_nvd_feeds.py`) oder `NVD_API_KEY` verwenden.
-- Cache: TTL anpassen, wenn Reports in kurzen Intervallen laufen.
-- Konfiguration: Scoring‑Parameter in `EvaluationConfig` auslagern, um feingranulare Anpassung ohne Codeänderung zu ermöglichen.
-
----
-
-Bei Fragen zur Datei oder wenn du möchtest, dass ich die Änderungen direkt in `config/customers/example.yaml` vornehme (z. B. `report.nvd.enabled: false`), sag kurz Bescheid.
+Für Rückfragen oder Änderungen an Beispieldateien und Kundenkonfigurationen ist ein Repository-Issue der sinnvollste Einstiegspunkt.

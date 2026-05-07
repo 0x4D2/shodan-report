@@ -12,15 +12,20 @@ dependencies = [
     "python-dotenv",
     "shodan",
     "pyyaml",
-    "reportlab>=3.6"
+    "reportlab>=3.6",
+    "python-dateutil>=2.8",
+    "packaging>=21.0"
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest",
+    "pytest>=7.0",
     "black",
     "mypy",
-    "ruff"
+    "ruff",
+    "PyPDF2>=3.0",
+    "boto3>=1.26",
+    "moto>=4.0"
 ]
 
 [project.scripts]

@@ -1,3 +1,24 @@
+# 2026-05-07
+
+## build: Abhängigkeitsdeklaration auf `pyproject.toml` konsolidiert
+
+Die Paketdeklaration ist jetzt eindeutig: Runtime- und Dev-Abhängigkeiten werden zentral in `pyproject.toml` gepflegt; `requirements.txt` bleibt nur als Dev-/CI-Shortcut erhalten.
+
+- [`pyproject.toml`](pyproject.toml): Runtime-Abhängigkeiten um `python-dateutil>=2.8` und `packaging>=21.0` ergänzt; Dev-Extra um `pytest>=7.0`, `PyPDF2>=3.0`, `boto3>=1.26` und `moto>=4.0` erweitert
+- [`requirements.txt`](requirements.txt): auf `-e .[dev]` reduziert; Hinweis ergänzt, dass `pyproject.toml` die Source of Truth ist
+
+---
+
+## docs: Installationspfade und Projektstatus bereinigt
+
+Die Dokumentation beschreibt jetzt konsistent den Unterschied zwischen normaler Nutzung (`pip install -e .`) und Entwicklung/CI (`pip install -e .[dev]`) und enthält keinen veralteten Teststatus mehr.
+
+- [`README.md`](README.md): Dev-/CI-Installationspfad ergänzt; Testsektion auf den verifizierten Stand von **913 grünen Tests** aktualisiert; ungenaue Testanzahl in der Projektstruktur entfernt; Datumsstand aktualisiert
+- [`CONTRIBUTING.md`](CONTRIBUTING.md): Setup für Beiträge auf `pip install -e .[dev]` umgestellt; Rolle von `requirements.txt` und `pyproject.toml` erläutert
+- [`docs/DETAILED_README.md`](docs/DETAILED_README.md): formal kaputte und zusammengeklebte Markdown-Struktur durch eine saubere, konsistente Detaildokumentation zu Installation, Architektur, CVE-Enrichment, PDF-Aufbau, Archivierung und Tests ersetzt
+
+---
+
 # 2026-05-06
 
 ## test: Sortier-Priorität KEV/ExploitDB in CVE-Tabelle abgesichert

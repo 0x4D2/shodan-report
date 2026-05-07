@@ -22,6 +22,17 @@ copy .env.example .env
 shodan-report --customer "Beispiel GmbH" --ip "1.2.3.4" --month "2026-04"
 ```
 
+Für Entwicklung, Tests und CI statt dessen:
+
+```powershell
+pip install -e .[dev]
+
+# alternativ über requirements.txt als Dev-Shortcut
+pip install -r requirements.txt
+```
+
+`pyproject.toml` ist die führende Quelle für Runtime- und Dev-Abhängigkeiten. `requirements.txt` installiert die Dev-Extras nur als Komfort-Shortcut.
+
 ---
 
 ## Umgebungsvariablen
@@ -240,7 +251,7 @@ shodan-report/
 │   ├── archiver/                     # SHA256, Versionierung
 │   ├── clients/                      # API-Clients (Shodan, NVD, CISA, ExploitDB, EPSS, GreyNoise)
 │   ├── persistence/                  # Snapshot-Speicherung
-│   └── tests/                        # 749 Tests, 9 skipped
+│   └── tests/                        # Umfangreiche Unit-, Integrations- und PDF-Tests
 ├── config/
 │   ├── customers/                    # Kundenkonfigurationen (YAML)
 │   ├── evaluation.yaml               # Scoring-Konfiguration
@@ -262,7 +273,9 @@ python -m pytest -q
 python -m pytest src/shodan_report/tests/pdf/ -q
 ```
 
-Aktueller Stand: **768 passed, 9 skipped** (Stand 2026-04-27)
+Für lokale Testläufe sollte die Umgebung mit `pip install -e .[dev]` vorbereitet sein.
+
+Aktueller Stand: **913 Tests grün** (Stand 2026-05-07)
 
 ---
 
@@ -288,4 +301,4 @@ Jeder Report enthält automatisch:
 
 ---
 
-*Stand: 2026-04-27 — Branch `feature/data-enrichment`*
+*Stand: 2026-05-07*

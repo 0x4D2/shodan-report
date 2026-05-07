@@ -8,8 +8,10 @@ Kurz: Danke fürs Mitwirken! Bitte folge diesen Schritten beim Beitrag.
 ```powershell
 python -m venv .venv
 .venv\Scripts\activate
-pip install -e .
+pip install -e .[dev]
 ```
+
+Hinweis: `pyproject.toml` ist die zentrale Quelle für Abhängigkeiten. `requirements.txt` dient nur als bequemer Dev-/CI-Einstiegspunkt und installiert `-e .[dev]`.
 
 2) Tests lokal ausführen
 
