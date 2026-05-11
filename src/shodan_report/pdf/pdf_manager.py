@@ -21,6 +21,8 @@ from .sections.conclusion import create_conclusion_section
 from .sections.cve_overview import create_cve_overview_section
 from .sections.attack_surface import create_attack_surface_section
 from .sections.attack_scenario import create_attack_scenario_section
+from .sections.executive_summary import create_executive_summary_section
+from .sections.executive_technical import create_executive_technical_section
 
 def prepare_pdf_elements(
     customer_name: str,
@@ -68,6 +70,7 @@ def prepare_pdf_elements(
         cve_limit=config.get("cve_limit", 6),
         attack_surface=config.get("_attack_surface"),
         greynoise=config.get("_greynoise"),
+        report_profile=str((config.get("report") or {}).get("profile", "full") or "full").strip().lower(),
     )
 
     # If a `sections` list was provided, call each section callable in order.
@@ -95,12 +98,22 @@ def prepare_pdf_elements(
     package = config.get("_package", "professional").lower()
     _is_professional = package in ("professional", "enterprise")
     _is_enterprise = package == "enterprise"
+    _is_executive = ctx.report_profile == "executive"
 
     from reportlab.platypus import PageBreak as _PageBreak
 
     elements.append(_SectionMarker())
     _header_domain = ctx.attack_surface.domain if ctx.attack_surface else None
     _create_header(elements=elements, styles=styles, theme=theme, customer_name=customer_name, month=month, ip=ip, config=config, domain=_header_domain)
+
+    if _is_executive:
+        create_executive_summary_section(elements=elements, styles=styles, context=ctx)
+
+        elements.append(_PageBreak())
+
+        elements.append(_SectionMarker())
+        create_executive_technical_section(elements=elements, styles=styles, context=ctx)
+        return elements
 
     # Do NOT insert a section marker between header and management — keep
     # header and the management summary together on the same page when

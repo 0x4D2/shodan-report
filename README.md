@@ -130,6 +130,7 @@ styling:
   secondary_color: "#2d3748"
 
 report:
+  profile: "full"                 # full | executive
   cover_note: ""                   # Persönliche Ansprache auf Seite 1 (oder via --note)
   debug_mdata: false               # false in Produktion (kein .mdata.json Sidecar)
 
@@ -144,6 +145,13 @@ nvd:
 | `basic` | Management, Empfehlungen, Technischer Anhang, Attack Surface (wenn domain gesetzt) |
 | `professional` | + CVE-Übersicht, Trendanalyse |
 | `enterprise` | wie professional + NVD Live-Lookups automatisch aktiv |
+
+**Report-Profile:**
+
+| Profil | Zweck |
+|---|---|
+| `full` | Vollreport für IT, Bestandskunden und tiefere technische Auswertung |
+| `executive` | Kurzreport für GF-/Lead-Kommunikation mit Kurzfassung, nächsten Schritten und technischem Kurzanhang |
 
 ---
 

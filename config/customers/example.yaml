@@ -10,6 +10,7 @@ customer:
   #   - "5.6.7.8"
 
 report:
+  profile: "full"               # full | executive
   include_trend_analysis: false  # Trend abschalten
   severity_threshold: "high"     # Nur high/critical anzeigen
   custom_sections:              # Eigene Sektionen

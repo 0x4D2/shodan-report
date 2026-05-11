@@ -21,6 +21,7 @@ styling:
   logo_path: "assets/logo.png"      # relativ zum Repo-Root
 
 report:
+  profile: "full"                 # full | executive
   include_trend_analysis: true      # true/false (wird durch package übersteuert)
   debug_mdata: false                # false in Produktion (kein .mdata.json Sidecar)
 

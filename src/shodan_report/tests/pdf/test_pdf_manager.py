@@ -179,3 +179,24 @@ class TestPDFManager:
         footer = str(elements[-1])
         current_year = datetime.now().strftime("%Y")
         assert current_year in footer
+
+    def test_executive_profile_skips_full_report_sections(self):
+        elements = prepare_pdf_elements(
+            customer_name="Testkunde",
+            month="2025-01",
+            ip="192.168.1.1",
+            management_text="Management-Kurzfassung",
+            trend_text="Trend",
+            technical_json={"open_ports": [{"port": 443, "product": "nginx", "tls": {"cert_expiry": "20260723175119Z"}}]},
+            evaluation=self.mock_evaluation,
+            business_risk=self.mock_business_risk,
+            config={"report": {"profile": "executive", "cover_note": "Executive summary text"}},
+        )
+
+        rendered = "\n".join(getattr(elem, "text", str(elem)) for elem in elements)
+        assert "Kurzfassung &amp; Nächste Schritte" in rendered
+        assert "Executive summary text" in rendered
+        assert "Technische Details" in rendered
+        assert "Realistisches Angriffsszenario" not in rendered
+        assert "Trend- &amp; Vergleichsanalyse" not in rendered
+        assert "Technischer Anhang" not in rendered

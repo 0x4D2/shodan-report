@@ -21,3 +21,4 @@ class ReportContext:
     attack_surface: Optional[Any] = None  # shodan_report.clients.domain_scout.AttackSurface
     # GreyNoise Community (optional — non-fatal, None wenn nicht verfügbar)
     greynoise: Optional[Any] = None  # dict von shodan_report.clients.greynoise.get_greynoise_status
+    report_profile: str = "full"
