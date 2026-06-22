@@ -2,9 +2,7 @@
 
 from typing import List, Dict, Any, Optional, Callable
 
-from reportlab.platypus import Table, TableStyle, Spacer, Paragraph
-from reportlab.lib.colors import HexColor
-from reportlab.lib.units import mm
+from reportlab.platypus import Spacer, Paragraph
 
 from .styles import create_theme, create_styles
 from .sections.header import _create_header
@@ -107,45 +105,34 @@ def prepare_pdf_elements(
     # possible.
     create_management_section(elements=elements, styles=styles, management_text=management_text, technical_json=technical_json, evaluation=evaluation, business_risk=business_risk, config=config, context=ctx)
 
-    # ── Persönliche Ansprache — unter dem Management-Block, vor dem Seitenumbruch
+    elements.append(_PageBreak())
+
+    # ── Einschätzung des Analysten — eigene Seite ────────────────────────────
     _cover_note = config.get("report", {}).get("cover_note", "").strip()
     if _cover_note:
-        _label_para = Paragraph(
-            "Einschätzung des Analysten",
-            styles["normal"].clone(
-                "cover_note_label",
-                fontSize=7.5,
-                leading=10,
-                textColor=HexColor("#2563EB"),
-                fontName="Helvetica-Bold",
-            ),
-        )
-        _note_para = Paragraph(
-            _cover_note,
-            styles["normal"].clone(
-                "cover_note_text",
-                fontSize=9.5,
-                leading=14,
-                textColor=HexColor("#1A1A1A"),
-            ),
-        )
-        _note_table = Table(
-            [[_label_para], [_note_para]],
-            colWidths=[163 * mm],
-        )
-        _note_table.setStyle(TableStyle([
-            ("BACKGROUND",    (0, 0), (-1, -1), HexColor("#F7F9FC")),
-            ("LINESTART",     (0, 0), (0, -1),  3, HexColor("#2563EB")),
-            ("LEFTPADDING",   (0, 0), (-1, -1), 10),
-            ("RIGHTPADDING",  (0, 0), (-1, -1), 10),
-            ("TOPPADDING",    (0, 0), (-1, -1), 6),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-            ("BOTTOMPADDING", (0, 0), (0, 0),   2),  # enger zwischen Label und Text
-        ]))
-        elements.append(Spacer(1, 6))
-        elements.append(_note_table)
+        elements.append(_SectionMarker())
 
-    elements.append(_PageBreak())
+        # Überschrift — identisch zu allen anderen Sektionen (blauer Balken, weißer Text)
+        elements.append(Paragraph(
+            "Einschätzung des Analysten",
+            styles["heading1"],
+        ))
+        elements.append(Spacer(1, 14))
+
+        # Absätze — \n\n trennt Abschnitte, Fließtext wie normal-Style aber leicht größer
+        _para_style = styles["normal"].clone(
+            "analyst_body",
+            fontSize=10,
+            leading=15,
+            spaceAfter=0,
+        )
+        for _block in _cover_note.split("\n\n"):
+            _block = _block.strip()
+            if _block:
+                elements.append(Paragraph(_block, _para_style))
+                elements.append(Spacer(1, 10))
+
+        elements.append(_PageBreak())
 
     # Realistisches Angriffsszenario — Seite 2 (Gate intern: Positiv-Box bei Web-only)
     elements.append(_SectionMarker())

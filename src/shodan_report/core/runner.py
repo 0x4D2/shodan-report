@@ -20,7 +20,7 @@ from shodan_report.reporting.report_validator import validate_report as _validat
 from shodan_report.reporting.trend import analyze_trend
 from shodan_report.reporting.technical_data import build_technical_data
 from shodan_report.pdf.pdf_generator import generate_pdf
-from shodan_report.pdf.sections.data.management_data import prepare_management_data
+from shodan_report.pdf.sections.data.management_data import prepare_management_data, compute_boosted_exposure_score
 from shodan_report.pdf.sections.data.cve_enricher import enrich_cves
 from shodan_report.archiver.report_archiver import ReportArchiver
 from shodan_report.paths import reports_dir
@@ -323,7 +323,13 @@ def generate_report_pipeline(
             if prev_snapshot:
                 prev_eval = engine.evaluate(prev_snapshot)
                 prev_eval_dict = evaluation_result_to_dict(prev_eval)
-                technical_json["previous_exposure_score"] = prev_eval_dict.get("exposure_score")
+                prev_tj = build_technical_data(prev_snapshot)
+                prev_mdata = prepare_management_data(prev_tj, prev_eval_dict)
+                technical_json["previous_exposure_score"] = compute_boosted_exposure_score(
+                    prev_eval_dict.get("exposure_score", 1),
+                    prev_tj,
+                    prev_mdata.get("cve_count", 0),
+                )
         except Exception:
             pass
 
@@ -338,17 +344,33 @@ def generate_report_pipeline(
                     if hist_snap:
                         try:
                             hist_eval = engine.evaluate(hist_snap)
+                            hist_tj = build_technical_data(hist_snap)
+                            hist_mdata = prepare_management_data(
+                                hist_tj, evaluation_result_to_dict(hist_eval)
+                            )
+                            hist_boosted = compute_boosted_exposure_score(
+                                hist_eval.exposure_score,
+                                hist_tj,
+                                hist_mdata.get("cve_count", 0),
+                            )
                             history_entries.insert(0, {
                                 "month": hist_month,
-                                "score": hist_eval.exposure_score,
+                                "score": hist_boosted,
                                 "real": True,
                             })
                         except Exception:
                             pass
 
+                # Aktueller Monat — boosted score
+                _curr_mdata = prepare_management_data(technical_json, evaluation_dict)
+                _curr_boosted = compute_boosted_exposure_score(
+                    evaluation_result.exposure_score,
+                    technical_json,
+                    _curr_mdata.get("cve_count", 0),
+                )
                 history_entries.append({
                     "month": month,
-                    "score": evaluation_result.exposure_score,
+                    "score": _curr_boosted,
                     "real": True,
                 })
 
